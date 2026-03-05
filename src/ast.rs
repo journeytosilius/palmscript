@@ -10,6 +10,7 @@ pub type NodeId = u32;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Ast {
+    pub functions: Vec<FunctionDecl>,
     pub statements: Vec<Stmt>,
 }
 
@@ -24,6 +25,21 @@ pub struct Stmt {
     pub id: NodeId,
     pub span: Span,
     pub kind: StmtKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FunctionDecl {
+    pub id: NodeId,
+    pub name: String,
+    pub params: Vec<FunctionParam>,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FunctionParam {
+    pub name: String,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

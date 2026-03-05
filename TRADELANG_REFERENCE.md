@@ -16,6 +16,7 @@ The implemented language supports:
 
 - numeric, boolean, and `na` literals
 - `let` bindings
+- top-level user-defined functions
 - `if`, `else if`, and `else` statements
 - logical `and` and `or` expressions
 - arithmetic and comparison expressions
@@ -46,21 +47,27 @@ TradeLang is deterministic:
 
 ## Source File Structure
 
-A program is a sequence of statements.
+A program is a sequence of top-level items.
 
-Supported statement forms:
+Supported top-level item forms:
 
+- `fn name(params...) = expr`
 - `let name = expr`
 - `if condition { ... } else if other_condition { ... } else { ... }`
 - expression statements such as `plot(close)`
 
+Function declarations are hoisted into the callable namespace and do not emit
+bytecode directly.
+
 Example:
 
 ```tradelang
+fn crossover(a, b) = a > b and a[1] <= b[1]
+
 let fast = ema(close, 5)
 let slow = sma(close, 10)
 
-if fast > slow {
+if crossover(fast, slow) {
     plot(1)
 } else {
     plot(0)
@@ -115,6 +122,7 @@ Examples:
 
 Reserved keywords:
 
+- `fn`
 - `let`
 - `if`
 - `else`
@@ -145,7 +153,10 @@ Current constraints:
 This is a practical sketch of the implemented grammar, not a formal grammar.
 
 ```text
-program      := stmt*
+program      := item*
+item         := fn_decl | stmt
+fn_decl      := "fn" ident "(" params? ")" "=" expr
+params       := ident ("," ident)*
 stmt         := let_stmt | if_stmt | expr_stmt
 let_stmt     := "let" ident "=" expr
 if_stmt      := "if" expr block ("else" "if" expr block)* "else" block
@@ -275,9 +286,24 @@ plot(x)
 ### Scope Rules
 
 - top-level `let` bindings live for the whole program
+- top-level `fn` declarations live in the callable namespace
 - each `if` branch introduces an inner block scope
 - inner scopes may shadow outer bindings
 - duplicate bindings in the same scope are rejected
+- function parameters shadow predefined series of the same name
+
+### Function Scope Rules
+
+User-defined functions are intentionally restricted in v1:
+
+- functions are top-level only
+- functions are expression-bodied
+- functions may reference parameters, predefined series, builtins, and other
+  user-defined functions
+- functions may not capture `let` bindings from the program or from blocks
+- duplicate function names are rejected
+- duplicate parameter names are rejected
+- function names may not collide with builtin names
 
 Valid shadowing example:
 
@@ -400,6 +426,11 @@ Important rules:
 
 Only identifiers may be called.
 
+Callable identifiers resolve in this order:
+
+1. builtins
+2. user-defined functions
+
 Current callable builtins:
 
 - `plot`
@@ -408,6 +439,54 @@ Current callable builtins:
 - `rsi`
 
 Calling any other identifier is an error.
+
+## User-Defined Functions
+
+TradeLang supports top-level, pure, expression-bodied helper functions.
+
+Syntax:
+
+```tradelang
+fn name(param1, param2, ...) = expr
+```
+
+Examples:
+
+```tradelang
+fn bullish_bar() = close > open
+fn rising(series) = series > series[1]
+
+if bullish_bar() and rising(close) {
+    plot(1)
+} else {
+    plot(0)
+}
+```
+
+```tradelang
+fn crossover(a, b) = a > b and a[1] <= b[1]
+fn crossunder(a, b) = a < b and a[1] >= b[1]
+
+let fast = ema(close, 9)
+let slow = ema(close, 21)
+
+if crossover(fast, slow) {
+    plot(1)
+} else if crossunder(fast, slow) {
+    plot(-1)
+} else {
+    plot(0)
+}
+```
+
+Rules:
+
+- functions are analyzed per call signature and inlined at compile time
+- arguments are evaluated left-to-right exactly once
+- valid return categories are the existing non-`void` value kinds plus `na`
+- `plot(...)` is not allowed inside function bodies
+- recursion and mutually recursive function graphs are rejected
+- forward references between top-level functions are allowed
 
 ## Builtin Reference
 
@@ -573,6 +652,11 @@ Current runtime behavior:
 - `if na { ... } else { ... }` takes the `else` branch
 - plotting `na` yields a point with `null`
 
+Function calls do not introduce any special `na` semantics. A user-defined
+function behaves as though its body expression were inserted at the call site.
+This means `na` propagation is exactly the propagation already defined for the
+operators, indexing, and builtins used inside the function body.
+
 ### Equality
 
 Equality compares the current runtime values being operated on.
@@ -653,6 +737,9 @@ Examples of current compile errors:
 - invalid builtin arity
 - calling unknown functions
 - treating market data identifiers as callable functions
+- illegal function-body captures
+- recursive function definitions
+- `plot(...)` inside a function body
 
 The runtime reports errors for:
 
@@ -669,13 +756,15 @@ The following are not part of the language yet:
 - strings
 - arrays
 - structs
-- user-defined functions
 - loops
 - reassignment
 - alert-producing builtins
 - imports or modules
 - multi-plot output materialization
 - source-level division with `/`
+- block-bodied functions
+- recursion
+- closures or captured local bindings
 
 ## Examples
 
@@ -684,6 +773,20 @@ See the runnable examples in `examples/`:
 - `cargo run --example sma`
 - `cargo run --example rsi`
 - `cargo run --example step_engine`
+
+Function examples:
+
+```tradelang
+fn pullback_to(avg, price) = price > avg and price[1] <= avg[1]
+
+let basis = ema(close, 10)
+
+if pullback_to(basis, close) {
+    plot(1)
+} else {
+    plot(na)
+}
+```
 
 ## Maintenance Rule
 

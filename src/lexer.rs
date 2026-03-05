@@ -175,6 +175,7 @@ impl<'a> LexerState<'a> {
             text.push(self.bump_char().unwrap());
         }
         let kind = match text.as_str() {
+            "fn" => TokenKind::Fn,
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

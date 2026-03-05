@@ -225,3 +225,51 @@ fn else_if_selects_the_first_matching_branch() {
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     assert_eq!(outputs.plots[0].points[0].value, Some(1.0));
 }
+
+fn fixture_bars() -> Vec<Bar> {
+    (0..12)
+        .map(|index| {
+            let close = 100.0 + index as f64;
+            Bar {
+                open: close - 0.5,
+                high: close + 1.0,
+                low: close - 1.0,
+                close,
+                volume: 1_000.0 + index as f64,
+                time: 1_700_000_000_000.0 + index as f64 * 60_000.0,
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn user_function_inlining_matches_inline_expression() {
+    let helper = tradelang::compile(
+        "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
+    )
+    .expect("helper script should compile");
+    let inline = tradelang::compile("if close > close[1] { plot(1) } else { plot(0) }")
+        .expect("inline script should compile");
+    let helper_outputs = run(&helper, &fixture_bars(), VmLimits::default()).expect("helper runs");
+    let inline_outputs = run(&inline, &fixture_bars(), VmLimits::default()).expect("inline runs");
+    assert_eq!(helper_outputs, inline_outputs);
+}
+
+#[test]
+fn nested_user_functions_execute_over_indicators() {
+    let compiled = tradelang::compile(
+        "fn crossover(a, b) = a > b and a[1] <= b[1]\nfn long_signal(fast, slow) = crossover(fast, slow) or fast > slow\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif long_signal(fast, slow) { plot(1) } else { plot(0) }",
+    )
+    .expect("script should compile");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script should run");
+    assert_eq!(outputs.plots[0].points.len(), 12);
+    assert_eq!(outputs.plots[0].points[0].value, Some(0.0));
+}
+
+#[test]
+fn user_function_with_na_result_preserves_null_plot() {
+    let compiled =
+        tradelang::compile("fn missing() = na\nplot(missing())").expect("script should compile");
+    let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
+    assert_eq!(outputs.plots[0].points[0].value, None);
+}

@@ -3,7 +3,10 @@
 //! The parser builds typed source-level nodes, preserves spans, and accumulates
 //! parse diagnostics instead of emitting bytecode directly.
 
-use crate::ast::{Ast, BinaryOp, Block, Expr, ExprKind, NodeId, Stmt, StmtKind, UnaryOp};
+use crate::ast::{
+    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, FunctionParam, NodeId, Stmt, StmtKind,
+    UnaryOp,
+};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
@@ -30,24 +33,43 @@ impl<'a> Parser<'a> {
     }
 
     fn parse(mut self) -> Result<Ast, CompileError> {
+        let mut functions = Vec::new();
         let mut statements = Vec::new();
         self.skip_separators();
         while !self.is_eof() {
-            match self.parse_stmt() {
-                Some(stmt) => statements.push(stmt),
+            match self.parse_item() {
+                Some(ParsedItem::Function(function)) => functions.push(function),
+                Some(ParsedItem::Stmt(stmt)) => statements.push(stmt),
                 None => self.synchronize(),
             }
             self.skip_separators();
         }
 
         if self.diagnostics.is_empty() {
-            Ok(Ast { statements })
+            Ok(Ast {
+                functions,
+                statements,
+            })
         } else {
             Err(CompileError::new(self.diagnostics))
         }
     }
 
+    fn parse_item(&mut self) -> Option<ParsedItem> {
+        if self.matches_keyword(&TokenKind::Fn) {
+            return self.parse_function_decl().map(ParsedItem::Function);
+        }
+        self.parse_stmt().map(ParsedItem::Stmt)
+    }
+
     fn parse_stmt(&mut self) -> Option<Stmt> {
+        if self.matches_keyword(&TokenKind::Fn) {
+            self.push_diagnostic(
+                "function declarations are only allowed at the top level",
+                self.previous().span,
+            );
+            return None;
+        }
         if self.matches_keyword(&TokenKind::Let) {
             return self.parse_let_stmt();
         }
@@ -61,6 +83,62 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span,
             kind: StmtKind::Expr(expr),
+        })
+    }
+
+    fn parse_function_decl(&mut self) -> Option<FunctionDecl> {
+        let start = self.previous().span;
+        let name = match self.advance().cloned() {
+            Some(Token {
+                kind: TokenKind::Ident(name),
+                ..
+            }) => name,
+            _ => {
+                self.error_here("expected identifier after `fn`");
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after function name",
+        )?;
+
+        let mut params = Vec::new();
+        if !matches!(self.peek_kind(), TokenKind::RightParen) {
+            loop {
+                let token = self.expect_kind(
+                    |kind| matches!(kind, TokenKind::Ident(_)),
+                    "expected parameter name",
+                )?;
+                let TokenKind::Ident(name) = token.kind else {
+                    unreachable!();
+                };
+                params.push(FunctionParam {
+                    name,
+                    span: token.span,
+                });
+                if !matches!(self.peek_kind(), TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+        }
+
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after parameters",
+        )?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after function signature",
+        )?;
+        let body = self.parse_expr(0)?;
+        Some(FunctionDecl {
+            id: self.alloc_id(),
+            name,
+            params,
+            span: start.merge(body.span),
+            body,
         })
     }
 
@@ -388,4 +466,9 @@ impl<'a> Parser<'a> {
         self.next_node_id += 1;
         id
     }
+}
+
+enum ParsedItem {
+    Function(FunctionDecl),
+    Stmt(Stmt),
 }

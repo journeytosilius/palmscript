@@ -121,3 +121,75 @@ fn golden_boolean_series_reuse_shape_matches() {
         serde_json::json!(1.0)
     );
 }
+
+#[test]
+fn golden_zero_argument_function_shape_matches() {
+    let compiled =
+        compile("fn bullish_bar() = close > open\nif bullish_bar() { plot(1) } else { plot(0) }")
+            .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(1.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_function_indexing_over_series_shape_matches() {
+    let compiled = compile(
+        "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
+    )
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(0.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::json!(1.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_nested_function_helpers_shape_matches() {
+    let compiled = compile(
+        "fn bullish_bar() = close > open\nfn trigger() = bullish_bar() and close > close[1]\nif trigger() { plot(1) } else { plot(0) }",
+    )
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(0.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_indicator_helper_shape_matches() {
+    let compiled = compile(
+        "fn crossover(a, b) = a > b and a[1] <= b[1]\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif crossover(fast, slow) { plot(1) } else { plot(0) }",
+    )
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(0.0)
+    );
+    assert_eq!(json["plots"][0]["points"].as_array().unwrap().len(), 20);
+}

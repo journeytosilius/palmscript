@@ -96,3 +96,79 @@ fn reserves_logical_keywords() {
     let message = compile_err("let and = true\nplot(and)");
     assert!(message.contains("expected identifier after `let`"));
 }
+
+#[test]
+fn parses_top_level_function_declarations() {
+    compile(
+        "fn crossover(a, b) = a > b and a[1] <= b[1]\nif crossover(close, ema(close, 3)) { plot(1) } else { plot(0) }",
+    )
+    .expect("function declarations should compile");
+}
+
+#[test]
+fn parses_zero_argument_functions() {
+    compile("fn bullish_bar() = close > open\nif bullish_bar() { plot(1) } else { plot(0) }")
+        .expect("zero-argument functions should compile");
+}
+
+#[test]
+fn rejects_function_declarations_inside_blocks() {
+    let message = compile_err("if true { fn helper() = close > open } else { plot(0) }");
+    assert!(message.contains("function declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_duplicate_function_names() {
+    let message = compile_err("fn helper() = true\nfn helper() = false\nplot(1)");
+    assert!(message.contains("duplicate function `helper`"));
+}
+
+#[test]
+fn rejects_duplicate_function_parameters() {
+    let message = compile_err("fn helper(x, x) = x\nplot(1)");
+    assert!(message.contains("duplicate parameter `x` in function `helper`"));
+}
+
+#[test]
+fn rejects_builtin_function_name_collisions() {
+    let message = compile_err("fn plot(x) = x\nplot(1)");
+    assert!(message.contains("function name `plot` collides with a builtin"));
+}
+
+#[test]
+fn rejects_wrong_user_function_arity() {
+    let message = compile_err("fn helper(x) = x\nplot(helper())");
+    assert!(message.contains("function `helper` expects 1 argument(s), found 0"));
+}
+
+#[test]
+fn rejects_function_body_captures() {
+    let message = compile_err("let basis = close\nfn helper() = basis\nplot(1)");
+    assert!(message.contains("function bodies may only reference parameters or predefined series"));
+}
+
+#[test]
+fn rejects_recursive_functions() {
+    let message = compile_err("fn recurse(x) = recurse(x)\nplot(1)");
+    assert!(message.contains("recursive and cyclic function definitions are not allowed"));
+}
+
+#[test]
+fn rejects_mutually_recursive_functions() {
+    let message = compile_err("fn a() = b()\nfn b() = a()\nplot(1)");
+    assert!(message.contains("recursive and cyclic function definitions are not allowed"));
+}
+
+#[test]
+fn rejects_plot_calls_inside_function_bodies() {
+    let message = compile_err("fn bad(x) = plot(x)\nplot(1)");
+    assert!(message.contains("function bodies may not call `plot`"));
+}
+
+#[test]
+fn supports_multiple_function_specializations() {
+    compile(
+        "fn add1(x) = x + 1\nlet one = add1(1)\nif add1(close) > one { plot(1) } else { plot(0) }",
+    )
+    .expect("function specializations should compile");
+}
