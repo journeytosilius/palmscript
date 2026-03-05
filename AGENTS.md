@@ -508,3 +508,96 @@ Agents contributing to this repository must:
 
 Agents must **never merge code that compromises determinism, VM
 performance, or test coverage**.
+
+Git workflow (mandatory)
+
+All agents must follow this workflow after completing a change.
+
+Commit requirement
+
+After any code change that passes the quality gate, the agent MUST create a commit.
+
+Commits must:
+
+describe the change clearly
+
+use concise commit messages
+
+avoid unrelated changes in the same commit
+
+Example commit message format:
+
+feat: add parser support for unary expressions
+
+fix: correct VM stack handling for CALL_BUILTIN
+
+test: add regression test for series indexing
+Push requirement
+
+After committing, the agent MUST push the change to the remote repository.
+
+Workflow:
+
+git add .
+git commit -m "<commit message>"
+git push
+
+Push only after:
+
+cargo fmt
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+
+all succeed.
+
+Commit discipline
+
+Agents must follow these rules:
+
+Do not commit broken builds.
+
+Do not push failing tests.
+
+Do not commit unrelated files.
+
+Keep commits small and focused.
+
+If multiple logical changes occur, they must be split into separate commits.
+
+When not to commit
+
+Do not commit when:
+
+tests are failing
+
+clippy reports warnings
+
+code is incomplete
+
+the change is exploratory or temporary
+
+After push verification
+
+After pushing, the agent should verify the repository state:
+
+git status
+git log -1
+
+Ensure:
+
+working tree is clean
+
+latest commit matches the change
+
+Final agent rule
+
+Agents must never leave local changes uncommitted after a completed task.
+
+Every completed modification must end with:
+
+cargo fmt
+cargo clippy
+cargo test
+git add .
+git commit
+git push
