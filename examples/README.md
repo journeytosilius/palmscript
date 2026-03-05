@@ -14,6 +14,14 @@ cargo run --example pipeline
 Each example compiles a TradeLang script, runs it against a small OHLCV fixture,
 and prints the resulting outputs.
 
+For direct script execution outside Rust examples, use the CLI:
+
+```bash
+tradelang check strategy.trl
+tradelang run strategy.trl --bars bars.csv --base-interval 1m
+tradelang dump-bytecode strategy.trl
+```
+
 Current examples:
 
 - `sma`: single-interval SMA over the base `close` series

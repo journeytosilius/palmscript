@@ -10,7 +10,9 @@ compiler, and runtime behavior.
 ## Status
 
 TradeLang is currently a small deterministic DSL for financial time-series
-programs compiled to bytecode and executed by a VM.
+programs compiled to bytecode and executed by a VM. The repository now ships
+both the library crate and the official `tradelang` CLI binary, which wraps
+the existing compiler and runtime APIs.
 
 The implemented language supports:
 
@@ -835,6 +837,14 @@ Each export/trigger sample contains:
 - `value`
 
 Examples of generated output are available under `examples/`.
+
+The official CLI can also execute scripts directly:
+
+```bash
+tradelang check strategy.trl
+tradelang run strategy.trl --bars bars.csv --base-interval 1m
+tradelang dump-bytecode strategy.trl
+```
 
 ## Diagnostics
 
