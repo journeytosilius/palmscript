@@ -3,6 +3,7 @@ pub mod builtins;
 pub mod bytecode;
 pub mod compiler;
 pub mod diagnostic;
+mod indicators;
 pub mod lexer;
 pub mod output;
 pub mod parser;

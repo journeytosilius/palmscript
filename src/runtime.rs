@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::builtins::BuiltinId;
 use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
+use crate::indicators::IndicatorState;
 use crate::output::{Outputs, PlotSeries};
 use crate::types::{SlotKind, Value};
-use crate::vm::{IndicatorState, SeriesBuffer, Vm, VmEngine};
+use crate::vm::{SeriesBuffer, Vm, VmEngine};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Bar {

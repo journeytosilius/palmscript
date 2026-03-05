@@ -3,6 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
+use crate::indicators::{sma, EmaState, IndicatorState, RsiState};
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
 use crate::types::{SlotKind, Value};
@@ -47,25 +48,6 @@ impl SeriesBuffer {
     pub fn iter_recent(&self, count: usize) -> impl Iterator<Item = &Value> {
         self.values.iter().rev().take(count)
     }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum IndicatorState {
-    Ema {
-        seeded: bool,
-        alpha: f64,
-        value: f64,
-        seed_window: usize,
-    },
-    Rsi {
-        seeded: bool,
-        avg_gain: f64,
-        avg_loss: f64,
-        last_price: Option<f64>,
-        seed_gains: Vec<f64>,
-        seed_losses: Vec<f64>,
-        len: usize,
-    },
 }
 
 pub struct Vm<'a> {
@@ -405,24 +387,7 @@ impl<'a> VmEngine<'a> {
             .series_values
             .get(series_slot)
             .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
-        if buffer.len() < window {
-            return Ok(Value::NA);
-        }
-        let mut sum = 0.0;
-        for value in buffer.iter_recent(window) {
-            match value {
-                Value::F64(value) => sum += value,
-                Value::NA => return Ok(Value::NA),
-                other => {
-                    return Err(RuntimeError::TypeMismatch {
-                        pc,
-                        expected: "f64",
-                        found: other.type_name(),
-                    })
-                }
-            }
-        }
-        Ok(Value::F64(sum / window as f64))
+        sma::calculate(buffer, window, pc)
     }
 
     fn call_ema(
@@ -450,54 +415,17 @@ impl<'a> VmEngine<'a> {
         let mut state = self
             .indicator_state
             .remove(&key)
-            .unwrap_or(IndicatorState::Ema {
-                seeded: false,
-                alpha: 2.0 / (window as f64 + 1.0),
-                value: 0.0,
-                seed_window: window,
-            });
+            .unwrap_or(IndicatorState::Ema(EmaState::new(window)));
         let result = match &mut state {
-            IndicatorState::Ema {
-                seeded,
-                alpha,
-                value,
-                seed_window,
-            } => {
-                if !*seeded {
-                    self.consume_steps(*seed_window, pc)?;
-                    let buffer = self
-                        .series_values
-                        .get(series_slot)
-                        .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
-                    if buffer.len() < *seed_window {
-                        self.indicator_state.insert(key, state);
-                        return Ok(Value::NA);
-                    }
-                    let mut sum = 0.0;
-                    for sample in buffer.iter_recent(*seed_window) {
-                        match sample {
-                            Value::F64(sample) => sum += sample,
-                            Value::NA => {
-                                self.indicator_state.insert(key, state);
-                                return Ok(Value::NA);
-                            }
-                            other => {
-                                self.indicator_state.insert(key, state);
-                                return Err(RuntimeError::TypeMismatch {
-                                    pc,
-                                    expected: "f64",
-                                    found: other.type_name(),
-                                });
-                            }
-                        }
-                    }
-                    *value = sum / *seed_window as f64;
-                    *seeded = true;
-                    Value::F64(*value)
-                } else {
-                    *value = *alpha * current_price + (1.0 - *alpha) * *value;
-                    Value::F64(*value)
+            IndicatorState::Ema(state) => {
+                if !state.is_seeded() {
+                    self.consume_steps(state.seed_window(), pc)?;
                 }
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(current_price, buffer, pc)?
             }
             _ => unreachable!(),
         };
@@ -530,55 +458,13 @@ impl<'a> VmEngine<'a> {
         let mut state = self
             .indicator_state
             .remove(&key)
-            .unwrap_or(IndicatorState::Rsi {
-                seeded: false,
-                avg_gain: 0.0,
-                avg_loss: 0.0,
-                last_price: None,
-                seed_gains: Vec::new(),
-                seed_losses: Vec::new(),
-                len: window,
-            });
+            .unwrap_or(IndicatorState::Rsi(RsiState::new(window)));
         let result = match &mut state {
-            IndicatorState::Rsi {
-                seeded,
-                avg_gain,
-                avg_loss,
-                last_price,
-                seed_gains,
-                seed_losses,
-                len,
-            } => {
-                let Some(prev_price) = *last_price else {
-                    *last_price = Some(current_price);
-                    self.indicator_state.insert(key, state);
-                    return Ok(Value::NA);
-                };
-                let delta = current_price - prev_price;
-                let gain = delta.max(0.0);
-                let loss = (-delta).max(0.0);
-                *last_price = Some(current_price);
-                if !*seeded {
-                    seed_gains.push(gain);
-                    seed_losses.push(loss);
+            IndicatorState::Rsi(state) => {
+                if state.requires_seed_step() {
                     self.consume_steps(1, pc)?;
-                    if seed_gains.len() < *len {
-                        self.indicator_state.insert(key, state);
-                        return Ok(Value::NA);
-                    }
-                    *avg_gain = seed_gains.iter().sum::<f64>() / *len as f64;
-                    *avg_loss = seed_losses.iter().sum::<f64>() / *len as f64;
-                    *seeded = true;
-                } else {
-                    *avg_gain = ((*avg_gain * (*len as f64 - 1.0)) + gain) / *len as f64;
-                    *avg_loss = ((*avg_loss * (*len as f64 - 1.0)) + loss) / *len as f64;
                 }
-                if *avg_loss == 0.0 {
-                    Value::F64(100.0)
-                } else {
-                    let rs = *avg_gain / *avg_loss;
-                    Value::F64(100.0 - (100.0 / (1.0 + rs)))
-                }
+                state.update(current_price)
             }
             _ => unreachable!(),
         };
