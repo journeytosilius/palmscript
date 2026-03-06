@@ -1,40 +1,66 @@
 # CLI Command Reference
 
+This page is the compact command and flag reference for the `palmscript` CLI. For workflows and examples, see [CLI](../tooling/cli.md).
+
 ## `palmscript check`
 
 ```bash
 palmscript check <script.palm>
 ```
 
-Compiles and validates a strategy without running it.
+Compiles and validates a strategy without executing it.
+
+Arguments:
+
+- `<script.palm>`: path to the strategy source file
 
 ## `palmscript run csv`
 
 ```bash
 palmscript run csv <script.palm> --bars <bars.csv> \
   [--format json|text] \
-  [--max-instructions-per-bar N] \
-  [--max-history-capacity N]
+  [--max-instructions-per-bar <N>] \
+  [--max-history-capacity <N>]
 ```
 
-Runs a strategy in CSV mode. The input file is treated as the raw source feed and rolled up to declared intervals if possible.
+Arguments and flags:
+
+- `<script.palm>`: path to the strategy source file
+- `--bars <bars.csv>`: CSV file with canonical `time,open,high,low,close,volume` columns
+- `--format json|text`: output rendering format, default `json`
+- `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
+- `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
 
 ## `palmscript run market`
 
 ```bash
 palmscript run market <script.palm> --from <unix_ms> --to <unix_ms> \
   [--format json|text] \
-  [--max-instructions-per-bar N] \
-  [--max-history-capacity N]
+  [--max-instructions-per-bar <N>] \
+  [--max-history-capacity <N>]
 ```
 
-Runs a source-aware strategy by fetching historical candles from declared exchange templates in the script.
+Arguments and flags:
+
+- `<script.palm>`: path to the strategy source file
+- `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
+- `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--format json|text`: output rendering format, default `json`
+- `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
+- `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
+
+Requirements:
+
+- the script must declare at least one `source`
+- `--from` must be strictly less than `--to`
 
 ## `palmscript dump-bytecode`
 
 ```bash
-palmscript dump-bytecode <script.palm> \
-  [--format text|json]
+palmscript dump-bytecode <script.palm> [--format text|json]
 ```
 
-Compiles a strategy and prints the program in text or JSON form.
+Arguments and flags:
+
+- `<script.palm>`: path to the strategy source file
+- `--format text|json`: bytecode output format, default `text`

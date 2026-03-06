@@ -51,43 +51,46 @@ plugins:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - Overview: getting-started/overview.md
-      - Installation: getting-started/installation.md
-      - Quickstart: getting-started/quickstart.md
-      - First Strategy: getting-started/first-strategy.md
-  - Language:
-      - Syntax and Lexical Structure: language/syntax.md
-      - Execution Model: language/execution-model.md
-      - Types and Values: language/types-values.md
-      - Intervals and Multi-Interval Semantics: language/intervals.md
-      - Expressions and Control Flow: language/expressions-control-flow.md
-      - Functions: language/functions.md
-      - Builtins: language/builtins.md
-      - Outputs: language/outputs.md
-  - Runtime:
-      - Compiler Pipeline: runtime/compiler-pipeline.md
-      - Bytecode Model: runtime/bytecode.md
-      - VM Semantics: runtime/vm.md
-      - Bounded History and Memory: runtime/history-memory.md
-      - CSV Mode and Roll-Up Rules: runtime/csv-mode.md
-      - Market Mode: runtime/market-mode.md
+  - Learn:
+      - Overview: learn/overview.md
+      - Installation: learn/installation.md
+      - Quickstart: learn/quickstart.md
+      - First Strategy: learn/first-strategy.md
+      - Language Overview: learn/language-overview.md
+      - Cookbook:
+          - CSV Strategies: learn/cookbook/csv-strategies.md
+          - Multi-Interval Strategy: learn/cookbook/multi-interval.md
+          - Exchange-Backed Sources: learn/cookbook/exchange-backed-sources.md
+          - Cross-Source Spread: learn/cookbook/cross-source-spread.md
+  - Reference:
+      - Overview: reference/overview.md
+      - Lexical Structure: reference/lexical-structure.md
+      - Grammar: reference/grammar.md
+      - Declarations and Scope: reference/declarations-and-scope.md
+      - Types and Values: reference/types-and-values.md
+      - Series and Indexing: reference/series-and-indexing.md
+      - Evaluation Semantics: reference/evaluation-semantics.md
+      - Intervals and Sources: reference/intervals-and-sources.md
+      - Builtins: reference/builtins.md
+      - Outputs: reference/outputs.md
+      - Diagnostics: reference/diagnostics.md
+      - Interval Table: reference/intervals.md
+      - CLI Command Reference: reference/cli.md
+      - Glossary: reference/glossary.md
   - Tooling:
       - CLI: tooling/cli.md
+      - CSV Mode: tooling/csv-mode.md
+      - Market Mode: tooling/market-mode.md
       - Language Server: tooling/language-server.md
       - VS Code Extension: tooling/vscode.md
-  - Examples:
-      - CLI Strategies: examples/cli-strategies.md
-      - Rust Examples: examples/rust-examples.md
-      - Multi-Interval Strategies: examples/multi-interval.md
+  - Internals:
+      - Architecture: internals/architecture.md
+      - Compiler Pipeline: internals/compiler-pipeline.md
+      - Bytecode Model: internals/bytecode.md
+      - VM Semantics: internals/vm.md
+      - Bounded History and Memory: internals/history-memory.md
+      - Rust Examples: internals/rust-examples.md
   - Contributing:
-      - Repository Architecture: contributing/architecture.md
       - Testing Expectations: contributing/testing.md
       - Release Workflows: contributing/releases.md
       - Documentation Maintenance: contributing/documentation.md
-  - Reference:
-      - Grammar Sketch: reference/grammar.md
-      - Interval Table: reference/intervals.md
-      - CLI Command Reference: reference/cli.md
-      - Diagnostics and Error Classes: reference/diagnostics.md
-      - Glossary: reference/glossary.md

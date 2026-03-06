@@ -1,57 +1,95 @@
-# Diagnostics and Error Classes
+# Diagnostics
 
-PalmScript surfaces several classes of user-visible errors.
+PalmScript surfaces diagnostics and errors from four distinct layers.
 
-## Compile Errors
+## 1. Compile Diagnostics
 
-Compile-time diagnostics include:
+Compile diagnostics are source-level failures with spans.
 
-- lexer and parser errors
-- invalid `interval` / `use` declarations
-- type errors
-- invalid identifiers
-- illegal function usage
+Diagnostic classes:
 
-These surface through:
+- lexical errors
+- parse errors
+- type and name-resolution errors
+- compile-time structural errors
+
+Examples:
+
+- missing or duplicate `interval`
+- unsupported `source` template
+- unknown source alias
+- undeclared `use` interval reference
+- lower-than-base interval reference
+- duplicate bindings
+- invalid function recursion
+- invalid builtin arity or argument type
+
+These diagnostics surface through:
 
 - `palmscript check`
-- `palmscript run csv` before execution
-- `palmscript run market` before execution
+- `palmscript run csv`
+- `palmscript run market`
 - `palmscript dump-bytecode`
 - `palmscript-lsp`
 - the VS Code extension
 
-## CSV Mode Data Preparation Errors
+## 2. CSV Data-Preparation Errors
 
-The data-preparation layer can fail before runtime with errors such as:
+After successful compilation, CSV mode may fail while preparing raw bars into the required feeds.
 
-- `CannotInferInputInterval`
-- `MissingBaseIntervalDeclaration`
-- `RawIntervalTooCoarse`
-- `UnsupportedRollupPath`
-- `InsufficientDataForInterval`
-- `IncompleteRollupBucket`
-- `UnsortedInputBars`
-- `DuplicateInputBarTime`
+Owned by: CSV input loading and roll-up preparation.
 
-These happen after successful compilation but before VM execution.
+Examples:
 
-## Market Mode Fetch Errors
+- input interval cannot be inferred
+- input bars are unsorted or duplicated
+- raw interval is too coarse for the declared interval
+- roll-up path is unsupported
+- a required bucket is incomplete
+- there is not enough data to form one full required candle
 
-Exchange-backed runs can fail before VM execution with errors such as:
+These are pre-runtime operational failures, not compile diagnostics.
 
-- invalid `--from` / `--to` windows
-- unsupported source templates or intervals
-- malformed exchange responses
-- no returned candles for a required source feed
-- unknown Hyperliquid spot symbols
+## 3. Market Fetch Errors
 
-## Runtime Errors
+After successful compilation, market mode may fail while constructing venue-backed feeds.
 
-Runtime errors include:
+Owned by: exchange adapters and feed-fetch assembly.
 
-- feed compatibility problems
-- history-cap violations
-- execution-limit violations
+Examples:
 
-The runtime fails deterministically rather than silently degrading semantics.
+- `--from` is not less than `--to`
+- the script has no `source` declarations
+- an exchange request fails
+- a venue response is malformed
+- a required feed returns no data in the requested window
+- a Hyperliquid spot symbol cannot be resolved
+
+## 4. Runtime Errors
+
+Runtime errors occur after feed preparation begins or during VM execution.
+
+Owned by: runtime feed validation, VM execution, and output materialization.
+
+Examples:
+
+- feed alignment errors
+- unsorted or duplicate prepared interval feeds
+- missing or duplicate runtime feeds
+- instruction-budget exhaustion
+- stack underflow
+- type mismatch in the VM
+- invalid local or series slot
+- history-capacity overflow
+- output type mismatch during output collection
+
+## Layer Ownership
+
+The owning layer for a failure is part of the contract:
+
+- syntax and semantic validity belong to compilation
+- CSV ingestion and roll-up validity belong to CSV preparation
+- exchange/network/response validity belong to market fetch
+- prepared-feed consistency and bytecode execution belong to runtime
+
+PalmScript fails explicitly instead of silently degrading semantics.

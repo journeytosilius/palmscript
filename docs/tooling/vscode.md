@@ -22,6 +22,8 @@ Marketplace identity:
 - document symbols
 - formatting
 
+The extension is intentionally thin. Language semantics, diagnostics, completion data, and formatting come from `palmscript-lsp` rather than a second parser or analyzer inside the extension.
+
 ## Language Server Resolution
 
 The extension resolves `palmscript-lsp` in this order:

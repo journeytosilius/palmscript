@@ -2,9 +2,11 @@
 
 The canonical examples documentation now lives in the MkDocs site:
 
-- [CLI Strategies](../docs/examples/cli-strategies.md)
-- [Rust Examples](../docs/examples/rust-examples.md)
-- [Multi-Interval Examples](../docs/examples/multi-interval.md)
+- [CSV Strategies](../docs/learn/cookbook/csv-strategies.md)
+- [Multi-Interval Strategy](../docs/learn/cookbook/multi-interval.md)
+- [Exchange-Backed Sources](../docs/learn/cookbook/exchange-backed-sources.md)
+- [Cross-Source Spread](../docs/learn/cookbook/cross-source-spread.md)
+- [Rust Examples](../docs/internals/rust-examples.md)
 
 This file remains a short inventory for repository browsing.
 

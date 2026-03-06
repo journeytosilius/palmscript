@@ -24,8 +24,8 @@ The canonical documentation source is the MkDocs site under `docs/`.
 
 Start here:
 
-- [Getting Started](docs/getting-started/overview.md)
-- [Language Guide](docs/language/syntax.md)
+- [Learn](docs/learn/overview.md)
+- [Language Reference](docs/reference/overview.md)
 - [CLI](docs/tooling/cli.md)
 - [VS Code Extension](docs/tooling/vscode.md)
 
