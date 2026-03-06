@@ -3,7 +3,7 @@
 ## `palmscript check`
 
 ```bash
-palmscript check <script.trl> [--env <compile-env.json>]
+palmscript check <script.palm> [--env <compile-env.json>]
 ```
 
 Compiles and validates a strategy without running it.
@@ -11,7 +11,7 @@ Compiles and validates a strategy without running it.
 ## `palmscript run csv`
 
 ```bash
-palmscript run csv <script.trl> --bars <bars.csv> \
+palmscript run csv <script.palm> --bars <bars.csv> \
   [--format json|text] \
   [--max-instructions-per-bar N] \
   [--max-history-capacity N]
@@ -22,7 +22,7 @@ Runs a strategy in CSV mode. The input file is treated as the raw source feed an
 ## `palmscript dump-bytecode`
 
 ```bash
-palmscript dump-bytecode <script.trl> \
+palmscript dump-bytecode <script.palm> \
   [--env <compile-env.json>] \
   [--format text|json]
 ```

@@ -20,7 +20,7 @@ if close > weekly_basis {
 ## CLI Example
 
 ```bash
-palmscript run csv examples/strategies/weekly_bias.trl \
+palmscript run csv examples/strategies/weekly_bias.palm \
   --bars /path/to/daily_bars.csv
 ```
 

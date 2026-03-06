@@ -53,7 +53,7 @@ fn run_help_mentions_csv_mode() {
 #[test]
 fn run_requires_bars_argument() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
+    let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close)");
     let mut cmd = palmscript_cmd();
     cmd.args(["run", "csv", script.to_str().unwrap()]);
     cmd.assert()
@@ -64,7 +64,7 @@ fn run_requires_bars_argument() {
 #[test]
 fn run_rejects_missing_interval_directive() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(close)");
+    let script = write_file(dir.path(), "script.palm", "plot(close)");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -88,7 +88,7 @@ fn run_rejects_removed_feed_argument() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "script.trl",
+        "script.palm",
         "interval 1d\nuse 1w\nplot(1w.close)",
     );
     let bars = write_file(
@@ -114,12 +114,12 @@ fn run_rejects_removed_feed_argument() {
 #[test]
 fn check_reports_success_for_valid_script() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "valid.trl", "interval 1m\nplot(sma(close, 3))");
+    let script = write_file(dir.path(), "valid.palm", "interval 1m\nplot(sma(close, 3))");
     let mut cmd = palmscript_cmd();
     cmd.args(["check", script.to_str().unwrap()]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("valid.trl: ok"));
+        .stdout(predicate::str::contains("valid.palm: ok"));
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn check_reports_compile_diagnostics() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "invalid.trl",
+        "invalid.palm",
         "interval 1m\nif true { plot(1) }",
     );
     let mut cmd = palmscript_cmd();
@@ -142,7 +142,7 @@ fn check_supports_compile_environment_files() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "consumer.trl",
+        "consumer.palm",
         "interval 1m\nif trend { plot(1) } else { plot(0) }",
     );
     let env = write_file(
@@ -163,7 +163,7 @@ fn check_supports_compile_environment_files() {
 #[test]
 fn run_executes_single_interval_script_and_prints_json_by_default() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close[1])");
+    let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close[1])");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -193,7 +193,7 @@ fn run_executes_multi_interval_script() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "script.trl",
+        "script.palm",
         "interval 1d\nuse 1w\nplot(1w.close)",
     );
     let base = write_file(
@@ -230,7 +230,7 @@ fn run_rejects_incomplete_rollup_bucket() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "script.trl",
+        "script.palm",
         "interval 1d\nuse 1w\nplot(1w.close)",
     );
     let base = write_file(
@@ -262,7 +262,7 @@ fn run_rejects_incomplete_rollup_bucket() {
 #[test]
 fn run_rejects_raw_input_that_is_too_coarse() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
+    let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close)");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -287,7 +287,7 @@ fn run_rejects_raw_input_that_is_too_coarse() {
 #[test]
 fn run_rejects_invalid_csv_rows() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
+    let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close)");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -309,7 +309,7 @@ fn run_rejects_invalid_csv_rows() {
 #[test]
 fn run_rejects_invalid_timestamps() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
+    let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close)");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -333,7 +333,7 @@ fn run_supports_text_output() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "script.trl",
+        "script.palm",
         "interval 1m\nexport rising = close > close[1]\ntrigger long = close > open\nplot(close)",
     );
     let bars = write_file(
@@ -365,7 +365,11 @@ fn run_supports_text_output() {
 #[test]
 fn dump_bytecode_text_contains_sections() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(sma(close, 3))");
+    let script = write_file(
+        dir.path(),
+        "script.palm",
+        "interval 1m\nplot(sma(close, 3))",
+    );
     let mut cmd = palmscript_cmd();
     cmd.args(["dump-bytecode", script.to_str().unwrap()]);
     cmd.assert()
@@ -379,7 +383,7 @@ fn dump_bytecode_text_contains_sections() {
 #[test]
 fn dump_bytecode_json_serializes_compiled_program() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
+    let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close)");
     let output = palmscript_cmd()
         .args([
             "dump-bytecode",
@@ -401,7 +405,7 @@ fn dump_bytecode_supports_compile_environment_files() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "consumer.trl",
+        "consumer.palm",
         "interval 1m\nif trend { plot(1) } else { plot(0) }",
     );
     let env = write_file(
@@ -434,7 +438,7 @@ fn checked_in_single_interval_example_runs_via_cli() {
         .args([
             "run",
             "csv",
-            repo_path("examples/strategies/sma_cross.trl")
+            repo_path("examples/strategies/sma_cross.palm")
                 .to_str()
                 .unwrap(),
             "--bars",
@@ -474,7 +478,7 @@ fn checked_in_multi_interval_example_runs_via_cli() {
         .args([
             "run",
             "csv",
-            repo_path("examples/strategies/weekly_bias.trl")
+            repo_path("examples/strategies/weekly_bias.palm")
                 .to_str()
                 .unwrap(),
             "--bars",

@@ -4,16 +4,16 @@ The official CLI binary is `palmscript`.
 
 ## Commands
 
-- `palmscript run csv <script.trl> --bars <bars.csv>`
-- `palmscript check <script.trl>`
-- `palmscript dump-bytecode <script.trl>`
+- `palmscript run csv <script.palm> --bars <bars.csv>`
+- `palmscript check <script.palm>`
+- `palmscript dump-bytecode <script.palm>`
 
 ## `run csv`
 
 Executes a strategy in CSV mode:
 
 ```bash
-palmscript run csv examples/strategies/sma_cross.trl \
+palmscript run csv examples/strategies/sma_cross.palm \
   --bars examples/data/minute_bars.csv
 ```
 
@@ -38,8 +38,8 @@ The command:
 Validates source without running it:
 
 ```bash
-palmscript check strategy.trl
-palmscript check strategy.trl --env env.json
+palmscript check strategy.palm
+palmscript check strategy.palm --env env.json
 ```
 
 ## `dump-bytecode`
@@ -47,8 +47,9 @@ palmscript check strategy.trl --env env.json
 Compiles and renders the compiled program:
 
 ```bash
-palmscript dump-bytecode strategy.trl
-palmscript dump-bytecode strategy.trl --format json
+palmscript dump-bytecode strategy.palm
+palmscript dump-bytecode strategy.palm --format json
 ```
 
 The optional `--env` flag lets you load a compile environment for external inputs.
+Legacy `.trl` filenames are still accepted.

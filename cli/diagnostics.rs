@@ -50,9 +50,9 @@ mod tests {
             "expected expression",
             Span::new(Position::new(1, 2, 3), Position::new(2, 2, 4)),
         )]);
-        let rendered = format_compile_error(Path::new("strategy.trl"), &error);
-        assert!(rendered.contains("compile failed for `strategy.trl`"));
-        assert!(rendered.contains("strategy.trl:2:3: parse: expected expression"));
+        let rendered = format_compile_error(Path::new("strategy.palm"), &error);
+        assert!(rendered.contains("compile failed for `strategy.palm`"));
+        assert!(rendered.contains("strategy.palm:2:3: parse: expected expression"));
     }
 
     #[test]

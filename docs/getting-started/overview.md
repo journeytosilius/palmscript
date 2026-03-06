@@ -14,7 +14,7 @@ PalmScript exists in three layers:
 
 ## How To Use The Project
 
-- Write `.trl` strategies with an `interval <...>` directive and optional `use <...>` declarations.
+- Write `.palm` strategies with an `interval <...>` directive and optional `use <...>` declarations.
 - Validate them with `palmscript check`.
 - Execute them with `palmscript run csv ...`.
 - Inspect compiled output with `palmscript dump-bytecode`.

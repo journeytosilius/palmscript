@@ -27,7 +27,7 @@ if trend {
 ## Run It
 
 ```bash
-target/debug/palmscript run csv examples/strategies/sma_cross.trl \
+target/debug/palmscript run csv examples/strategies/sma_cross.palm \
   --bars examples/data/minute_bars.csv
 ```
 

@@ -12,7 +12,7 @@ It lets editor tooling type-check files that depend on external series inputs pr
 {
   "version": 1,
   "documents": {
-    "strategies/consumer.trl": {
+    "strategies/consumer.palm": {
       "compile_environment": {
         "external_inputs": [
           {

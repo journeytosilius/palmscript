@@ -29,6 +29,7 @@
           "palmscript"
         ],
         "extensions": [
+          ".palm",
           ".trl"
         ],
         "configuration": "./language-configuration.json"

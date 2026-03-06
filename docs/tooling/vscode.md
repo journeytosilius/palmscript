@@ -1,6 +1,9 @@
 # VS Code Extension
 
-The first-party VS Code extension provides editor support for `.trl` files.
+The first-party VS Code extension provides editor support for PalmScript source files.
+
+- primary extension: `.palm`
+- legacy extension: `.trl`
 
 Marketplace identity:
 

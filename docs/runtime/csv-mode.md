@@ -7,7 +7,7 @@
 CSV mode accepts one raw market-data file:
 
 ```bash
-palmscript run csv strategy.trl --bars bars.csv
+palmscript run csv strategy.palm --bars bars.csv
 ```
 
 Schema:

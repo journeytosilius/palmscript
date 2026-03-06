@@ -3,13 +3,13 @@
 ## 1. Check a Strategy
 
 ```bash
-target/debug/palmscript check examples/strategies/sma_cross.trl
+target/debug/palmscript check examples/strategies/sma_cross.palm
 ```
 
 ## 2. Run a Strategy in CSV Mode
 
 ```bash
-target/debug/palmscript run csv examples/strategies/sma_cross.trl \
+target/debug/palmscript run csv examples/strategies/sma_cross.palm \
   --bars examples/data/minute_bars.csv
 ```
 
@@ -18,13 +18,14 @@ CSV mode is the only `run` mode today. It accepts one raw market-data file, infe
 ## 3. Inspect Bytecode
 
 ```bash
-target/debug/palmscript dump-bytecode examples/strategies/sma_cross.trl
+target/debug/palmscript dump-bytecode examples/strategies/sma_cross.palm
 ```
 
 ## 4. Open the Project in VS Code
 
 - install the PalmScript extension
-- open a `.trl` file
+- open a `.palm` file
+- legacy `.trl` files are still recognized during migration
 - diagnostics, completions, hovers, definitions, document symbols, and formatting are provided by `palmscript-lsp`
 
 ## 5. Build and Serve the Docs

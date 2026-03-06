@@ -9,6 +9,11 @@ The canonical documentation for the editor stack now lives in the MkDocs site:
 
 This file remains the short repository-local development note.
 
+The extension recognizes:
+
+1. primary PalmScript sources: `.palm`
+2. legacy TradeLang sources: `.trl`
+
 ## Development
 
 From the repository root:

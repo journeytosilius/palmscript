@@ -1199,7 +1199,7 @@ mod tests {
             r#"{
   "version": 1,
   "documents": {
-    "strategies/consumer.trl": {
+    "strategies/consumer.palm": {
       "compile_environment": {
         "external_inputs": [
           { "name": "trend", "ty": "SeriesBool", "kind": "ExportSeries" }
@@ -1213,7 +1213,7 @@ mod tests {
         let config = load_project_config(file.path()).expect("config");
         let env = config.compile_environment_for_document(
             Path::new("/workspace"),
-            Path::new("/workspace/strategies/consumer.trl"),
+            Path::new("/workspace/strategies/consumer.palm"),
         );
         assert_eq!(
             env,

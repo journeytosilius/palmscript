@@ -24,13 +24,14 @@ cargo run --example pipeline
 
 ## CLI Strategies
 
-Checked-in `.trl` strategies live under `examples/strategies/`.
+Checked-in `.palm` strategies live under `examples/strategies/`.
+The CLI still accepts legacy `.trl` files during migration.
 
 Common commands:
 
 ```bash
-./palmscript check examples/strategies/sma_cross.trl
-./palmscript run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
-./palmscript run csv examples/strategies/volume_breakout.trl --bars examples/data/minute_bars.csv --format text
-./palmscript run csv examples/strategies/weekly_bias.trl --bars /path/to/daily_bars.csv
+./palmscript check examples/strategies/sma_cross.palm
+./palmscript run csv examples/strategies/sma_cross.palm --bars examples/data/minute_bars.csv
+./palmscript run csv examples/strategies/volume_breakout.palm --bars examples/data/minute_bars.csv --format text
+./palmscript run csv examples/strategies/weekly_bias.palm --bars /path/to/daily_bars.csv
 ```
