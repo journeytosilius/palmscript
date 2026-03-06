@@ -15,3 +15,13 @@ PalmScript is structured as a library-first repository. Tooling layers reuse the
 ## Architectural Principle
 
 Language and runtime behavior belongs in the library. Wrappers such as the CLI and LSP should translate inputs and outputs, not implement separate semantics.
+
+## Exchange Adapter Boundary
+
+Exchange-backed source ingestion also stays inside the library.
+
+Rules for this layer:
+
+- each supported source template is represented by typed Rust enums and structs
+- venue request payloads and response payloads should use typed `serde` models rather than ad hoc positional JSON handling
+- venue-specific shapes are normalized into the canonical PalmScript bar schema before they reach the runtime
