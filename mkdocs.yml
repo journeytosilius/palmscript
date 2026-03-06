@@ -1,8 +1,8 @@
 site_name: PalmScript
 site_description: Deterministic DSL, bytecode VM, CLI, and editor tooling for financial time-series strategies
-site_url: https://journeytosilius.github.io/tradelang/
-repo_name: journeytosilius/tradelang
-repo_url: https://github.com/journeytosilius/tradelang
+site_url: https://journeytosilius.github.io/palmscript/
+repo_name: journeytosilius/palmscript
+repo_url: https://github.com/journeytosilius/palmscript
 edit_uri: edit/main/docs/
 
 theme:

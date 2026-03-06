@@ -15,7 +15,7 @@ The repository currently ships:
 The canonical documentation source is the MkDocs site under `docs/`.
 
 - local source: [docs/index.md](docs/index.md)
-- published site: <https://journeytosilius.github.io/tradelang/>
+- published site: <https://journeytosilius.github.io/palmscript/>
 
 Start here:
 
