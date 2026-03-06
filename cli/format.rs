@@ -198,3 +198,104 @@ fn fmt_output_value(value: &OutputValue) -> String {
 
 #[allow(dead_code)]
 fn _output_kind(_kind: OutputKind) {}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_bytecode_text, render_outputs_text};
+    use palmscript::bytecode::{Constant, LocalInfo, OutputDecl, OutputKind, Program};
+    use palmscript::span::{Position, Span};
+    use palmscript::types::Type;
+    use palmscript::{
+        CompiledProgram, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries,
+    };
+
+    #[test]
+    fn render_outputs_text_renders_all_sections() {
+        let outputs = Outputs {
+            plots: vec![PlotSeries {
+                id: 1,
+                name: Some("price".to_string()),
+                points: vec![PlotPoint {
+                    plot_id: 1,
+                    bar_index: 0,
+                    time: Some(10.0),
+                    value: Some(11.5),
+                }],
+            }],
+            exports: vec![OutputSeries {
+                id: 0,
+                name: "trend".to_string(),
+                kind: OutputKind::ExportSeries,
+                points: vec![OutputSample {
+                    output_id: 0,
+                    name: "trend".to_string(),
+                    bar_index: 0,
+                    time: Some(10.0),
+                    value: OutputValue::Bool(true),
+                }],
+            }],
+            triggers: vec![OutputSeries {
+                id: 1,
+                name: "entry".to_string(),
+                kind: OutputKind::Trigger,
+                points: vec![OutputSample {
+                    output_id: 1,
+                    name: "entry".to_string(),
+                    bar_index: 0,
+                    time: None,
+                    value: OutputValue::NA,
+                }],
+            }],
+            trigger_events: vec![palmscript::TriggerEvent {
+                output_id: 1,
+                name: "entry".to_string(),
+                bar_index: 0,
+                time: Some(10.0),
+            }],
+            alerts: vec![palmscript::Alert {
+                bar_index: 0,
+                message: "hello".to_string(),
+            }],
+        };
+        let rendered = render_outputs_text(&outputs);
+        assert!(rendered.contains("Plots"));
+        assert!(rendered.contains("Exports"));
+        assert!(rendered.contains("Triggers"));
+        assert!(rendered.contains("Trigger Events"));
+        assert!(rendered.contains("Alerts"));
+        assert!(rendered.contains("value=na"));
+    }
+
+    #[test]
+    fn render_bytecode_text_includes_strategy_metadata_and_sections() {
+        let program = Program {
+            constants: vec![Constant::Value(palmscript::Value::F64(1.0))],
+            locals: vec![LocalInfo::scalar(Some("x".to_string()), Type::F64, false)],
+            outputs: vec![OutputDecl {
+                name: "trend".to_string(),
+                kind: OutputKind::ExportSeries,
+                ty: Type::SeriesBool,
+                slot: 1,
+            }],
+            base_interval: Some(palmscript::Interval::Min1),
+            declared_intervals: vec![palmscript::Interval::Hour1],
+            instructions: vec![palmscript::bytecode::Instruction::new(
+                palmscript::bytecode::OpCode::LoadConst,
+            )
+            .with_span(Span::new(Position::new(0, 1, 1), Position::new(4, 1, 5)))],
+            ..Program::default()
+        };
+        let compiled = CompiledProgram {
+            program,
+            source: "interval 1m\nplot(1)".to_string(),
+        };
+        let rendered = render_bytecode_text(&compiled);
+        assert!(rendered.contains("Strategy Intervals"));
+        assert!(rendered.contains("base=1m"));
+        assert!(rendered.contains("declared=[1h]"));
+        assert!(rendered.contains("Constants"));
+        assert!(rendered.contains("Locals"));
+        assert!(rendered.contains("Outputs"));
+        assert!(rendered.contains("Instructions"));
+    }
+}

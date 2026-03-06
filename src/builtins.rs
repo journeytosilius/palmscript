@@ -68,3 +68,31 @@ impl BuiltinId {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::BuiltinId;
+
+    #[test]
+    fn builtin_name_and_numeric_lookups_round_trip() {
+        let builtins = [
+            BuiltinId::Open,
+            BuiltinId::High,
+            BuiltinId::Low,
+            BuiltinId::Close,
+            BuiltinId::Volume,
+            BuiltinId::Time,
+            BuiltinId::Sma,
+            BuiltinId::Ema,
+            BuiltinId::Rsi,
+            BuiltinId::Plot,
+        ];
+
+        for builtin in builtins {
+            assert_eq!(BuiltinId::from_name(builtin.as_str()), Some(builtin));
+            assert_eq!(BuiltinId::from_u16(builtin as u16), Some(builtin));
+        }
+        assert_eq!(BuiltinId::from_name("missing"), None);
+        assert_eq!(BuiltinId::from_u16(99), None);
+    }
+}

@@ -173,3 +173,59 @@ pub enum RuntimeError {
         found: &'static str,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
+    use crate::bytecode::OpCode;
+    use crate::span::{Position, Span};
+    use crate::Interval;
+
+    #[test]
+    fn diagnostic_and_compile_error_preserve_message_and_count() {
+        let diagnostic = Diagnostic::new(
+            DiagnosticKind::Parse,
+            "expected expression",
+            Span::new(Position::new(1, 1, 2), Position::new(2, 1, 3)),
+        );
+        let error = CompileError::new(vec![diagnostic.clone()]);
+        assert_eq!(error.diagnostics, vec![diagnostic]);
+        assert_eq!(error.to_string(), "compile failed with 1 diagnostic(s)");
+    }
+
+    #[test]
+    fn data_prep_error_messages_are_specific() {
+        let coarse = DataPrepError::RawIntervalTooCoarse {
+            raw: Interval::Day1,
+            required: Interval::Min1,
+        };
+        let incomplete = DataPrepError::IncompleteRollupBucket {
+            raw: Interval::Min1,
+            target: Interval::Day1,
+            bucket_open_time: 1704067200000,
+            expected: 1440,
+            found: 8,
+        };
+        assert!(coarse.to_string().contains("too coarse"));
+        assert!(incomplete.to_string().contains("expected 1440"));
+        assert!(incomplete.to_string().contains("found 8"));
+    }
+
+    #[test]
+    fn runtime_error_messages_include_context() {
+        let stack = RuntimeError::StackUnderflow {
+            pc: 4,
+            opcode: OpCode::Add,
+        };
+        let pipeline = RuntimeError::PipelineInputTypeMismatch {
+            node: "consumer".to_string(),
+            input: "trend".to_string(),
+            expected: "series<bool>",
+            found: "series<f64>",
+        };
+        assert!(stack.to_string().contains("pc 4"));
+        assert!(stack.to_string().contains("Add"));
+        assert!(pipeline.to_string().contains("consumer"));
+        assert!(pipeline.to_string().contains("trend"));
+    }
+}

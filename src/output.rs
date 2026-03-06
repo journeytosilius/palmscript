@@ -79,3 +79,48 @@ pub struct Outputs {
     pub trigger_events: Vec<TriggerEvent>,
     pub alerts: Vec<Alert>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,
+    };
+    use crate::bytecode::OutputKind;
+
+    #[test]
+    fn default_outputs_and_step_outputs_are_empty() {
+        assert_eq!(StepOutput::default().plots.len(), 0);
+        assert_eq!(StepOutput::default().exports.len(), 0);
+        assert_eq!(Outputs::default().plots.len(), 0);
+        assert_eq!(Outputs::default().alerts.len(), 0);
+    }
+
+    #[test]
+    fn output_structs_preserve_named_series_data() {
+        let sample = OutputSample {
+            output_id: 2,
+            name: "trend".to_string(),
+            bar_index: 5,
+            time: Some(10.0),
+            value: OutputValue::Bool(true),
+        };
+        let series = OutputSeries {
+            id: 2,
+            name: "trend".to_string(),
+            kind: OutputKind::ExportSeries,
+            points: vec![sample.clone()],
+        };
+        let plot = PlotSeries {
+            id: 1,
+            name: Some("price".to_string()),
+            points: vec![PlotPoint {
+                plot_id: 1,
+                bar_index: 5,
+                time: Some(10.0),
+                value: Some(11.0),
+            }],
+        };
+        assert_eq!(series.points[0], sample);
+        assert_eq!(plot.points[0].value, Some(11.0));
+    }
+}

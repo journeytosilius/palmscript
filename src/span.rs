@@ -40,3 +40,25 @@ impl Span {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Position, Span};
+
+    #[test]
+    fn position_new_sets_all_fields() {
+        let position = Position::new(7, 3, 9);
+        assert_eq!(position.offset, 7);
+        assert_eq!(position.line, 3);
+        assert_eq!(position.column, 9);
+    }
+
+    #[test]
+    fn span_merge_keeps_left_start_and_right_end() {
+        let left = Span::new(Position::new(1, 1, 1), Position::new(4, 1, 4));
+        let right = Span::new(Position::new(5, 2, 1), Position::new(9, 2, 5));
+        let merged = left.merge(right);
+        assert_eq!(merged.start, left.start);
+        assert_eq!(merged.end, right.end);
+    }
+}

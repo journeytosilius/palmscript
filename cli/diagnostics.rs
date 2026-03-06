@@ -34,3 +34,35 @@ fn diagnostic_kind_label(kind: palmscript::DiagnosticKind) -> &'static str {
         palmscript::DiagnosticKind::Compile => "compile",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{format_compile_error, format_data_prep_error, format_runtime_error};
+    use palmscript::bytecode::OpCode;
+    use palmscript::span::{Position, Span};
+    use palmscript::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
+    use std::path::Path;
+
+    #[test]
+    fn compile_error_formatter_includes_path_span_and_kind() {
+        let error = CompileError::new(vec![Diagnostic::new(
+            DiagnosticKind::Parse,
+            "expected expression",
+            Span::new(Position::new(1, 2, 3), Position::new(2, 2, 4)),
+        )]);
+        let rendered = format_compile_error(Path::new("strategy.trl"), &error);
+        assert!(rendered.contains("compile failed for `strategy.trl`"));
+        assert!(rendered.contains("strategy.trl:2:3: parse: expected expression"));
+    }
+
+    #[test]
+    fn runtime_and_data_prep_formatters_prefix_messages() {
+        let runtime = format_runtime_error(&RuntimeError::StackUnderflow {
+            pc: 2,
+            opcode: OpCode::Add,
+        });
+        let data = format_data_prep_error(&DataPrepError::CannotInferInputInterval);
+        assert!(runtime.starts_with("runtime error:"));
+        assert!(data.starts_with("CSV mode error:"));
+    }
+}

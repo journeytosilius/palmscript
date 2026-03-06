@@ -177,3 +177,67 @@ impl LocalInfo {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Instruction, LocalInfo, OpCode};
+    use crate::span::{Position, Span};
+    use crate::types::{SlotKind, Type};
+    use crate::{MarketBinding, MarketField, MarketSource};
+
+    #[test]
+    fn instruction_builders_assign_operands_and_span() {
+        let span = Span::new(Position::new(1, 1, 2), Position::new(3, 1, 4));
+        let instruction = Instruction::new(OpCode::LoadConst)
+            .with_a(1)
+            .with_b(2)
+            .with_c(3)
+            .with_span(span);
+        assert_eq!(instruction.opcode, OpCode::LoadConst);
+        assert_eq!(instruction.a, 1);
+        assert_eq!(instruction.b, 2);
+        assert_eq!(instruction.c, 3);
+        assert_eq!(instruction.span, Some(span));
+    }
+
+    #[test]
+    fn local_info_helpers_set_expected_defaults() {
+        let scalar = LocalInfo::scalar(Some("x".to_string()), Type::F64, false);
+        assert_eq!(scalar.kind, SlotKind::Scalar);
+        assert_eq!(scalar.history_capacity, 1);
+        assert_eq!(scalar.update_mask, 0);
+        assert_eq!(scalar.market_binding, None);
+
+        let binding = MarketBinding {
+            source: MarketSource::Base,
+            field: MarketField::Close,
+        };
+        let series = LocalInfo::series(
+            Some("close".to_string()),
+            Type::SeriesF64,
+            true,
+            7,
+            Some(binding),
+        );
+        assert_eq!(series.kind, SlotKind::Series);
+        assert_eq!(series.history_capacity, 2);
+        assert_eq!(series.update_mask, 7);
+        assert_eq!(series.market_binding, Some(binding));
+        assert!(series.is_base_market());
+    }
+
+    #[test]
+    fn local_info_non_base_market_is_not_reported_as_base() {
+        let local = LocalInfo::series(
+            None,
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Qualified(crate::Interval::Week1),
+                field: MarketField::Close,
+            }),
+        );
+        assert!(!local.is_base_market());
+    }
+}

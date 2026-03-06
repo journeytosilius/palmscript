@@ -76,3 +76,59 @@ fn parse_f64(raw: &str, path: &Path, line: usize, field: &str) -> Result<f64, St
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{load_bars_csv, load_compile_env};
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn load_compile_env_reads_valid_json() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("env.json");
+        fs::write(
+            &path,
+            r#"{"external_inputs":[{"name":"trend","ty":"SeriesBool","kind":"ExportSeries"}]}"#,
+        )
+        .expect("write env");
+        let env = load_compile_env(&path).expect("env loads");
+        assert_eq!(env.external_inputs.len(), 1);
+        assert_eq!(env.external_inputs[0].name, "trend");
+    }
+
+    #[test]
+    fn load_bars_csv_rejects_bad_header_and_invalid_values() {
+        let dir = tempdir().expect("tempdir");
+
+        let bad_header = dir.path().join("bad-header.csv");
+        fs::write(&bad_header, "foo,bar\n").expect("write header");
+        assert!(load_bars_csv(&bad_header)
+            .expect_err("header should fail")
+            .contains("must have header"));
+
+        let bad_value = dir.path().join("bad-value.csv");
+        fs::write(
+            &bad_value,
+            "time,open,high,low,close,volume\n1704067200000,1,2,0.5,nope,10\n",
+        )
+        .expect("write value");
+        let err = load_bars_csv(&bad_value).expect_err("invalid close should fail");
+        assert!(err.contains("invalid `close` value `nope`"));
+    }
+
+    #[test]
+    fn load_bars_csv_parses_valid_rows() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("bars.csv");
+        fs::write(
+            &path,
+            "time,open,high,low,close,volume\n1704067200000,1,2,0.5,1.5,10\n",
+        )
+        .expect("write csv");
+        let bars = load_bars_csv(&path).expect("bars load");
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].time, 1704067200000.0);
+        assert_eq!(bars[0].close, 1.5);
+    }
+}
