@@ -10,6 +10,7 @@ Marketplace identity:
 - display name: `PalmScript`
 - publisher: `journeytosilius`
 - extension id: `journeytosilius.palmscript-vscode`
+- marketplace icon: `editors/vscode/images/palmscript.png`
 
 ## Capabilities
 
