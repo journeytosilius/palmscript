@@ -3,7 +3,7 @@
 //! This layer owns VM state across bars, including bounded series history,
 //! indicator state, outputs, and execution limits.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +58,19 @@ pub struct MultiIntervalConfig {
     pub supplemental: Vec<IntervalFeed>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SourceFeed {
+    pub source_id: u16,
+    pub interval: Interval,
+    pub bars: Vec<Bar>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SourceRuntimeConfig {
+    pub base_interval: Interval,
+    pub feeds: Vec<SourceFeed>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VmLimits {
     pub max_instructions_per_bar: usize,
@@ -74,6 +87,21 @@ impl Default for VmLimits {
 }
 
 struct FeedCursor {
+    interval: Interval,
+    bars: Vec<Bar>,
+    next_index: usize,
+    next_expected_open_time: Option<i64>,
+    slot_map: SlotMap,
+}
+
+struct SourceBaseCursor {
+    bars: Vec<Bar>,
+    next_index: usize,
+    base_slot_map: SlotMap,
+    equal_interval_slot_map: SlotMap,
+}
+
+struct SourceFeedCursor {
     interval: Interval,
     bars: Vec<Bar>,
     next_index: usize,
@@ -213,6 +241,13 @@ impl Engine {
 
     pub fn run_step(&mut self, bar: Bar) -> Result<crate::output::StepOutput, RuntimeError> {
         self.prepare_bar(bar)?;
+        self.execute_prepared_step(bar)
+    }
+
+    fn execute_prepared_step(
+        &mut self,
+        bar: Bar,
+    ) -> Result<crate::output::StepOutput, RuntimeError> {
         let mut remaining_steps = self.limits.max_instructions_per_bar;
         let program = &self.compiled.program;
         let mut vm_engine = VmEngine {
@@ -263,6 +298,76 @@ impl Engine {
 
     pub fn finish(self) -> Outputs {
         self.outputs
+    }
+
+    fn prepare_source_step(
+        &mut self,
+        open_time: i64,
+        base_interval: Interval,
+        base_cursors: &mut [SourceBaseCursor],
+        supplemental_cursors: &mut [SourceFeedCursor],
+    ) -> Result<Bar, RuntimeError> {
+        self.advanced_mask = 0;
+        for (slot, local) in self.compiled.program.locals.iter().enumerate() {
+            if matches!(local.kind, SlotKind::Scalar) {
+                self.current_values[slot] = Value::NA;
+            }
+        }
+
+        let synthetic_bar = Bar {
+            open: f64::NAN,
+            high: f64::NAN,
+            low: f64::NAN,
+            close: f64::NAN,
+            volume: f64::NAN,
+            time: open_time as f64,
+        };
+
+        for cursor in base_cursors {
+            let action = match cursor.bars.get(cursor.next_index).copied() {
+                Some(bar) if bar_open_time_ms(bar, base_interval)? == open_time => {
+                    cursor.next_index += 1;
+                    FeedAction::Actual(bar)
+                }
+                Some(bar) if bar_open_time_ms(bar, base_interval)? < open_time => {
+                    return Err(RuntimeError::UnsortedIntervalFeed {
+                        interval: base_interval,
+                        open_time: bar_open_time_ms(bar, base_interval)?,
+                    });
+                }
+                _ => FeedAction::Synthetic,
+            };
+
+            match action {
+                FeedAction::Actual(bar) => {
+                    self.commit_bar(&cursor.base_slot_map, bar, BASE_UPDATE_MASK)?;
+                    self.commit_bar(&cursor.equal_interval_slot_map, bar, base_interval.mask())?;
+                }
+                FeedAction::Synthetic => {
+                    self.commit_values(
+                        &cursor.base_slot_map,
+                        synthetic_values(),
+                        BASE_UPDATE_MASK,
+                    )?;
+                    self.commit_values(
+                        &cursor.equal_interval_slot_map,
+                        synthetic_values(),
+                        base_interval.mask(),
+                    )?;
+                }
+            }
+        }
+
+        let base_close = base_interval.next_open_time(open_time).ok_or(
+            RuntimeError::InvalidIntervalAlignment {
+                interval: base_interval,
+                open_time,
+            },
+        )?;
+        for index in 0..supplemental_cursors.len() {
+            self.advance_source_feed(index, supplemental_cursors, base_close)?;
+        }
+        Ok(synthetic_bar)
     }
 
     fn prepare_bar(&mut self, bar: Bar) -> Result<(), RuntimeError> {
@@ -417,6 +522,28 @@ impl Engine {
         }
         Ok(())
     }
+
+    fn advance_source_feed(
+        &mut self,
+        index: usize,
+        cursors: &mut [SourceFeedCursor],
+        base_close_time: i64,
+    ) -> Result<(), RuntimeError> {
+        loop {
+            let Some((interval, slot_map, action)) =
+                source_feed_action(&mut cursors[index], base_close_time)?
+            else {
+                break;
+            };
+            match action {
+                FeedAction::Actual(bar) => self.commit_bar(&slot_map, bar, interval.mask())?,
+                FeedAction::Synthetic => {
+                    self.commit_values(&slot_map, synthetic_values(), interval.mask())?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn run(
@@ -440,6 +567,28 @@ pub fn run_multi_interval(
     let mut engine = Engine::new_multi_interval(compiled.clone(), config, limits)?;
     for &bar in base_bars {
         engine.run_step(bar)?;
+    }
+    Ok(engine.finish())
+}
+
+pub fn run_with_sources(
+    compiled: &CompiledProgram,
+    config: SourceRuntimeConfig,
+    limits: VmLimits,
+) -> Result<Outputs, RuntimeError> {
+    let base_interval = config.base_interval;
+    let timeline = source_timeline(&config, base_interval)?;
+    let (mut base_cursors, mut supplemental_cursors) =
+        build_source_feed_cursors(compiled, &config)?;
+    let mut engine = Engine::try_new(compiled.clone(), limits)?;
+    for open_time in timeline {
+        let bar = engine.prepare_source_step(
+            open_time,
+            base_interval,
+            &mut base_cursors,
+            &mut supplemental_cursors,
+        )?;
+        engine.execute_prepared_step(bar)?;
     }
     Ok(engine.finish())
 }
@@ -514,6 +663,135 @@ fn build_feed_cursors(
     Ok((equal_slot_map, cursors))
 }
 
+fn build_source_feed_cursors(
+    compiled: &CompiledProgram,
+    config: &SourceRuntimeConfig,
+) -> Result<(Vec<SourceBaseCursor>, Vec<SourceFeedCursor>), RuntimeError> {
+    let base_interval = config.base_interval;
+    let mut base_slot_maps = BTreeMap::<u16, SlotMap>::new();
+    let mut equal_slot_maps = BTreeMap::<u16, SlotMap>::new();
+    let mut referenced = BTreeMap::<(u16, Interval), SlotMap>::new();
+
+    for local in &compiled.program.locals {
+        let Some(binding) = local.market_binding else {
+            continue;
+        };
+        let MarketSource::Named {
+            source_id,
+            interval,
+        } = binding.source
+        else {
+            continue;
+        };
+        match interval {
+            None => {
+                base_slot_maps.entry(source_id).or_insert([None; 6])[field_index(binding.field)] =
+                    Some(slot_for_local(compiled, local)?);
+            }
+            Some(interval) if interval < base_interval => {
+                return Err(RuntimeError::LowerIntervalReference {
+                    base: base_interval,
+                    referenced: interval,
+                });
+            }
+            Some(interval) if interval == base_interval => {
+                equal_slot_maps.entry(source_id).or_insert([None; 6])[field_index(binding.field)] =
+                    Some(slot_for_local(compiled, local)?);
+            }
+            Some(interval) => {
+                referenced.entry((source_id, interval)).or_insert([None; 6])
+                    [field_index(binding.field)] = Some(slot_for_local(compiled, local)?);
+            }
+        }
+    }
+
+    let mut base_feeds = BTreeMap::<u16, Vec<Bar>>::new();
+    let mut supplemental = BTreeMap::<(u16, Interval), Vec<Bar>>::new();
+    for feed in &config.feeds {
+        validate_feed(feed.interval, &feed.bars)?;
+        if feed.interval == base_interval {
+            if base_feeds
+                .insert(feed.source_id, feed.bars.clone())
+                .is_some()
+            {
+                return Err(RuntimeError::DuplicateSourceBaseFeed {
+                    source_id: feed.source_id,
+                });
+            }
+            continue;
+        }
+        if !referenced.contains_key(&(feed.source_id, feed.interval)) {
+            return Err(RuntimeError::UnexpectedSourceFeed {
+                source_id: feed.source_id,
+                interval: feed.interval,
+            });
+        }
+        if supplemental
+            .insert((feed.source_id, feed.interval), feed.bars.clone())
+            .is_some()
+        {
+            return Err(RuntimeError::DuplicateSourceIntervalFeed {
+                source_id: feed.source_id,
+                interval: feed.interval,
+            });
+        }
+    }
+
+    let mut base_cursors = Vec::new();
+    for source in &compiled.program.declared_sources {
+        let bars = base_feeds
+            .remove(&source.id)
+            .ok_or(RuntimeError::MissingSourceBaseFeed {
+                source_id: source.id,
+            })?;
+        base_cursors.push(SourceBaseCursor {
+            bars,
+            next_index: 0,
+            base_slot_map: base_slot_maps.remove(&source.id).unwrap_or([None; 6]),
+            equal_interval_slot_map: equal_slot_maps.remove(&source.id).unwrap_or([None; 6]),
+        });
+    }
+
+    let mut supplemental_cursors = Vec::new();
+    for ((source_id, interval), slot_map) in referenced {
+        let bars = supplemental.remove(&(source_id, interval)).ok_or(
+            RuntimeError::MissingSourceIntervalFeed {
+                source_id,
+                interval,
+            },
+        )?;
+        let next_expected_open_time = bars
+            .first()
+            .map(|bar| bar_open_time_ms(*bar, interval))
+            .transpose()?;
+        supplemental_cursors.push(SourceFeedCursor {
+            interval,
+            bars,
+            next_index: 0,
+            next_expected_open_time,
+            slot_map,
+        });
+    }
+
+    Ok((base_cursors, supplemental_cursors))
+}
+
+fn source_timeline(
+    config: &SourceRuntimeConfig,
+    base_interval: Interval,
+) -> Result<Vec<i64>, RuntimeError> {
+    let mut opens = BTreeSet::new();
+    for feed in &config.feeds {
+        if feed.interval != base_interval {
+            continue;
+        }
+        for &bar in &feed.bars {
+            opens.insert(bar_open_time_ms(bar, base_interval)?);
+        }
+    }
+    Ok(opens.into_iter().collect())
+}
+
 fn validate_feed(interval: Interval, bars: &[Bar]) -> Result<(), RuntimeError> {
     let mut previous = None;
     for &bar in bars {
@@ -541,6 +819,37 @@ fn validate_feed(interval: Interval, bars: &[Bar]) -> Result<(), RuntimeError> {
         previous = Some(open_time);
     }
     Ok(())
+}
+
+fn source_feed_action(
+    cursor: &mut SourceFeedCursor,
+    base_close_time: i64,
+) -> Result<Option<(Interval, SlotMap, FeedAction)>, RuntimeError> {
+    let Some(expected_open) = cursor.next_expected_open_time else {
+        return Ok(None);
+    };
+    let Some(expected_close) = cursor.interval.next_open_time(expected_open) else {
+        return Ok(None);
+    };
+    if expected_close > base_close_time {
+        return Ok(None);
+    }
+
+    let action = match cursor.bars.get(cursor.next_index).copied() {
+        Some(bar) if bar_open_time_ms(bar, cursor.interval)? == expected_open => {
+            cursor.next_index += 1;
+            FeedAction::Actual(bar)
+        }
+        Some(bar) if bar_open_time_ms(bar, cursor.interval)? < expected_open => {
+            return Err(RuntimeError::UnsortedIntervalFeed {
+                interval: cursor.interval,
+                open_time: bar_open_time_ms(bar, cursor.interval)?,
+            });
+        }
+        _ => FeedAction::Synthetic,
+    };
+    cursor.next_expected_open_time = cursor.interval.next_open_time(expected_open);
+    Ok(Some((cursor.interval, cursor.slot_map, action)))
 }
 
 fn bar_open_time_ms(bar: Bar, interval: Interval) -> Result<i64, RuntimeError> {
@@ -581,6 +890,7 @@ fn referenced_qualified_intervals(
         match binding.source {
             MarketSource::Qualified(interval) => Some(interval),
             MarketSource::Base => None,
+            MarketSource::Named { .. } => None,
         }
     })
 }

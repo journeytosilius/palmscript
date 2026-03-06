@@ -135,6 +135,8 @@ fn tiny_program_push_add_plot_executes() {
         outputs: vec![],
         base_interval: None,
         declared_intervals: vec![],
+        declared_sources: vec![],
+        source_intervals: vec![],
         history_capacity: 2,
         plot_count: 1,
     };
@@ -158,6 +160,8 @@ fn stack_underflow_is_reported() {
         outputs: vec![],
         base_interval: None,
         declared_intervals: vec![],
+        declared_sources: vec![],
+        source_intervals: vec![],
         history_capacity: 2,
         plot_count: 0,
     };
@@ -181,6 +185,8 @@ fn invalid_jump_is_reported() {
         outputs: vec![],
         base_interval: None,
         declared_intervals: vec![],
+        declared_sources: vec![],
+        source_intervals: vec![],
         history_capacity: 2,
         plot_count: 0,
     };

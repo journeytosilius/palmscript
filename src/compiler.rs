@@ -3,7 +3,7 @@
 //! This module drives lexing and parsing, performs semantic analysis and type
 //! inference, resolves locals and builtins, and emits deterministic bytecode.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, Stmt, StmtKind, UnaryOp,
@@ -11,7 +11,9 @@ use crate::ast::{
 use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, LocalInfo, OpCode, OutputDecl, OutputKind, Program};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
-use crate::interval::{Interval, MarketBinding, MarketField, MarketSource};
+use crate::interval::{
+    DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
+};
 use crate::lexer;
 use crate::parser;
 use crate::span::Span;
@@ -133,6 +135,8 @@ struct FunctionSpecialization {
 struct Analysis {
     base_interval: Option<Interval>,
     declared_intervals: Vec<Interval>,
+    declared_sources: Vec<DeclaredMarketSource>,
+    source_intervals: Vec<SourceIntervalRef>,
     expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
     resolved_let_slots: HashMap<NodeId, u16>,
@@ -140,6 +144,7 @@ struct Analysis {
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
     qualified_slots: HashMap<(Interval, MarketField), u16>,
+    source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
 }
 
@@ -180,16 +185,18 @@ impl<'a> Analyzer<'a> {
             active_specializations: HashSet::new(),
         };
 
-        for (name, field) in PREDEFINED_SERIES {
-            analyzer.define_symbol(
-                name.to_string(),
-                ExprInfo::series(BASE_UPDATE_MASK),
-                true,
-                Some(MarketBinding {
-                    source: MarketSource::Base,
-                    field,
-                }),
-            );
+        if ast.strategy_intervals.sources.is_empty() {
+            for (name, field) in PREDEFINED_SERIES {
+                analyzer.define_symbol(
+                    name.to_string(),
+                    ExprInfo::series(BASE_UPDATE_MASK),
+                    true,
+                    Some(MarketBinding {
+                        source: MarketSource::Base,
+                        field,
+                    }),
+                );
+            }
         }
         analyzer.validate_strategy_intervals(ast);
         analyzer.collect_functions(ast);
@@ -234,48 +241,161 @@ impl<'a> Analyzer<'a> {
             return;
         };
 
-        let mut supplemental = BTreeSet::new();
+        if ast.strategy_intervals.sources.is_empty() {
+            let mut supplemental = BTreeSet::new();
+            for decl in &ast.strategy_intervals.supplemental {
+                if decl.interval == base_interval {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "`use {}` duplicates the base interval",
+                            decl.interval.as_str()
+                        ),
+                        decl.span,
+                    ));
+                    continue;
+                }
+                if !supplemental.insert(decl.interval) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("duplicate `use {}` declaration", decl.interval.as_str()),
+                        decl.span,
+                    ));
+                }
+            }
+            self.analysis.declared_intervals = supplemental.iter().copied().collect();
+
+            let mut refs = BTreeSet::new();
+            for function in &ast.functions {
+                collect_qualified_series_refs(&function.body, &mut refs);
+            }
+            for stmt in &ast.statements {
+                collect_qualified_series_stmt(stmt, &mut refs);
+            }
+            for (interval, _field) in refs {
+                if interval != base_interval && !supplemental.contains(&interval) {
+                    let span = interval_ref_span(ast, interval).unwrap_or_default();
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "interval `{}` must be declared with `use {}`",
+                            interval.as_str(),
+                            interval.as_str()
+                        ),
+                        span,
+                    ));
+                }
+            }
+            return;
+        }
+
+        let mut sources_by_alias = BTreeMap::new();
+        for source in &ast.strategy_intervals.sources {
+            if sources_by_alias.contains_key(source.alias.as_str()) {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("duplicate source alias `{}`", source.alias),
+                    source.alias_span,
+                ));
+                continue;
+            }
+            let id = self.analysis.declared_sources.len() as u16;
+            self.analysis.declared_sources.push(DeclaredMarketSource {
+                id,
+                alias: source.alias.clone(),
+                template: source.template,
+                symbol: source.symbol.clone(),
+            });
+            sources_by_alias.insert(source.alias.as_str(), id);
+        }
+
+        let mut uses = BTreeSet::new();
         for decl in &ast.strategy_intervals.supplemental {
-            if decl.interval == base_interval {
+            let Some(&source_id) = sources_by_alias.get(decl.source.as_str()) else {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("unknown source alias `{}`", decl.source),
+                    decl.source_span,
+                ));
+                continue;
+            };
+            if decl.interval < base_interval {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!(
-                        "`use {}` duplicates the base interval",
-                        decl.interval.as_str()
+                        "lower interval reference `{}` is not allowed with base interval `{}`",
+                        decl.interval.as_str(),
+                        base_interval.as_str()
                     ),
                     decl.span,
                 ));
                 continue;
             }
-            if !supplemental.insert(decl.interval) {
+            if !uses.insert((source_id, decl.interval)) {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
-                    format!("duplicate `use {}` declaration", decl.interval.as_str()),
+                    format!(
+                        "duplicate `use {} {}` declaration",
+                        decl.source,
+                        decl.interval.as_str()
+                    ),
                     decl.span,
                 ));
             }
         }
-        self.analysis.declared_intervals = supplemental.iter().copied().collect();
+        self.analysis.source_intervals = uses
+            .iter()
+            .map(|(source_id, interval)| SourceIntervalRef {
+                source_id: *source_id,
+                interval: *interval,
+            })
+            .collect();
 
         let mut refs = BTreeSet::new();
         for function in &ast.functions {
-            collect_qualified_series_refs(&function.body, &mut refs);
+            collect_source_series_refs(&function.body, &mut refs);
         }
         for stmt in &ast.statements {
-            collect_qualified_series_stmt(stmt, &mut refs);
+            collect_source_series_stmt(stmt, &mut refs);
         }
-        for (interval, _field) in refs {
-            if interval != base_interval && !supplemental.contains(&interval) {
-                let span = interval_ref_span(ast, interval).unwrap_or_default();
+        for (source, interval, _field) in refs {
+            let Some(&source_id) = sources_by_alias.get(source.as_str()) else {
+                let span = source_ref_span(ast, &source, interval).unwrap_or_default();
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
-                    format!(
-                        "interval `{}` must be declared with `use {}`",
-                        interval.as_str(),
-                        interval.as_str()
-                    ),
+                    format!("unknown source alias `{source}`"),
                     span,
                 ));
+                continue;
+            };
+            if let Some(interval) = interval {
+                if interval < base_interval {
+                    let span = source_ref_span(ast, &source, Some(interval)).unwrap_or_default();
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "lower interval reference `{}` is not allowed with base interval `{}`",
+                            interval.as_str(),
+                            base_interval.as_str()
+                        ),
+                        span,
+                    ));
+                    continue;
+                }
+                if interval != base_interval && !uses.contains(&(source_id, interval)) {
+                    let span = source_ref_span(ast, &source, Some(interval)).unwrap_or_default();
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "source interval `{}` for `{}` must be declared with `use {} {}`",
+                            interval.as_str(),
+                            source,
+                            source,
+                            interval.as_str()
+                        ),
+                        span,
+                    ));
+                }
             }
         }
     }
@@ -331,29 +451,70 @@ impl<'a> Analyzer<'a> {
     }
 
     fn collect_qualified_series(&mut self, ast: &Ast) {
-        let mut refs = BTreeSet::new();
-        for function in &ast.functions {
-            collect_qualified_series_refs(&function.body, &mut refs);
-        }
-        for stmt in &ast.statements {
-            collect_qualified_series_stmt(stmt, &mut refs);
+        if ast.strategy_intervals.sources.is_empty() {
+            let mut refs = BTreeSet::new();
+            for function in &ast.functions {
+                collect_qualified_series_refs(&function.body, &mut refs);
+            }
+            for stmt in &ast.statements {
+                collect_qualified_series_stmt(stmt, &mut refs);
+            }
+
+            for (interval, field) in refs {
+                let slot = self.analysis.locals.len() as u16;
+                self.analysis.locals.push(LocalInfo::series(
+                    None,
+                    Type::SeriesF64,
+                    true,
+                    interval.mask(),
+                    Some(MarketBinding {
+                        source: MarketSource::Qualified(interval),
+                        field,
+                    }),
+                ));
+                self.analysis
+                    .qualified_slots
+                    .insert((interval, field), slot);
+            }
+            return;
         }
 
-        for (interval, field) in refs {
+        let alias_to_id: HashMap<&str, u16> = self
+            .analysis
+            .declared_sources
+            .iter()
+            .map(|source| (source.alias.as_str(), source.id))
+            .collect();
+        let mut refs = BTreeSet::new();
+        for function in &ast.functions {
+            collect_source_series_refs(&function.body, &mut refs);
+        }
+        for stmt in &ast.statements {
+            collect_source_series_stmt(stmt, &mut refs);
+        }
+
+        for (source, interval, field) in refs {
+            let Some(&source_id) = alias_to_id.get(source.as_str()) else {
+                continue;
+            };
+            let update_mask = interval.map_or(BASE_UPDATE_MASK, Interval::mask);
             let slot = self.analysis.locals.len() as u16;
             self.analysis.locals.push(LocalInfo::series(
                 None,
                 Type::SeriesF64,
                 true,
-                interval.mask(),
+                update_mask,
                 Some(MarketBinding {
-                    source: MarketSource::Qualified(interval),
+                    source: MarketSource::Named {
+                        source_id,
+                        interval,
+                    },
                     field,
                 }),
             ));
             self.analysis
-                .qualified_slots
-                .insert((interval, field), slot);
+                .source_slots
+                .insert((source_id, interval, field), slot);
         }
     }
 
@@ -385,14 +546,20 @@ impl<'a> Analyzer<'a> {
                 if !params.contains(name.as_str()) && !self.is_function_visible_name(name) {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
-                        format!(
-                            "function bodies may only reference parameters or predefined series; found `{name}`"
-                        ),
+                        if self.analysis.declared_sources.is_empty() {
+                            format!(
+                                "function bodies may only reference parameters or predefined series; found `{name}`"
+                            )
+                        } else {
+                            format!(
+                                "function bodies may only reference parameters or declared source series; found `{name}`"
+                            )
+                        },
                         expr.span,
                     ));
                 }
             }
-            ExprKind::QualifiedSeries { .. } => {}
+            ExprKind::QualifiedSeries { .. } | ExprKind::SourceSeries { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
             ExprKind::Binary { left, right, .. } => {
                 self.validate_function_expr(left, params);
@@ -460,7 +627,7 @@ impl<'a> Analyzer<'a> {
                 self.validate_function_expr(target, params);
                 self.validate_function_expr(index, params);
             }
-            ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na => {}
+            ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::String(_) => {}
         }
     }
 
@@ -626,8 +793,27 @@ impl<'a> Analyzer<'a> {
                 ty: InferredType::Na,
                 update_mask: 0,
             },
+            ExprKind::String(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "string literals are only allowed in source declarations",
+                    expr.span,
+                ));
+                ExprInfo::scalar(Type::F64)
+            }
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
+                    if !self.analysis.declared_sources.is_empty() && is_predefined_series_name(name)
+                    {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!(
+                                "source-aware scripts require source-qualified market series; found `{name}`"
+                            ),
+                            expr.span,
+                        ));
+                        return ExprInfo::series(BASE_UPDATE_MASK);
+                    }
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!("unknown identifier `{name}`"),
@@ -638,6 +824,9 @@ impl<'a> Analyzer<'a> {
                 symbol.info
             }
             ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
+            ExprKind::SourceSeries { interval, .. } => {
+                ExprInfo::series(interval.map_or(BASE_UPDATE_MASK, Interval::mask))
+            }
             ExprKind::Unary { op, expr: inner } => self.analyze_unary(*op, inner),
             ExprKind::Binary { op, left, right } => self.analyze_binary(*op, left, right),
             ExprKind::Call { callee, args, .. } => self.analyze_call(expr, callee, args),
@@ -925,7 +1114,7 @@ impl<'a> Analyzer<'a> {
     }
 
     fn is_function_visible_name(&self, name: &str) -> bool {
-        is_predefined_series_name(name)
+        self.analysis.declared_sources.is_empty() && is_predefined_series_name(name)
     }
 }
 
@@ -945,13 +1134,15 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
         arg_shapes: Vec<FunctionArgShape>,
     ) -> Self {
         let mut root = HashMap::new();
-        for (name, _) in PREDEFINED_SERIES {
-            root.insert(
-                name.to_string(),
-                AnalyzerSymbol {
-                    info: ExprInfo::series(BASE_UPDATE_MASK),
-                },
-            );
+        if parent.analysis.declared_sources.is_empty() {
+            for (name, _) in PREDEFINED_SERIES {
+                root.insert(
+                    name.to_string(),
+                    AnalyzerSymbol {
+                        info: ExprInfo::series(BASE_UPDATE_MASK),
+                    },
+                );
+            }
         }
 
         let mut param_bindings = Vec::with_capacity(function.params.len());
@@ -999,20 +1190,37 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 ty: InferredType::Na,
                 update_mask: 0,
             },
+            ExprKind::String(_) => {
+                self.parent.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "string literals are only allowed in source declarations",
+                    expr.span,
+                ));
+                ExprInfo::scalar(Type::F64)
+            }
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => symbol.info,
                 None => {
                     self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
-                        format!(
-                            "function bodies may only reference parameters or predefined series; found `{name}`"
-                        ),
+                        if self.parent.analysis.declared_sources.is_empty() {
+                            format!(
+                                "function bodies may only reference parameters or predefined series; found `{name}`"
+                            )
+                        } else {
+                            format!(
+                                "function bodies may only reference parameters or declared source series; found `{name}`"
+                            )
+                        },
                         expr.span,
                     ));
                     ExprInfo::scalar(Type::F64)
                 }
             },
             ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
+            ExprKind::SourceSeries { interval, .. } => {
+                ExprInfo::series(interval.map_or(BASE_UPDATE_MASK, Interval::mask))
+            }
             ExprKind::Unary { op, expr: inner } => {
                 let inner_info = self.analyze_expr(inner);
                 ExprInfo {
@@ -1231,6 +1439,31 @@ fn collect_qualified_series_stmt(stmt: &Stmt, refs: &mut BTreeSet<(Interval, Mar
     }
 }
 
+fn collect_source_series_stmt(
+    stmt: &Stmt,
+    refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
+) {
+    match &stmt.kind {
+        StmtKind::Let { expr, .. }
+        | StmtKind::Export { expr, .. }
+        | StmtKind::Trigger { expr, .. }
+        | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
+        StmtKind::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            collect_source_series_refs(condition, refs);
+            for stmt in &then_block.statements {
+                collect_source_series_stmt(stmt, refs);
+            }
+            for stmt in &else_block.statements {
+                collect_source_series_stmt(stmt, refs);
+            }
+        }
+    }
+}
+
 fn collect_qualified_series_refs(expr: &Expr, refs: &mut BTreeSet<(Interval, MarketField)>) {
     match &expr.kind {
         ExprKind::QualifiedSeries { interval, field } => {
@@ -1250,7 +1483,48 @@ fn collect_qualified_series_refs(expr: &Expr, refs: &mut BTreeSet<(Interval, Mar
             collect_qualified_series_refs(target, refs);
             collect_qualified_series_refs(index, refs);
         }
-        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::Ident(_) => {}
+        ExprKind::Number(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Na
+        | ExprKind::String(_)
+        | ExprKind::Ident(_)
+        | ExprKind::SourceSeries { .. } => {}
+    }
+}
+
+fn collect_source_series_refs(
+    expr: &Expr,
+    refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
+) {
+    match &expr.kind {
+        ExprKind::SourceSeries {
+            source,
+            interval,
+            field,
+            ..
+        } => {
+            refs.insert((source.clone(), *interval, *field));
+        }
+        ExprKind::Unary { expr, .. } => collect_source_series_refs(expr, refs),
+        ExprKind::Binary { left, right, .. } => {
+            collect_source_series_refs(left, refs);
+            collect_source_series_refs(right, refs);
+        }
+        ExprKind::Call { args, .. } => {
+            for arg in args {
+                collect_source_series_refs(arg, refs);
+            }
+        }
+        ExprKind::Index { target, index } => {
+            collect_source_series_refs(target, refs);
+            collect_source_series_refs(index, refs);
+        }
+        ExprKind::Number(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Na
+        | ExprKind::String(_)
+        | ExprKind::Ident(_)
+        | ExprKind::QualifiedSeries { .. } => {}
     }
 }
 
@@ -1310,8 +1584,81 @@ fn expr_interval_ref_span(expr: &Expr, target: Interval) -> Option<Span> {
         } => {
             expr_interval_ref_span(inner, target).or_else(|| expr_interval_ref_span(index, target))
         }
-        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::Ident(_) => None,
+        ExprKind::Number(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Na
+        | ExprKind::String(_)
+        | ExprKind::Ident(_)
+        | ExprKind::SourceSeries { .. } => None,
         ExprKind::QualifiedSeries { .. } => None,
+    }
+}
+
+fn source_ref_span(ast: &Ast, source: &str, target: Option<Interval>) -> Option<Span> {
+    for function in &ast.functions {
+        if let Some(span) = expr_source_ref_span(&function.body, source, target) {
+            return Some(span);
+        }
+    }
+    for stmt in &ast.statements {
+        if let Some(span) = stmt_source_ref_span(stmt, source, target) {
+            return Some(span);
+        }
+    }
+    None
+}
+
+fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> Option<Span> {
+    match &stmt.kind {
+        StmtKind::Let { expr, .. }
+        | StmtKind::Export { expr, .. }
+        | StmtKind::Trigger { expr, .. }
+        | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
+        StmtKind::If {
+            condition,
+            then_block,
+            else_block,
+        } => expr_source_ref_span(condition, source, target)
+            .or_else(|| {
+                then_block
+                    .statements
+                    .iter()
+                    .find_map(|stmt| stmt_source_ref_span(stmt, source, target))
+            })
+            .or_else(|| {
+                else_block
+                    .statements
+                    .iter()
+                    .find_map(|stmt| stmt_source_ref_span(stmt, source, target))
+            }),
+    }
+}
+
+fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> Option<Span> {
+    match &expr.kind {
+        ExprKind::SourceSeries {
+            source: expr_source,
+            interval,
+            ..
+        } if expr_source == source && *interval == target => Some(expr.span),
+        ExprKind::Unary { expr, .. } => expr_source_ref_span(expr, source, target),
+        ExprKind::Binary { left, right, .. } => expr_source_ref_span(left, source, target)
+            .or_else(|| expr_source_ref_span(right, source, target)),
+        ExprKind::Call { args, .. } => args
+            .iter()
+            .find_map(|arg| expr_source_ref_span(arg, source, target)),
+        ExprKind::Index {
+            target: inner,
+            index,
+        } => expr_source_ref_span(inner, source, target)
+            .or_else(|| expr_source_ref_span(index, source, target)),
+        ExprKind::Number(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Na
+        | ExprKind::String(_)
+        | ExprKind::Ident(_)
+        | ExprKind::QualifiedSeries { .. }
+        | ExprKind::SourceSeries { .. } => None,
     }
 }
 
@@ -1352,8 +1699,10 @@ fn collect_called_user_functions<'a>(
         ExprKind::Number(_)
         | ExprKind::Bool(_)
         | ExprKind::Na
+        | ExprKind::String(_)
         | ExprKind::Ident(_)
-        | ExprKind::QualifiedSeries { .. } => {}
+        | ExprKind::QualifiedSeries { .. }
+        | ExprKind::SourceSeries { .. } => {}
     }
 }
 
@@ -1577,6 +1926,8 @@ impl<'a> Compiler<'a> {
         self.program.outputs = self.analysis.outputs.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_intervals = self.analysis.declared_intervals.clone();
+        self.program.declared_sources = self.analysis.declared_sources.clone();
+        self.program.source_intervals = self.analysis.source_intervals.clone();
         self.rebuild_scopes();
         let expr_info = self.analysis.expr_info.clone();
         let user_calls = self.analysis.user_function_calls.clone();
@@ -1707,6 +2058,13 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            ExprKind::String(_) => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Compile,
+                    "string literals are not executable expressions",
+                    expr.span,
+                ));
+            }
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => self.emit(
                     Instruction::new(OpCode::LoadLocal)
@@ -1721,6 +2079,19 @@ impl<'a> Compiler<'a> {
             },
             ExprKind::QualifiedSeries { interval, field } => {
                 let slot = self.qualified_slot(*interval, *field);
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
+            ExprKind::SourceSeries {
+                source,
+                interval,
+                field,
+                ..
+            } => {
+                let slot = self.source_slot(source, *interval, *field);
                 self.emit(
                     Instruction::new(OpCode::LoadLocal)
                         .with_a(slot)
@@ -1901,6 +2272,20 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            ExprKind::SourceSeries {
+                source,
+                interval,
+                field,
+                ..
+            } => {
+                let slot = self.source_slot(source, *interval, *field);
+                self.bump_slot_history(slot, required_history);
+                self.emit(
+                    Instruction::new(OpCode::LoadSeries)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
             _ => self.emit_materialized_series_ref(expr, required_history, expr_info, user_calls),
         }
     }
@@ -1991,6 +2376,17 @@ impl<'a> Compiler<'a> {
         self.analysis.qualified_slots[&(interval, field)]
     }
 
+    fn source_slot(&self, source: &str, interval: Option<Interval>, field: MarketField) -> u16 {
+        let source_id = self
+            .analysis
+            .declared_sources
+            .iter()
+            .find(|decl| decl.alias == source)
+            .map(|decl| decl.id)
+            .expect("source slots should only be emitted for validated aliases");
+        self.analysis.source_slots[&(source_id, interval, field)]
+    }
+
     fn next_callsite(&mut self) -> u16 {
         let callsite = self.builtin_call_count;
         self.builtin_call_count += 1;
@@ -1999,14 +2395,16 @@ impl<'a> Compiler<'a> {
 
     fn rebuild_scopes(&mut self) {
         let mut root = HashMap::new();
-        for (slot, (name, _field)) in PREDEFINED_SERIES.into_iter().enumerate() {
-            root.insert(
-                name.to_string(),
-                CompilerSymbol {
-                    slot: slot as u16,
-                    ty: Type::SeriesF64,
-                },
-            );
+        if self.analysis.declared_sources.is_empty() {
+            for (slot, (name, _field)) in PREDEFINED_SERIES.into_iter().enumerate() {
+                root.insert(
+                    name.to_string(),
+                    CompilerSymbol {
+                        slot: slot as u16,
+                        ty: Type::SeriesF64,
+                    },
+                );
+            }
         }
         self.scopes = vec![root];
     }

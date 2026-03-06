@@ -13,7 +13,21 @@ target/debug/palmscript run csv examples/strategies/sma_cross.palm \
   --bars examples/data/minute_bars.csv
 ```
 
-CSV mode is the only `run` mode today. It accepts one raw market-data file, infers its source interval, and rolls it up into the strategy's declared `interval` and `use` intervals when possible.
+CSV mode accepts one raw market-data file, infers its source interval, and rolls it up into the strategy's declared `interval` and `use` intervals when possible.
+
+PalmScript also supports exchange-backed source-aware runs:
+
+```palmscript
+interval 1m
+source bn = binance.spot("BTCUSDT")
+plot(bn.close)
+```
+
+```bash
+target/debug/palmscript run market strategy.palm \
+  --from 1704067200000 \
+  --to 1704153600000
+```
 
 ## 3. Inspect Bytecode
 

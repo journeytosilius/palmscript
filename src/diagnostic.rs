@@ -122,6 +122,16 @@ pub enum RuntimeError {
     DuplicateIntervalFeed { interval: Interval },
     #[error("unexpected interval feed for {interval:?}")]
     UnexpectedIntervalFeed { interval: Interval },
+    #[error("missing base feed for source {source_id}")]
+    MissingSourceBaseFeed { source_id: u16 },
+    #[error("duplicate base feed for source {source_id}")]
+    DuplicateSourceBaseFeed { source_id: u16 },
+    #[error("missing feed for source {source_id} interval {interval:?}")]
+    MissingSourceIntervalFeed { source_id: u16, interval: Interval },
+    #[error("duplicate feed for source {source_id} interval {interval:?}")]
+    DuplicateSourceIntervalFeed { source_id: u16, interval: Interval },
+    #[error("unexpected feed for source {source_id} interval {interval:?}")]
+    UnexpectedSourceFeed { source_id: u16, interval: Interval },
     #[error("lower interval reference {referenced:?} is not allowed with base interval {base:?}")]
     LowerIntervalReference {
         base: Interval,

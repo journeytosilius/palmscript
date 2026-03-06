@@ -8,7 +8,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{Ast, Block, Expr, ExprKind, FunctionDecl, IntervalDecl, Stmt, StmtKind, UnaryOp};
+use crate::ast::{
+    Ast, Block, Expr, ExprKind, FunctionDecl, SourceIntervalDecl, Stmt, StmtKind, UnaryOp,
+};
 use crate::builtins::BuiltinId;
 use crate::compiler::{analyze_semantics, ExprInfo, InferredType};
 use crate::diagnostic::CompileError;
@@ -18,8 +20,9 @@ use crate::parser;
 use crate::span::Span;
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 11] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 12] = [
     ("interval", "Declare the strategy base interval"),
+    ("source", "Declare a named market source"),
     ("use", "Declare an additional referenced interval"),
     ("fn", "Declare a top-level function"),
     ("let", "Bind a local value"),
@@ -59,6 +62,7 @@ const MARKET_FIELDS: [(&str, &str); 6] = [
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SymbolKind {
     Interval,
+    Source,
     UseInterval,
     Function,
     Parameter,
@@ -107,6 +111,7 @@ pub enum CompletionKind {
     Keyword,
     Builtin,
     Series,
+    Source,
     Interval,
     Field,
     Function,
@@ -221,6 +226,10 @@ impl SemanticDocument {
                 }
             }
             CompletionContext::General => {
+                let has_sources = self
+                    .definitions
+                    .iter()
+                    .any(|definition| matches!(definition.kind, SymbolKind::Source));
                 for (label, detail) in KEYWORD_COMPLETIONS {
                     items.insert(
                         label.to_string(),
@@ -244,15 +253,17 @@ impl SemanticDocument {
                 for builtin in builtin_completions() {
                     items.insert(builtin.label.clone(), builtin);
                 }
-                for (label, detail) in PREDEFINED_SERIES {
-                    items.insert(
-                        label.to_string(),
-                        CompletionEntry {
-                            label: label.to_string(),
-                            kind: CompletionKind::Series,
-                            detail: Some(detail.to_string()),
-                        },
-                    );
+                if !has_sources {
+                    for (label, detail) in PREDEFINED_SERIES {
+                        items.insert(
+                            label.to_string(),
+                            CompletionEntry {
+                                label: label.to_string(),
+                                kind: CompletionKind::Series,
+                                detail: Some(detail.to_string()),
+                            },
+                        );
+                    }
                 }
                 for spec in INTERVAL_SPECS {
                     items
@@ -266,6 +277,7 @@ impl SemanticDocument {
                 for definition in &self.definitions {
                     let kind = match definition.kind {
                         SymbolKind::Function => CompletionKind::Function,
+                        SymbolKind::Source => CompletionKind::Source,
                         _ => CompletionKind::Variable,
                     };
                     items
@@ -321,12 +333,45 @@ fn build_semantic_document(context: &mut ResolutionContext<'_>, ast: &Ast) {
         });
     }
 
+    for source in &ast.strategy_intervals.sources {
+        let index = push_definition(
+            context,
+            DefinitionTarget {
+                name: source.alias.clone(),
+                kind: SymbolKind::Source,
+                span: source.span,
+                selection_span: source.alias_span,
+                detail: Some(format!(
+                    "{}(\"{}\")",
+                    source.template.as_str(),
+                    source.symbol
+                )),
+                navigable: true,
+            },
+        );
+        context.root_symbols.insert(source.alias.clone(), index);
+        context.document_symbols.push(DocumentSymbolInfo {
+            name: source.alias.clone(),
+            kind: SymbolKind::Source,
+            span: source.span,
+            selection_span: source.alias_span,
+            detail: Some(format!(
+                "{}(\"{}\")",
+                source.template.as_str(),
+                source.symbol
+            )),
+            children: Vec::new(),
+        });
+    }
+
     for use_decl in &ast.strategy_intervals.supplemental {
-        context.document_symbols.push(document_interval_symbol(
-            use_decl,
-            SymbolKind::UseInterval,
-            "Referenced interval",
-        ));
+        context
+            .document_symbols
+            .push(document_source_interval_symbol(
+                use_decl,
+                SymbolKind::UseInterval,
+                "Referenced interval",
+            ));
     }
 
     for function in &ast.functions {
@@ -516,6 +561,35 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                 ),
             });
         }
+        ExprKind::SourceSeries {
+            source,
+            source_span,
+            interval,
+            field,
+        } => {
+            let definition_index = scope.get(source).copied();
+            context.references.push(Reference {
+                span: *source_span,
+                definition_index,
+                hover: definition_index
+                    .map(|index| definition_hover(&context.definitions[index]))
+                    .unwrap_or_else(|| format!("`{source}`")),
+            });
+            let label = interval
+                .map(|interval| {
+                    format!(
+                        "{source}.{}.{}",
+                        interval.as_str(),
+                        render_market_field(*field)
+                    )
+                })
+                .unwrap_or_else(|| format!("{source}.{}", render_market_field(*field)));
+            context.references.push(Reference {
+                span: expr.span,
+                definition_index: None,
+                hover: format!("`{label}`\n\nseries<float> for the declared source market field."),
+            });
+        }
         ExprKind::Unary { expr: inner, .. } => resolve_expr(context, inner, scope),
         ExprKind::Binary { left, right, .. } => {
             resolve_expr(context, left, scope);
@@ -554,7 +628,7 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
             resolve_expr(context, target, scope);
             resolve_expr(context, index, scope);
         }
-        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na => {}
+        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::String(_) => {}
     }
 }
 
@@ -598,13 +672,17 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
     }
 }
 
-fn document_interval_symbol(
-    decl: &IntervalDecl,
+fn document_source_interval_symbol(
+    decl: &SourceIntervalDecl,
     kind: SymbolKind,
     detail: &str,
 ) -> DocumentSymbolInfo {
     DocumentSymbolInfo {
-        name: decl.interval.as_str().to_string(),
+        name: if decl.source.is_empty() {
+            decl.interval.as_str().to_string()
+        } else {
+            format!("{} {}", decl.source, decl.interval.as_str())
+        },
         kind,
         span: decl.span,
         selection_span: decl.span,
@@ -782,10 +860,25 @@ fn format_ast(ast: &Ast) -> String {
     if let Some(base) = ast.strategy_intervals.base.first() {
         lines.push(format!("interval {}", base.interval.as_str()));
     }
-    for decl in &ast.strategy_intervals.supplemental {
-        lines.push(format!("use {}", decl.interval.as_str()));
+    for source in &ast.strategy_intervals.sources {
+        lines.push(format!(
+            "source {} = {}(\"{}\")",
+            source.alias,
+            source.template.as_str(),
+            source.symbol.replace('\\', "\\\\").replace('"', "\\\"")
+        ));
     }
-    if !ast.strategy_intervals.base.is_empty() || !ast.strategy_intervals.supplemental.is_empty() {
+    for decl in &ast.strategy_intervals.supplemental {
+        if decl.source.is_empty() {
+            lines.push(format!("use {}", decl.interval.as_str()));
+        } else {
+            lines.push(format!("use {} {}", decl.source, decl.interval.as_str()));
+        }
+    }
+    if !ast.strategy_intervals.base.is_empty()
+        || !ast.strategy_intervals.sources.is_empty()
+        || !ast.strategy_intervals.supplemental.is_empty()
+    {
         lines.push(String::new());
     }
 
@@ -934,10 +1027,26 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
         ExprKind::Number(value) => trim_float(*value),
         ExprKind::Bool(value) => value.to_string(),
         ExprKind::Na => "na".to_string(),
+        ExprKind::String(value) => format!("{:?}", value),
         ExprKind::Ident(name) => name.clone(),
         ExprKind::QualifiedSeries { interval, field } => {
             format!("{}.{}", interval.as_str(), render_market_field(*field))
         }
+        ExprKind::SourceSeries {
+            source,
+            interval,
+            field,
+            ..
+        } => interval
+            .map(|interval| {
+                format!(
+                    "{}.{}.{}",
+                    source,
+                    interval.as_str(),
+                    render_market_field(*field)
+                )
+            })
+            .unwrap_or_else(|| format!("{}.{}", source, render_market_field(*field))),
         ExprKind::Unary { op, expr: inner } => {
             let operator = match op {
                 UnaryOp::Neg => "-",

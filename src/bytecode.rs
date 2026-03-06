@@ -5,7 +5,7 @@
 
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
-use crate::{MarketBinding, MarketSource};
+use crate::{DeclaredMarketSource, MarketBinding, MarketSource, SourceIntervalRef};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,6 +116,8 @@ pub struct Program {
     pub outputs: Vec<OutputDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_intervals: Vec<crate::Interval>,
+    pub declared_sources: Vec<DeclaredMarketSource>,
+    pub source_intervals: Vec<SourceIntervalRef>,
     pub history_capacity: usize,
     pub plot_count: usize,
 }
@@ -164,10 +166,12 @@ impl LocalInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::{Instruction, LocalInfo, OpCode};
+    use super::{Instruction, LocalInfo, OpCode, Program};
     use crate::span::{Position, Span};
     use crate::types::{SlotKind, Type};
-    use crate::{MarketBinding, MarketField, MarketSource};
+    use crate::{
+        DeclaredMarketSource, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
+    };
 
     #[test]
     fn instruction_builders_assign_operands_and_span() {
@@ -223,5 +227,24 @@ mod tests {
             }),
         );
         assert!(!local.is_base_market());
+    }
+
+    #[test]
+    fn program_default_has_no_sources() {
+        let program = Program::default();
+        assert!(program.declared_sources.is_empty());
+        assert!(program.source_intervals.is_empty());
+        let _ = (
+            DeclaredMarketSource {
+                id: 0,
+                alias: "x".to_string(),
+                template: crate::interval::SourceTemplate::BinanceSpot,
+                symbol: "BTCUSDT".to_string(),
+            },
+            SourceIntervalRef {
+                source_id: 0,
+                interval: crate::Interval::Min1,
+            },
+        );
     }
 }

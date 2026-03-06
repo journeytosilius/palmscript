@@ -4,13 +4,13 @@
 //! parse diagnostics instead of emitting bytecode directly.
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl, NodeId, Stmt,
-    StmtKind, StrategyIntervals, UnaryOp,
+    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl, NodeId,
+    SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
-use crate::MarketField;
+use crate::{MarketField, SourceTemplate};
 
 pub fn parse(tokens: &[Token]) -> Result<Ast, CompileError> {
     Parser::new(tokens).parse()
@@ -43,6 +43,7 @@ impl<'a> Parser<'a> {
         while !self.is_eof() {
             match self.parse_item() {
                 Some(ParsedItem::BaseInterval(decl)) => strategy_intervals.base.push(decl),
+                Some(ParsedItem::Source(decl)) => strategy_intervals.sources.push(decl),
                 Some(ParsedItem::UseInterval(decl)) => strategy_intervals.supplemental.push(decl),
                 Some(ParsedItem::Function(function)) => functions.push(function),
                 Some(ParsedItem::Stmt(stmt)) => statements.push(stmt),
@@ -71,7 +72,19 @@ impl<'a> Parser<'a> {
                 );
                 return None;
             }
-            return self.parse_interval_decl(true).map(ParsedItem::BaseInterval);
+            return self
+                .parse_base_interval_decl()
+                .map(ParsedItem::BaseInterval);
+        }
+        if self.matches_keyword(&TokenKind::Source) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "interval directives are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_source_decl().map(ParsedItem::Source);
         }
         if self.matches_keyword(&TokenKind::Use) {
             if self.block_depth > 0 {
@@ -81,7 +94,7 @@ impl<'a> Parser<'a> {
                 );
                 return None;
             }
-            return self.parse_interval_decl(false).map(ParsedItem::UseInterval);
+            return self.parse_use_interval_decl().map(ParsedItem::UseInterval);
         }
         if self.matches_keyword(&TokenKind::Fn) {
             return self.parse_function_decl().map(ParsedItem::Function);
@@ -97,7 +110,10 @@ impl<'a> Parser<'a> {
             );
             return None;
         }
-        if self.matches_keyword(&TokenKind::IntervalKw) || self.matches_keyword(&TokenKind::Use) {
+        if self.matches_keyword(&TokenKind::IntervalKw)
+            || self.matches_keyword(&TokenKind::Source)
+            || self.matches_keyword(&TokenKind::Use)
+        {
             self.push_diagnostic(
                 "interval directives are only allowed at the top level",
                 self.previous().span,
@@ -142,16 +158,7 @@ impl<'a> Parser<'a> {
 
     fn parse_function_decl(&mut self) -> Option<FunctionDecl> {
         let start = self.previous().span;
-        let (name, name_span) = match self.advance().cloned() {
-            Some(Token {
-                kind: TokenKind::Ident(name),
-                span,
-            }) => (name, span),
-            _ => {
-                self.error_here("expected identifier after `fn`");
-                return None;
-            }
-        };
+        let (name, name_span) = self.expect_ident("expected identifier after `fn`")?;
         self.expect_kind(
             |kind| matches!(kind, TokenKind::LeftParen),
             "expected `(` after function name",
@@ -160,17 +167,8 @@ impl<'a> Parser<'a> {
         let mut params = Vec::new();
         if !matches!(self.peek_kind(), TokenKind::RightParen) {
             loop {
-                let token = self.expect_kind(
-                    |kind| matches!(kind, TokenKind::Ident(_)),
-                    "expected parameter name",
-                )?;
-                let TokenKind::Ident(name) = token.kind else {
-                    unreachable!();
-                };
-                params.push(FunctionParam {
-                    name,
-                    span: token.span,
-                });
+                let (name, span) = self.expect_ident("expected parameter name")?;
+                params.push(FunctionParam { name, span });
                 if !matches!(self.peek_kind(), TokenKind::Comma) {
                     break;
                 }
@@ -199,16 +197,7 @@ impl<'a> Parser<'a> {
 
     fn parse_let_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
-        let (name, name_span) = match self.advance().cloned() {
-            Some(Token {
-                kind: TokenKind::Ident(name),
-                span,
-            }) => (name, span),
-            _ => {
-                self.error_here("expected identifier after `let`");
-                return None;
-            }
-        };
+        let (name, name_span) = self.expect_ident("expected identifier after `let`")?;
         self.expect_assign()?;
         let expr = self.parse_expr(0)?;
         let span = start.merge(expr.span);
@@ -223,15 +212,11 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_interval_decl(&mut self, base: bool) -> Option<IntervalDecl> {
+    fn parse_base_interval_decl(&mut self) -> Option<IntervalDecl> {
         let start = self.previous().span;
         let token = self.expect_kind(
             |kind| matches!(kind, TokenKind::Interval(_)),
-            if base {
-                "expected interval literal after `interval`"
-            } else {
-                "expected interval literal after `use`"
-            },
+            "expected interval literal after `interval`",
         )?;
         let TokenKind::Interval(interval) = token.kind else {
             unreachable!();
@@ -242,22 +227,84 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_output_stmt(&mut self, export: bool) -> Option<Stmt> {
+    fn parse_source_decl(&mut self) -> Option<SourceDecl> {
         let start = self.previous().span;
-        let (name, name_span) = match self.advance().cloned() {
-            Some(Token {
-                kind: TokenKind::Ident(name),
-                span,
-            }) => (name, span),
+        let (alias, alias_span) = self.expect_ident("expected identifier after `source`")?;
+        self.expect_assign()?;
+        let (exchange, exchange_span) = self.expect_ident("expected exchange name after `=`")?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Dot),
+            "expected `.` after exchange name",
+        )?;
+        let (venue, venue_span) = self.expect_ident("expected venue name after `.`")?;
+        let template_span = exchange_span.merge(venue_span);
+        let Some(template) = SourceTemplate::parse(&exchange, &venue) else {
+            self.push_diagnostic("unsupported source template", template_span);
+            return None;
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after source template",
+        )?;
+        let (symbol, symbol_span) = self.expect_string("expected string literal source symbol")?;
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after source symbol",
+        )?;
+        Some(SourceDecl {
+            alias,
+            alias_span,
+            template,
+            template_span,
+            symbol,
+            symbol_span,
+            span: start.merge(right.span),
+        })
+    }
+
+    fn parse_use_interval_decl(&mut self) -> Option<SourceIntervalDecl> {
+        let start = self.previous().span;
+        let (source, source_span, token) = match self.peek_kind() {
+            TokenKind::Interval(_) => (
+                String::new(),
+                start,
+                self.expect_kind(
+                    |kind| matches!(kind, TokenKind::Interval(_)),
+                    "expected interval literal after `use`",
+                )?,
+            ),
             _ => {
-                self.error_here(if export {
-                    "expected identifier after `export`"
-                } else {
-                    "expected identifier after `trigger`"
-                });
-                return None;
+                if !matches!(self.peek_kind(), TokenKind::Ident(_)) {
+                    self.error_expected_interval_after_use();
+                    return None;
+                }
+                let (source, source_span) =
+                    self.expect_ident("expected source alias after `use`")?;
+                let token = self.expect_kind(
+                    |kind| matches!(kind, TokenKind::Interval(_)),
+                    "expected interval literal after source alias",
+                )?;
+                (source, source_span, token)
             }
         };
+        let TokenKind::Interval(interval) = token.kind else {
+            unreachable!();
+        };
+        Some(SourceIntervalDecl {
+            source,
+            source_span,
+            interval,
+            span: start.merge(token.span),
+        })
+    }
+
+    fn parse_output_stmt(&mut self, export: bool) -> Option<Stmt> {
+        let start = self.previous().span;
+        let (name, name_span) = self.expect_ident(if export {
+            "expected identifier after `export`"
+        } else {
+            "expected identifier after `trigger`"
+        })?;
         self.expect_assign()?;
         let expr = self.parse_expr(0)?;
         let span = start.merge(expr.span);
@@ -346,6 +393,9 @@ impl<'a> Parser<'a> {
             lhs = match self.peek_kind() {
                 TokenKind::LeftParen => self.parse_call(lhs)?,
                 TokenKind::LeftBracket => self.parse_index(lhs)?,
+                TokenKind::Dot if matches!(lhs.kind, ExprKind::Ident(_)) => {
+                    self.parse_source_series(lhs)?
+                }
                 _ => {
                     let Some((left_bp, right_bp, op)) = self.infix_binding_power() else {
                         break;
@@ -397,6 +447,11 @@ impl<'a> Parser<'a> {
                 id: self.alloc_id(),
                 span: token.span,
                 kind: ExprKind::Na,
+            }),
+            TokenKind::String(value) => Some(Expr {
+                id: self.alloc_id(),
+                span: token.span,
+                kind: ExprKind::String(value),
             }),
             TokenKind::Ident(name) => Some(Expr {
                 id: self.alloc_id(),
@@ -500,6 +555,72 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_source_series(&mut self, source: Expr) -> Option<Expr> {
+        let (source_name, source_span) = match source.kind {
+            ExprKind::Ident(name) => (name, source.span),
+            _ => unreachable!(),
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Dot),
+            "expected `.` after source alias",
+        )?;
+        match self.advance()?.clone() {
+            Token {
+                kind: TokenKind::Ident(name),
+                span,
+            } => {
+                let Some(field) = MarketField::parse(&name) else {
+                    self.push_diagnostic("expected market field after `.`", span);
+                    return None;
+                };
+                Some(Expr {
+                    id: self.alloc_id(),
+                    span: source_span.merge(span),
+                    kind: ExprKind::SourceSeries {
+                        source: source_name,
+                        source_span,
+                        interval: None,
+                        field,
+                    },
+                })
+            }
+            Token {
+                kind: TokenKind::Interval(interval),
+                span: _interval_span,
+            } => {
+                self.expect_kind(
+                    |kind| matches!(kind, TokenKind::Dot),
+                    "expected `.` after interval literal",
+                )?;
+                let token = self.expect_kind(
+                    |kind| matches!(kind, TokenKind::Ident(_)),
+                    "expected market field after `.`",
+                )?;
+                let TokenKind::Ident(name) = token.kind else {
+                    unreachable!();
+                };
+                let Some(field) = MarketField::parse(&name) else {
+                    self.push_diagnostic("expected market field after `.`", token.span);
+                    return None;
+                };
+                Some(Expr {
+                    id: self.alloc_id(),
+                    span: source_span.merge(token.span),
+                    kind: ExprKind::SourceSeries {
+                        source: source_name,
+                        source_span,
+                        interval: Some(interval),
+                        field,
+                    },
+                })
+            }
+            token => {
+                self.push_diagnostic("expected market field or interval after `.`", token.span);
+                None
+            }
+        }
+    }
+
     fn parse_index(&mut self, target: Expr) -> Option<Expr> {
         self.expect_kind(
             |kind| matches!(kind, TokenKind::LeftBracket),
@@ -543,6 +664,22 @@ impl<'a> Parser<'a> {
             |kind| matches!(kind, TokenKind::Assign),
             "expected `=` after identifier",
         )
+    }
+
+    fn expect_ident(&mut self, message: &'static str) -> Option<(String, Span)> {
+        let token = self.expect_kind(|kind| matches!(kind, TokenKind::Ident(_)), message)?;
+        let TokenKind::Ident(name) = token.kind else {
+            unreachable!();
+        };
+        Some((name, token.span))
+    }
+
+    fn expect_string(&mut self, message: &'static str) -> Option<(String, Span)> {
+        let token = self.expect_kind(|kind| matches!(kind, TokenKind::String(_)), message)?;
+        let TokenKind::String(value) = token.kind else {
+            unreachable!();
+        };
+        Some((value, token.span))
     }
 
     fn expect_kind(
@@ -600,9 +737,16 @@ impl<'a> Parser<'a> {
         matches!(self.peek_kind(), TokenKind::Eof)
     }
 
-    fn error_here(&mut self, message: &'static str) {
-        let span = self.tokens[self.cursor.saturating_sub(1)].span;
-        self.push_diagnostic(message, span);
+    fn error_expected_interval_after_use(&mut self) {
+        let span = self.peek_span();
+        self.push_diagnostic("expected interval literal after `use`", span);
+    }
+
+    fn peek_span(&self) -> Span {
+        self.tokens
+            .get(self.cursor)
+            .map(|token| token.span)
+            .unwrap_or_default()
     }
 
     fn push_diagnostic(&mut self, message: &'static str, span: Span) {
@@ -619,7 +763,8 @@ impl<'a> Parser<'a> {
 
 enum ParsedItem {
     BaseInterval(IntervalDecl),
-    UseInterval(IntervalDecl),
+    Source(SourceDecl),
+    UseInterval(SourceIntervalDecl),
     Function(FunctionDecl),
     Stmt(Stmt),
 }

@@ -3,7 +3,9 @@
 PalmScript source files are sequences of top-level items. The parser recognizes:
 
 - `interval <interval>`
+- `source <alias> = <exchange>.<venue>("<symbol>")`
 - `use <interval>`
+- `use <alias> <interval>`
 - `fn name(params...) = expr`
 - `let name = expr`
 - `export name = expr`
@@ -47,6 +49,7 @@ Examples:
 - `let`
 - `interval`
 - `use`
+- `source`
 - `export`
 - `trigger`
 - `if`
@@ -73,6 +76,14 @@ Not supported:
 - leading-dot literals such as `.5`
 
 Negative values are written with unary `-`.
+
+## Strings
+
+String literals are currently only valid inside source declarations:
+
+```palmscript
+source bn = binance.spot("BTCUSDT")
+```
 
 ## Valid Interval Literals
 

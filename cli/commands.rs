@@ -2,12 +2,13 @@ use std::fs;
 use std::path::Path;
 
 use palmscript::{
-    compile, prepare_csv_inputs_for_program, run_multi_interval, CompiledProgram, RuntimeError,
-    VmLimits,
+    compile, fetch_source_runtime_config, prepare_csv_inputs_for_program, run_multi_interval,
+    run_with_sources, CompiledProgram, ExchangeEndpoints, RuntimeError, VmLimits,
 };
 
 use crate::args::{
-    BytecodeFormat, CheckArgs, Cli, Command, CsvRunArgs, DumpBytecodeArgs, OutputFormat, RunCommand,
+    BytecodeFormat, CheckArgs, Cli, Command, CsvRunArgs, DumpBytecodeArgs, MarketRunArgs,
+    OutputFormat, RunCommand,
 };
 use crate::data::load_bars_csv;
 use crate::diagnostics::{format_compile_error, format_data_prep_error, format_runtime_error};
@@ -24,6 +25,7 @@ pub fn run(cli: Cli) -> Result<(), String> {
 fn run_mode(mode: RunCommand) -> Result<(), String> {
     match mode {
         RunCommand::Csv(args) => run_csv(args),
+        RunCommand::Market(args) => run_market(args),
     }
 }
 
@@ -44,6 +46,38 @@ fn run_csv(args: CsvRunArgs) -> Result<(), String> {
     )
     .map_err(|err| format_runtime_error(&err))?;
 
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&outputs).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_outputs_text(&outputs)),
+    }
+    Ok(())
+}
+
+fn run_market(args: MarketRunArgs) -> Result<(), String> {
+    let source = load_source(&args.script)?;
+    let compiled = compile(&source).map_err(|err| format_compile_error(&args.script, &err))?;
+    if compiled.program.declared_sources.is_empty() {
+        return Err("market mode requires at least one `source` declaration".to_string());
+    }
+    let config = fetch_source_runtime_config(
+        &compiled,
+        args.from,
+        args.to,
+        &ExchangeEndpoints::from_env(),
+    )
+    .map_err(|err| format!("market mode error: {err}"))?;
+    let outputs = run_with_sources(
+        &compiled,
+        config,
+        VmLimits {
+            max_instructions_per_bar: args.max_instructions_per_bar,
+            max_history_capacity: args.max_history_capacity,
+        },
+    )
+    .map_err(|err| format_runtime_error(&err))?;
     match args.format {
         OutputFormat::Json => println!(
             "{}",

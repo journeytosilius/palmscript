@@ -8,15 +8,15 @@ PalmScript exists in three layers:
 
 ## Repository Outputs
 
-- `palmscript`: CLI for `check`, `run csv`, and `dump-bytecode`
+- `palmscript`: CLI for `check`, `run csv`, `run market`, and `dump-bytecode`
 - `palmscript-lsp`: stdio language server used by editors
 - `editors/vscode/`: the first-party VS Code extension
 
 ## How To Use The Project
 
-- Write `.palm` strategies with an `interval <...>` directive and optional `use <...>` declarations.
+- Write `.palm` strategies with an `interval <...>` directive, optional `use <...>` declarations, and optional named `source` declarations.
 - Validate them with `palmscript check`.
-- Execute them with `palmscript run csv ...`.
+- Execute file-backed strategies with `palmscript run csv ...` and source-aware strategies with `palmscript run market ...`.
 - Inspect compiled output with `palmscript dump-bytecode`.
 - Author them interactively with the VS Code extension.
 

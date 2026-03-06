@@ -26,12 +26,14 @@ PalmScript currently implements:
 - numeric, boolean, and `na` literals
 - mandatory source-level `interval <...>` declarations
 - explicit `use <...>` declarations for additional intervals
+- named exchange-backed `source` declarations for venue templates such as Binance and Hyperliquid
 - `let`, `export`, and `trigger` bindings
 - `if / else if / else`
 - arithmetic, comparisons, unary operators, `and`, and `or`
 - series indexing with literal offsets
 - builtins: `sma`, `ema`, `rsi`, `plot`
-- predefined market data series: `open`, `high`, `low`, `close`, `volume`, `time`
+- predefined market data series for source-less scripts: `open`, `high`, `low`, `close`, `volume`, `time`
+- source-qualified market series such as `bn.close` and `hl.1h.close`
 - interval-qualified market series such as `1w.close` and `4h.volume`
 - compile-time-inlined user-defined functions
 - the `palmscript` CLI, `palmscript-lsp`, and a first-party VS Code extension

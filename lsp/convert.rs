@@ -91,7 +91,9 @@ pub fn completion_item(entry: CompletionEntry) -> CompletionItem {
                 CompletionItemKind::KEYWORD
             }
             CompletionKind::Builtin | CompletionKind::Function => CompletionItemKind::FUNCTION,
-            CompletionKind::Series | CompletionKind::Variable => CompletionItemKind::VARIABLE,
+            CompletionKind::Series | CompletionKind::Variable | CompletionKind::Source => {
+                CompletionItemKind::VARIABLE
+            }
         }),
         detail: entry.detail,
         ..CompletionItem::default()
@@ -118,7 +120,9 @@ pub fn document_symbol(symbol: palmscript::DocumentSymbolInfo) -> DocumentSymbol
 
 fn symbol_kind(kind: SymbolKind) -> LspSymbolKind {
     match kind {
-        SymbolKind::Interval | SymbolKind::UseInterval => LspSymbolKind::NAMESPACE,
+        SymbolKind::Interval | SymbolKind::Source | SymbolKind::UseInterval => {
+            LspSymbolKind::NAMESPACE
+        }
         SymbolKind::Function => LspSymbolKind::FUNCTION,
         SymbolKind::Parameter => LspSymbolKind::VARIABLE,
         SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => LspSymbolKind::VARIABLE,

@@ -19,6 +19,17 @@ palmscript run csv <script.palm> --bars <bars.csv> \
 
 Runs a strategy in CSV mode. The input file is treated as the raw source feed and rolled up to declared intervals if possible.
 
+## `palmscript run market`
+
+```bash
+palmscript run market <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--format json|text] \
+  [--max-instructions-per-bar N] \
+  [--max-history-capacity N]
+```
+
+Runs a source-aware strategy by fetching historical candles from declared exchange templates in the script.
+
 ## `palmscript dump-bytecode`
 
 ```bash

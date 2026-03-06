@@ -85,6 +85,7 @@ impl<'a> LexerState<'a> {
                         self.bump_char();
                     }
                 }
+                '"' => self.lex_string(),
                 '0'..='9' => self.lex_number_or_interval(),
                 'a'..='z' | 'A'..='Z' | '_' => self.lex_ident(),
                 '(' => self.push_single(TokenKind::LeftParen, true, false),
@@ -197,6 +198,7 @@ impl<'a> LexerState<'a> {
             "fn" => TokenKind::Fn,
             "let" => TokenKind::Let,
             "interval" => TokenKind::IntervalKw,
+            "source" => TokenKind::Source,
             "use" => TokenKind::Use,
             "export" => TokenKind::Export,
             "trigger" => TokenKind::Trigger,
@@ -211,6 +213,63 @@ impl<'a> LexerState<'a> {
         };
         self.tokens
             .push(Token::new(kind, Span::new(start, self.position())));
+    }
+
+    fn lex_string(&mut self) {
+        let start = self.position();
+        self.bump_char();
+        let mut text = String::new();
+        while let Some(ch) = self.peek_char() {
+            match ch {
+                '"' => {
+                    self.bump_char();
+                    self.tokens.push(Token::new(
+                        TokenKind::String(text),
+                        Span::new(start, self.position()),
+                    ));
+                    return;
+                }
+                '\\' => {
+                    self.bump_char();
+                    let Some(escaped) = self.bump_char() else {
+                        break;
+                    };
+                    let decoded = match escaped {
+                        '"' => '"',
+                        '\\' => '\\',
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        other => {
+                            self.diagnostics.push(Diagnostic::new(
+                                DiagnosticKind::Lex,
+                                format!("unsupported string escape `\\{other}`"),
+                                Span::new(start, self.position()),
+                            ));
+                            other
+                        }
+                    };
+                    text.push(decoded);
+                }
+                '\n' => {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Lex,
+                        "unterminated string literal",
+                        Span::new(start, self.position()),
+                    ));
+                    return;
+                }
+                _ => {
+                    text.push(self.bump_char().unwrap());
+                }
+            }
+        }
+
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Lex,
+            "unterminated string literal",
+            Span::new(start, self.position()),
+        ));
     }
 
     fn push_single(&mut self, kind: TokenKind, inc_paren: bool, inc_bracket: bool) {

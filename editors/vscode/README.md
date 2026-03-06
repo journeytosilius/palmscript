@@ -11,6 +11,7 @@ This file remains the short repository-local development note.
 The extension recognizes:
 
 1. PalmScript sources: `.palm`
+2. top-level `interval`, `source`, and `use` directives
 
 ## Development
 

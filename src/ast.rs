@@ -4,7 +4,7 @@
 //! between parsing and compilation.
 
 use crate::span::Span;
-use crate::{Interval, MarketField};
+use crate::{Interval, MarketField, SourceTemplate};
 use serde::{Deserialize, Serialize};
 
 pub type NodeId = u32;
@@ -19,11 +19,31 @@ pub struct Ast {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct StrategyIntervals {
     pub base: Vec<IntervalDecl>,
-    pub supplemental: Vec<IntervalDecl>,
+    pub sources: Vec<SourceDecl>,
+    pub supplemental: Vec<SourceIntervalDecl>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntervalDecl {
+    pub interval: Interval,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SourceDecl {
+    pub alias: String,
+    pub alias_span: Span,
+    pub template: SourceTemplate,
+    pub template_span: Span,
+    pub symbol: String,
+    pub symbol_span: Span,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SourceIntervalDecl {
+    pub source: String,
+    pub source_span: Span,
     pub interval: Interval,
     pub span: Span,
 }
@@ -94,9 +114,16 @@ pub enum ExprKind {
     Number(f64),
     Bool(bool),
     Na,
+    String(String),
     Ident(String),
     QualifiedSeries {
         interval: Interval,
+        field: MarketField,
+    },
+    SourceSeries {
+        source: String,
+        source_span: Span,
+        interval: Option<Interval>,
         field: MarketField,
     },
     Unary {

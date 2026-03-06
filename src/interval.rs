@@ -1,8 +1,8 @@
 //! Interval and market-series definitions shared across the language pipeline.
 //!
-//! This module provides the canonical Binance kline interval registry, typed
-//! market-field identifiers, and UTC boundary helpers used by the compiler and
-//! runtime.
+//! This module provides the canonical interval registry, typed market-field and
+//! source-template identifiers, and UTC boundary helpers used by the compiler
+//! and runtime.
 
 use serde::{Deserialize, Serialize};
 
@@ -43,9 +43,35 @@ pub enum MarketField {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SourceTemplate {
+    BinanceSpot,
+    BinanceUsdm,
+    HyperliquidSpot,
+    HyperliquidPerps,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeclaredMarketSource {
+    pub id: u16,
+    pub alias: String,
+    pub template: SourceTemplate,
+    pub symbol: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SourceIntervalRef {
+    pub source_id: u16,
+    pub interval: Interval,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MarketSource {
     Base,
     Qualified(Interval),
+    Named {
+        source_id: u16,
+        interval: Option<Interval>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -314,6 +340,54 @@ impl MarketField {
     }
 }
 
+impl SourceTemplate {
+    pub fn parse(exchange: &str, venue: &str) -> Option<Self> {
+        match (exchange, venue) {
+            ("binance", "spot") => Some(Self::BinanceSpot),
+            ("binance", "usdm") => Some(Self::BinanceUsdm),
+            ("hyperliquid", "spot") => Some(Self::HyperliquidSpot),
+            ("hyperliquid", "perps") => Some(Self::HyperliquidPerps),
+            _ => None,
+        }
+    }
+
+    pub const fn exchange_name(self) -> &'static str {
+        match self {
+            Self::BinanceSpot | Self::BinanceUsdm => "binance",
+            Self::HyperliquidSpot | Self::HyperliquidPerps => "hyperliquid",
+        }
+    }
+
+    pub const fn venue_name(self) -> &'static str {
+        match self {
+            Self::BinanceSpot | Self::HyperliquidSpot => "spot",
+            Self::BinanceUsdm => "usdm",
+            Self::HyperliquidPerps => "perps",
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BinanceSpot => "binance.spot",
+            Self::BinanceUsdm => "binance.usdm",
+            Self::HyperliquidSpot => "hyperliquid.spot",
+            Self::HyperliquidPerps => "hyperliquid.perps",
+        }
+    }
+
+    pub const fn supports_interval(self, interval: Interval) -> bool {
+        match self {
+            Self::BinanceSpot
+            | Self::BinanceUsdm
+            | Self::HyperliquidSpot
+            | Self::HyperliquidPerps => {
+                let _ = interval;
+                true
+            }
+        }
+    }
+}
+
 fn split_days(open_time_ms: i64) -> (i64, i64) {
     let days = open_time_ms.div_euclid(DAY_MS);
     let remainder = open_time_ms.rem_euclid(DAY_MS);
@@ -351,7 +425,7 @@ fn days_from_civil(year: i32, month: u8, day: u8) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Interval, MarketField};
+    use super::{Interval, MarketField, SourceTemplate};
 
     #[test]
     fn parses_all_supported_intervals() {
@@ -377,6 +451,27 @@ mod tests {
             assert_eq!(MarketField::parse(value).unwrap().as_str(), value);
         }
         assert!(MarketField::parse("foo").is_none());
+    }
+
+    #[test]
+    fn parses_supported_source_templates() {
+        assert_eq!(
+            SourceTemplate::parse("binance", "spot"),
+            Some(SourceTemplate::BinanceSpot)
+        );
+        assert_eq!(
+            SourceTemplate::parse("binance", "usdm"),
+            Some(SourceTemplate::BinanceUsdm)
+        );
+        assert_eq!(
+            SourceTemplate::parse("hyperliquid", "spot"),
+            Some(SourceTemplate::HyperliquidSpot)
+        );
+        assert_eq!(
+            SourceTemplate::parse("hyperliquid", "perps"),
+            Some(SourceTemplate::HyperliquidPerps)
+        );
+        assert_eq!(SourceTemplate::parse("binance", "perps"), None);
     }
 
     #[test]

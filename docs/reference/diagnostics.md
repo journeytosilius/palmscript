@@ -16,6 +16,7 @@ These surface through:
 
 - `palmscript check`
 - `palmscript run csv` before execution
+- `palmscript run market` before execution
 - `palmscript dump-bytecode`
 - `palmscript-lsp`
 - the VS Code extension
@@ -34,6 +35,16 @@ The data-preparation layer can fail before runtime with errors such as:
 - `DuplicateInputBarTime`
 
 These happen after successful compilation but before VM execution.
+
+## Market Mode Fetch Errors
+
+Exchange-backed runs can fail before VM execution with errors such as:
+
+- invalid `--from` / `--to` windows
+- unsupported source templates or intervals
+- malformed exchange responses
+- no returned candles for a required source feed
+- unknown Hyperliquid spot symbols
 
 ## Runtime Errors
 

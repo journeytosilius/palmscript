@@ -71,6 +71,7 @@ nav:
       - VM Semantics: runtime/vm.md
       - Bounded History and Memory: runtime/history-memory.md
       - CSV Mode and Roll-Up Rules: runtime/csv-mode.md
+      - Market Mode: runtime/market-mode.md
   - Tooling:
       - CLI: tooling/cli.md
       - Language Server: tooling/language-server.md

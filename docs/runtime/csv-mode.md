@@ -1,6 +1,6 @@
 # CSV Mode and Roll-Up Rules
 
-`palmscript run csv ...` is the only run mode today.
+`palmscript run csv ...` is the file-backed execution mode.
 
 ## Input Contract
 

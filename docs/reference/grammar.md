@@ -4,9 +4,10 @@ This is a practical sketch of the implemented grammar, not a formal parser speci
 
 ```text
 program       := item*
-item          := interval_decl | use_decl | fn_decl | stmt
+item          := interval_decl | source_decl | use_decl | fn_decl | stmt
 interval_decl := "interval" interval
-use_decl      := "use" interval
+source_decl   := "source" ident "=" ident "." ident "(" string_literal ")"
+use_decl      := "use" interval | "use" ident interval
 fn_decl       := "fn" ident "(" params? ")" "=" expr
 params        := ident ("," ident)*
 stmt          := let_stmt | export_stmt | trigger_stmt | if_stmt | expr_stmt
@@ -26,7 +27,10 @@ prefix        := number
               | "false"
               | "na"
               | ident
+              | string_literal
               | interval "." market_field
+              | ident "." market_field
+              | ident "." interval "." market_field
               | "-" expr
               | "!" expr
               | "(" expr ")"
@@ -35,4 +39,5 @@ postfix       := "(" args? ")"
               | "[" integer_literal "]"
 args          := expr ("," expr)*
 market_field  := "open" | "high" | "low" | "close" | "volume" | "time"
+string_literal := quoted utf-8 string with basic escapes
 ```

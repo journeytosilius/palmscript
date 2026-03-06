@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use assert_cmd::prelude::*;
+use mockito::{Matcher, Server};
 use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -438,4 +439,49 @@ fn checked_in_multi_interval_example_runs_via_cli() {
         Value::from("above_weekly_basis")
     );
     assert_eq!(json["triggers"][0]["name"], Value::from("continuation"));
+}
+
+#[test]
+fn run_market_executes_source_aware_script() {
+    let mut server = Server::new();
+    let _binance = server
+        .mock("GET", "/api/v3/klines")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            Matcher::UrlEncoded("interval".into(), "1m".into()),
+        ]))
+        .with_status(200)
+        .with_body(
+            serde_json::json!([
+                [1704067200000_i64, "1.0", "2.0", "0.5", "1.5", "10.0"],
+                [1704067260000_i64, "2.0", "3.0", "1.5", "2.5", "11.0"]
+            ])
+            .to_string(),
+        )
+        .create();
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "market.palm",
+        "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(bn.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "market",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067320000",
+        ])
+        .output()
+        .expect("run command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["plots"][0]["points"][0]["value"], Value::from(1.5));
+    assert_eq!(json["plots"][0]["points"][1]["value"], Value::from(2.5));
 }

@@ -31,7 +31,23 @@ Every script must declare exactly one base interval:
 interval 1m
 ```
 
-Unqualified series like `close` and `volume` always mean the current candle of that declared base interval.
+Legacy source-less scripts use unqualified series like `close` and `volume` for the current candle of that declared base interval.
+
+Source-aware scripts declare named markets:
+
+```palmscript
+interval 1m
+source bn = binance.spot("BTCUSDT")
+source hl = hyperliquid.perps("BTC")
+plot(bn.close - hl.close)
+```
+
+For those scripts:
+
+- the script still has one global execution interval
+- the runtime builds the base clock from the union of all declared-source base-interval bar opens
+- if one source has no base bar on a clock step, that source contributes `na` for that step
+- slower source-qualified intervals such as `hl.1h.close` update only when their candles fully close
 
 ## Output Timing
 
