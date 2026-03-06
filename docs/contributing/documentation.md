@@ -37,7 +37,7 @@ The container publishes the static docs site under `http://127.0.0.1:8080/docs/`
 ## Documentation Rules
 
 - extend existing relevant pages before creating near-duplicate pages
-- keep root README/reference files short and link into the canonical site
+- keep the root README short and link into the canonical site
 - keep commands, flags, filenames, and example snippets synchronized with the implementation
 - docs changes belong in the same change as the behavior change they describe
 - keep `Dockerfile.docs`, `docker/docs-nginx.conf`, and Docker docs instructions in sync when the docs build or serving model changes

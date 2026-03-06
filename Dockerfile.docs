@@ -9,7 +9,7 @@ COPY requirements-docs.txt mkdocs.yml ./
 RUN pip install --no-cache-dir -r requirements-docs.txt
 
 COPY docs ./docs
-COPY README.md PALMSCRIPT_REFERENCE.md ./
+COPY README.md ./
 
 RUN mkdocs build --strict
 
