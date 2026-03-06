@@ -30,6 +30,32 @@ palmscript run csv examples/strategies/volume_breakout.palm \
   --format text
 ```
 
+## Signal Helpers
+
+Use this when you want a checked-in example of:
+
+- `above`, `crossover`, `roc`, `highest`, `lowest`
+- directional helpers such as `rising`
+- combining helper builtins with `export` and `trigger`
+
+```bash
+palmscript run csv examples/strategies/signal_helpers.palm \
+  --bars examples/data/minute_bars.csv
+```
+
+## Event Memory
+
+Use this when you want a checked-in example of:
+
+- `barssince`
+- `valuewhen`
+- event-style breakout tracking without user-defined helper functions
+
+```bash
+palmscript run csv examples/strategies/event_memory.palm \
+  --bars examples/data/minute_bars.csv
+```
+
 ## Notes
 
 - CSV mode expects `time,open,high,low,close,volume`

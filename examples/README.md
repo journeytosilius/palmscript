@@ -33,5 +33,7 @@ Common commands:
 ./palmscript run csv examples/strategies/sma_cross.palm --bars examples/data/minute_bars.csv
 ./palmscript run csv examples/strategies/volume_breakout.palm --bars examples/data/minute_bars.csv --format text
 ./palmscript run csv examples/strategies/weekly_bias.palm --bars /path/to/daily_bars.csv
+./palmscript run csv examples/strategies/signal_helpers.palm --bars examples/data/minute_bars.csv
+./palmscript run csv examples/strategies/event_memory.palm --bars examples/data/minute_bars.csv
 ./palmscript run market strategy.palm --from 1704067200000 --to 1704153600000
 ```

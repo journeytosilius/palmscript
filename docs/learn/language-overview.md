@@ -11,6 +11,7 @@ Common building blocks:
 - `let`, `export`, and `trigger`
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
+- helper builtins such as `crossover`, `highest`, `barssince`, and `valuewhen`
 
 ## Two Script Styles
 

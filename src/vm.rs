@@ -8,7 +8,10 @@ use std::collections::{HashMap, VecDeque};
 use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
-use crate::indicators::{EmaState, IndicatorState, RsiState, SmaState};
+use crate::indicators::{
+    BarsSinceState, EmaState, FallingState, HighestState, IndicatorState, LowestState, RisingState,
+    RsiState, SmaState, ValueWhenState,
+};
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
 use crate::types::{SlotKind, Value};
@@ -400,6 +403,17 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Sma => self.call_sma(callsite, arity, args, pc),
             BuiltinId::Ema => self.call_ema(callsite, arity, args, pc),
             BuiltinId::Rsi => self.call_rsi(callsite, arity, args, pc),
+            BuiltinId::Cross | BuiltinId::Crossover | BuiltinId::Crossunder => {
+                self.call_cross_builtin(builtin, arity, args, pc)
+            }
+            BuiltinId::Change => self.call_change(arity, args, pc),
+            BuiltinId::Roc => self.call_roc(arity, args, pc),
+            BuiltinId::Highest => self.call_highest(callsite, arity, args, pc),
+            BuiltinId::Lowest => self.call_lowest(callsite, arity, args, pc),
+            BuiltinId::Rising => self.call_rising(callsite, arity, args, pc),
+            BuiltinId::Falling => self.call_falling(callsite, arity, args, pc),
+            BuiltinId::BarsSince => self.call_barssince(callsite, arity, args, pc),
+            BuiltinId::ValueWhen => self.call_valuewhen(callsite, arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -529,6 +543,266 @@ impl<'a> VmEngine<'a> {
         self.indicator_state.insert(key, state);
         Ok(result)
     }
+
+    fn call_cross_builtin(
+        &mut self,
+        builtin: BuiltinId,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 4,
+                found: arity,
+            });
+        }
+        let current_left = expect_numeric_like(&args[0], pc)?;
+        let current_right = expect_numeric_like(&args[1], pc)?;
+        let prior_left = expect_numeric_like(&args[2], pc)?;
+        let prior_right = expect_numeric_like(&args[3], pc)?;
+        if [current_left, current_right, prior_left, prior_right]
+            .iter()
+            .any(|value| value.is_none())
+        {
+            return Ok(Value::NA);
+        }
+        let current_left = current_left.unwrap();
+        let current_right = current_right.unwrap();
+        let prior_left = prior_left.unwrap();
+        let prior_right = prior_right.unwrap();
+        let crossed_over = current_left > current_right && prior_left <= prior_right;
+        let crossed_under = current_left < current_right && prior_left >= prior_right;
+        let value = match builtin {
+            BuiltinId::Cross => crossed_over || crossed_under,
+            BuiltinId::Crossover => crossed_over,
+            BuiltinId::Crossunder => crossed_under,
+            _ => unreachable!(),
+        };
+        Ok(Value::Bool(value))
+    }
+
+    fn call_change(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "change",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        self.consume_steps(window + 1, pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        let current = expect_buffer_f64(buffer, 0, pc)?;
+        let previous = expect_buffer_f64(buffer, window, pc)?;
+        match (current, previous) {
+            (Some(current), Some(previous)) => Ok(Value::F64(current - previous)),
+            _ => Ok(Value::NA),
+        }
+    }
+
+    fn call_roc(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "roc",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        self.consume_steps(window + 1, pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        let current = expect_buffer_f64(buffer, 0, pc)?;
+        let previous = expect_buffer_f64(buffer, window, pc)?;
+        match (current, previous) {
+            (Some(current), Some(previous)) if previous != 0.0 => {
+                Ok(Value::F64(((current - previous) / previous) * 100.0))
+            }
+            (Some(_), Some(_)) | (None, _) | (_, None) => Ok(Value::NA),
+        }
+    }
+
+    fn call_highest(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_extrema_stateful(callsite, arity, args, pc, BuiltinId::Highest)
+    }
+
+    fn call_lowest(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_extrema_stateful(callsite, arity, args, pc, BuiltinId::Lowest)
+    }
+
+    fn call_rising(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_extrema_stateful(callsite, arity, args, pc, BuiltinId::Rising)
+    }
+
+    fn call_falling(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_extrema_stateful(callsite, arity, args, pc, BuiltinId::Falling)
+    }
+
+    fn call_extrema_stateful(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        builtin: BuiltinId,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let required_history = if matches!(builtin, BuiltinId::Rising | BuiltinId::Falling) {
+            window + 1
+        } else {
+            window
+        };
+        self.consume_steps(required_history.max(1), pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        let key = (builtin, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or_else(|| match builtin {
+                BuiltinId::Highest => IndicatorState::Highest(HighestState::new(window)),
+                BuiltinId::Lowest => IndicatorState::Lowest(LowestState::new(window)),
+                BuiltinId::Rising => IndicatorState::Rising(RisingState::new(window)),
+                BuiltinId::Falling => IndicatorState::Falling(FallingState::new(window)),
+                _ => unreachable!(),
+            });
+        let result = match &mut state {
+            IndicatorState::Highest(state) => state.update(buffer, pc)?,
+            IndicatorState::Lowest(state) => state.update(buffer, pc)?,
+            IndicatorState::Rising(state) => state.update(buffer, pc)?,
+            IndicatorState::Falling(state) => state.update(buffer, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_barssince(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "barssince",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let condition_slot = series_ref(args[0].clone(), pc)?;
+        let condition =
+            self.series_values
+                .get(condition_slot)
+                .ok_or(RuntimeError::InvalidSeriesSlot {
+                    slot: condition_slot,
+                })?;
+        let key = (BuiltinId::BarsSince, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::BarsSince(BarsSinceState::new()));
+        let result = match &mut state {
+            IndicatorState::BarsSince(state) => state.update(condition, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_valuewhen(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "valuewhen",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let condition_slot = series_ref(args[0].clone(), pc)?;
+        let source_slot = series_ref(args[1].clone(), pc)?;
+        let occurrence = expect_window(args[2].clone(), pc)?;
+        let condition =
+            self.series_values
+                .get(condition_slot)
+                .ok_or(RuntimeError::InvalidSeriesSlot {
+                    slot: condition_slot,
+                })?;
+        let source = self
+            .series_values
+            .get(source_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: source_slot })?;
+        let key = (BuiltinId::ValueWhen, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or_else(|| IndicatorState::ValueWhen(ValueWhenState::new(occurrence)));
+        let result = match &mut state {
+            IndicatorState::ValueWhen(state) => state.update(condition, source, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
 }
 
 fn expect_f64(value: Value, pc: usize) -> Result<f64, RuntimeError> {
@@ -545,6 +819,34 @@ fn expect_f64(value: Value, pc: usize) -> Result<f64, RuntimeError> {
 fn expect_window(value: Value, pc: usize) -> Result<usize, RuntimeError> {
     let value = expect_f64(value, pc)?;
     Ok(value as usize)
+}
+
+fn expect_numeric_like(value: &Value, pc: usize) -> Result<Option<f64>, RuntimeError> {
+    match value {
+        Value::F64(value) => Ok(Some(*value)),
+        Value::NA => Ok(None),
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "f64",
+            found: other.type_name(),
+        }),
+    }
+}
+
+fn expect_buffer_f64(
+    buffer: &SeriesBuffer,
+    offset: usize,
+    pc: usize,
+) -> Result<Option<f64>, RuntimeError> {
+    match buffer.get(offset) {
+        Value::F64(value) => Ok(Some(value)),
+        Value::NA => Ok(None),
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "f64",
+            found: other.type_name(),
+        }),
+    }
 }
 
 fn logical_and(left: Value, right: Value, pc: usize) -> Result<Value, RuntimeError> {

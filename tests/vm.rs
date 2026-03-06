@@ -327,10 +327,20 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
         .collect()
 }
 
+fn plot_values(source: &str, bars: &[Bar]) -> Vec<Option<f64>> {
+    let compiled = palmscript::compile(&with_interval(source)).expect("script should compile");
+    let outputs = run(&compiled, bars, VmLimits::default()).expect("script should run");
+    outputs.plots[0]
+        .points
+        .iter()
+        .map(|point| point.value)
+        .collect()
+}
+
 #[test]
 fn user_function_inlining_matches_inline_expression() {
     let helper = palmscript::compile(&with_interval(
-        "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
+        "fn is_rising(series) = series > series[1]\nif is_rising(close) { plot(1) } else { plot(0) }",
     ))
     .expect("helper script should compile");
     let inline = palmscript::compile(&with_interval(
@@ -346,7 +356,7 @@ fn user_function_inlining_matches_inline_expression() {
 fn nested_user_functions_execute_over_indicators() {
     let compiled = palmscript::compile(
         &with_interval(
-            "fn crossover(a, b) = a > b and a[1] <= b[1]\nfn long_signal(fast, slow) = crossover(fast, slow) or fast > slow\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif long_signal(fast, slow) { plot(1) } else { plot(0) }",
+            "fn cross_signal(a, b) = a > b and a[1] <= b[1]\nfn long_signal(fast, slow) = cross_signal(fast, slow) or fast > slow\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif long_signal(fast, slow) { plot(1) } else { plot(0) }",
         ),
     )
     .expect("script should compile");
@@ -599,4 +609,107 @@ fn triggers_emit_samples_and_events() {
     assert_eq!(outputs.trigger_events.len(), 2);
     assert_eq!(outputs.trigger_events[0].bar_index, 1);
     assert_eq!(outputs.trigger_events[1].bar_index, 3);
+}
+
+#[test]
+fn relation_helpers_follow_strict_semantics() {
+    let values = plot_values(
+        "if above(close, open) and between(close, low, high) and !outside(close, low, high) and below(low, close) { plot(1) } else { plot(0) }",
+        &bars(),
+    );
+    assert_eq!(values, vec![Some(1.0)]);
+}
+
+#[test]
+fn cross_helpers_use_strict_current_and_inclusive_prior_rules() {
+    let crossover = plot_values(
+        "if crossover(close, 10) { plot(1) } else { plot(0) }",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[9.0, 10.0, 11.0, 8.0]),
+    );
+    assert_eq!(crossover, vec![Some(0.0), Some(0.0), Some(1.0), Some(0.0)]);
+
+    let crossunder = plot_values(
+        "if crossunder(close, 10) { plot(1) } else { plot(0) }",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[11.0, 10.0, 9.0, 12.0]),
+    );
+    assert_eq!(crossunder, vec![Some(0.0), Some(0.0), Some(1.0), Some(0.0)]);
+
+    let cross = plot_values(
+        "if cross(close, 10) { plot(1) } else { plot(0) }",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[9.0, 10.0, 11.0, 10.0, 9.0]),
+    );
+    assert_eq!(
+        cross,
+        vec![Some(0.0), Some(0.0), Some(1.0), Some(0.0), Some(1.0)]
+    );
+}
+
+#[test]
+fn change_and_roc_handle_history_and_zero_denominator() {
+    let change = plot_values(
+        "plot(change(close, 2))",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 12.0, 15.0]),
+    );
+    assert_eq!(change, vec![None, None, Some(5.0)]);
+
+    let roc = plot_values(
+        "plot(roc(close, 1))",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[0.0, 10.0, 5.0]),
+    );
+    assert_eq!(roc, vec![None, None, Some(-50.0)]);
+}
+
+#[test]
+fn extrema_and_direction_helpers_respect_window_and_na() {
+    let bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0, 3.0, 2.0, 4.0]);
+    assert_eq!(plot_values("plot(highest(close, 3))", &bars)[3], Some(4.0));
+    assert_eq!(plot_values("plot(lowest(close, 3))", &bars)[3], Some(2.0));
+
+    let rising = plot_values(
+        "if rising(close, 2) { plot(1) } else { plot(0) }",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0, 2.0, 3.0, 2.0]),
+    );
+    assert_eq!(rising, vec![Some(0.0), Some(0.0), Some(1.0), Some(0.0)]);
+
+    let falling = plot_values(
+        "if falling(close, 2) { plot(1) } else { plot(0) }",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[3.0, 2.0, 1.0, 2.0]),
+    );
+    assert_eq!(falling, vec![Some(0.0), Some(0.0), Some(1.0), Some(0.0)]);
+}
+
+#[test]
+fn event_memory_helpers_track_matches() {
+    let barssince = plot_values(
+        "plot(barssince(close > close[1]))",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 9.0, 12.0]),
+    );
+    assert_eq!(
+        barssince,
+        vec![None, Some(0.0), Some(1.0), Some(2.0), Some(0.0)]
+    );
+
+    let valuewhen = plot_values(
+        "plot(valuewhen(close > close[1], close, 1))",
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 12.0, 8.0]),
+    );
+    assert_eq!(valuewhen, vec![None, None, None, Some(11.0), Some(11.0)]);
+}
+
+#[test]
+fn valuewhen_preserves_bool_source_type() {
+    let compiled = palmscript::compile(&with_interval(
+        "export remembered = valuewhen(close > close[1], close > open, 0)\nplot(0)",
+    ))
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+    assert!(matches!(
+        outputs.exports[0].points[1].value,
+        palmscript::OutputValue::Bool(true)
+    ));
 }

@@ -33,7 +33,7 @@ PalmScript currently implements:
 - `if / else if / else`
 - arithmetic, comparisons, unary operators, `and`, and `or`
 - series indexing with literal offsets
-- builtins: `sma`, `ema`, `rsi`, and `plot`
+- builtins: indicators, signal helpers, event-memory helpers, and `plot`
 - CSV-backed and exchange-backed execution modes
 - a CLI, language server, and first-party VS Code extension
 

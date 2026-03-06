@@ -756,36 +756,18 @@ fn definition_hover(definition: &DefinitionTarget) -> String {
 }
 
 fn builtin_hover(builtin: BuiltinId) -> String {
-    match builtin {
-        BuiltinId::Sma => "`sma(series, length)`\n\nSimple moving average.".to_string(),
-        BuiltinId::Ema => "`ema(series, length)`\n\nExponential moving average.".to_string(),
-        BuiltinId::Rsi => "`rsi(series, length)`\n\nRelative strength index.".to_string(),
-        BuiltinId::Plot => "`plot(value)`\n\nEmit a plot output for the current bar.".to_string(),
-        BuiltinId::Open => "`open`\n\nseries<float> for the base-interval open.".to_string(),
-        BuiltinId::High => "`high`\n\nseries<float> for the base-interval high.".to_string(),
-        BuiltinId::Low => "`low`\n\nseries<float> for the base-interval low.".to_string(),
-        BuiltinId::Close => "`close`\n\nseries<float> for the base-interval close.".to_string(),
-        BuiltinId::Volume => "`volume`\n\nseries<float> for the base-interval volume.".to_string(),
-        BuiltinId::Time => {
-            "`time`\n\nseries<float> for the base-interval candle open time.".to_string()
-        }
-    }
+    format!("`{}`\n\n{}", builtin.signature(), builtin.summary())
 }
 
 fn builtin_completions() -> Vec<CompletionEntry> {
-    [
-        ("sma", "sma(series, length)"),
-        ("ema", "ema(series, length)"),
-        ("rsi", "rsi(series, length)"),
-        ("plot", "plot(value)"),
-    ]
-    .into_iter()
-    .map(|(label, detail)| CompletionEntry {
-        label: label.to_string(),
-        kind: CompletionKind::Builtin,
-        detail: Some(detail.to_string()),
-    })
-    .collect()
+    BuiltinId::CALLABLE
+        .into_iter()
+        .map(|builtin| CompletionEntry {
+            label: builtin.as_str().to_string(),
+            kind: CompletionKind::Builtin,
+            detail: Some(builtin.signature().to_string()),
+        })
+        .collect()
 }
 
 fn render_expr_info(info: &ExprInfo) -> String {
@@ -1135,20 +1117,20 @@ mod tests {
     #[test]
     fn semantic_document_contains_symbols_and_definitions() {
         let source = with_interval(
-            "fn crossover(a, b) = a > b\nlet basis = ema(close, 5)\nexport trend = crossover(close, basis)\nif trend { plot(1) } else { plot(0) }",
+            "fn cross_signal(a, b) = a > b\nlet basis = ema(close, 5)\nexport trend = cross_signal(close, basis)\nif trend { plot(1) } else { plot(0) }",
         );
         let document = analyze_document(&source).expect("semantic");
         assert!(document
             .symbols()
             .iter()
-            .any(|symbol| symbol.name == "crossover"));
+            .any(|symbol| symbol.name == "cross_signal"));
         let basis_offset = source.find("basis)").expect("basis ref");
         let definition = document.definition_at(basis_offset).expect("definition");
         assert_eq!(definition.name, "basis");
         let hover = document
-            .hover_at(source.find("crossover(close").expect("call"))
+            .hover_at(source.find("cross_signal(close").expect("call"))
             .expect("hover");
-        assert!(hover.contents.contains("fn crossover"));
+        assert!(hover.contents.contains("fn cross_signal"));
     }
 
     #[test]
@@ -1160,13 +1142,27 @@ mod tests {
         assert!(general
             .iter()
             .any(|entry| entry.label == "ema" && entry.kind == CompletionKind::Builtin));
+        assert!(general
+            .iter()
+            .any(|entry| entry.label == "valuewhen" && entry.kind == CompletionKind::Builtin));
         let fields = document.completions_at(source.find('.').expect("dot") + 1);
         assert!(fields.iter().any(|entry| entry.label == "close"));
     }
 
     #[test]
+    fn builtin_hover_uses_registry_metadata() {
+        let source = with_interval("if crossover(close, 100) { plot(1) } else { plot(0) }");
+        let document = analyze_document(&source).expect("semantic");
+        let hover = document
+            .hover_at(source.find("crossover(").expect("call"))
+            .expect("hover");
+        assert!(hover.contents.contains("`crossover(a, b)`"));
+        assert!(hover.contents.contains("crosses above"));
+    }
+
+    #[test]
     fn formatter_is_idempotent() {
-        let source = "interval 1m\nfn crossover(a,b)=a>b\nif close>open{plot(1)}else{plot(0)}";
+        let source = "interval 1m\nfn cross_signal(a,b)=a>b\nif close>open{plot(1)}else{plot(0)}";
         let formatted = format_document(source).expect("formatted");
         let reformatted = format_document(&formatted).expect("reformatted");
         assert_eq!(formatted, reformatted);

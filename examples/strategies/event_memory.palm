@@ -1,0 +1,9 @@
+interval 1m
+
+let prior_high = highest(close, 5)[1]
+let breakout = above(close, prior_high)
+
+export last_breakout_close = valuewhen(breakout, close, 0)
+trigger breakout_now = breakout
+
+plot(barssince(breakout))

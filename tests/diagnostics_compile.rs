@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 8] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 16] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -325,6 +325,85 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
                 expected(
                     DiagnosticKind::Type,
                     "plot expects a numeric or series numeric value",
+                ),
+            ],
+        ),
+        (
+            "type_relation_helper_wrong_arity",
+            with_interval("plot(above(close))"),
+            vec![
+                expected(DiagnosticKind::Type, "above expects exactly two arguments"),
+                expected(
+                    DiagnosticKind::Type,
+                    "plot expects a numeric or series numeric value",
+                ),
+            ],
+        ),
+        (
+            "type_relation_helper_wrong_input_kind",
+            with_interval("plot(above(true, close))"),
+            vec![
+                expected(
+                    DiagnosticKind::Type,
+                    "above requires numeric or series numeric arguments",
+                ),
+                expected(
+                    DiagnosticKind::Type,
+                    "plot expects a numeric or series numeric value",
+                ),
+            ],
+        ),
+        (
+            "type_cross_requires_series_operand",
+            with_interval("if cross(1, 2) { plot(1) } else { plot(0) }"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "cross requires at least one series<float> argument",
+            )],
+        ),
+        (
+            "type_change_requires_series_float",
+            with_interval("plot(change(1, 2))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "change requires series<float> as the first argument",
+            )],
+        ),
+        (
+            "type_roc_zero_window",
+            with_interval("plot(roc(close, 0))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "roc length must be greater than zero",
+            )],
+        ),
+        (
+            "type_highest_non_literal_window",
+            with_interval("let n = 2\nplot(highest(close, n))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "highest length must be a non-negative integer literal",
+            )],
+        ),
+        (
+            "type_barssince_requires_series_bool",
+            with_interval("plot(barssince(close))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "barssince requires series<bool> as the first argument",
+            )],
+        ),
+        (
+            "type_valuewhen_requires_series_source_and_literal_occurrence",
+            with_interval("plot(valuewhen(close > open, 1, -1))"),
+            vec![
+                expected(
+                    DiagnosticKind::Type,
+                    "valuewhen requires series<float> or series<bool> as the second argument",
+                ),
+                expected(
+                    DiagnosticKind::Type,
+                    "valuewhen occurrence must be a non-negative integer literal",
                 ),
             ],
         ),

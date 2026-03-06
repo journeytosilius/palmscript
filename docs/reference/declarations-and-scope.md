@@ -84,7 +84,7 @@ Rules:
 User-defined functions are top-level, expression-bodied declarations:
 
 ```palmscript
-fn crossover(a, b) = a > b and a[1] <= b[1]
+fn cross_signal(a, b) = a > b and a[1] <= b[1]
 ```
 
 Rules:

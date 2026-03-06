@@ -1,0 +1,15 @@
+interval 1m
+
+let fast = ema(close, 5)
+let slow = ema(close, 13)
+let momentum = roc(close, 3)
+let range = highest(close, 5) - lowest(close, 5)
+
+export above_basis = above(fast, slow)
+trigger cross_up = crossover(fast, slow)
+
+if above(fast, slow) and rising(close, 2) {
+    plot(momentum + range)
+} else {
+    plot(na)
+}

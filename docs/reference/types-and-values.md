@@ -34,7 +34,7 @@ A series type:
 - exposes its current sample when used in expressions
 - may yield `na` at a given sample
 
-Market fields are series values. Indicator builtins also return series values.
+Market fields are series values. Indicator, signal-helper, and event-memory builtins may also return series values.
 
 ## `na`
 

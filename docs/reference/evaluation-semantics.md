@@ -143,6 +143,16 @@ Consequences:
 - indexing on higher-interval series walks the history of fully closed higher-interval samples
 - source-aware supplemental intervals follow the same rule
 
+## Builtin Helper Semantics
+
+Builtin helper formulas, window rules, and `na` behavior are defined in [Builtins](builtins.md).
+
+Rules:
+
+- helper builtins follow the update clocks of their series inputs
+- helper outputs participate in `if`, indexing, and further builtin calls through the same value and `na` rules defined on this page
+- `if` still treats `na` as false for branch selection, even when the condition comes from a helper such as `crossover(...)`
+
 ## Determinism
 
 Expression evaluation is deterministic.

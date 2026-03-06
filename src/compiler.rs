@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, Stmt, StmtKind, UnaryOp,
 };
-use crate::builtins::BuiltinId;
+use crate::builtins::{BuiltinId, BuiltinKind};
 use crate::bytecode::{Constant, Instruction, LocalInfo, OpCode, OutputDecl, OutputKind, Program};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -64,6 +64,14 @@ impl InferredType {
 
     fn is_numeric_like(self) -> bool {
         matches!(self, Self::Concrete(Type::F64 | Type::SeriesF64) | Self::Na)
+    }
+
+    fn is_series_numeric(self) -> bool {
+        matches!(self, Self::Concrete(Type::SeriesF64))
+    }
+
+    fn is_series_bool(self) -> bool {
+        matches!(self, Self::Concrete(Type::SeriesBool))
     }
 }
 
@@ -574,15 +582,6 @@ impl<'a> Analyzer<'a> {
                             expr.span,
                         ));
                     }
-                    Some(BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi) => {
-                        if args.len() != 2 {
-                            self.diagnostics.push(Diagnostic::new(
-                                DiagnosticKind::Type,
-                                format!("{callee} expects exactly two arguments"),
-                                expr.span,
-                            ));
-                        }
-                    }
                     Some(
                         BuiltinId::Open
                         | BuiltinId::High
@@ -596,6 +595,17 @@ impl<'a> Analyzer<'a> {
                             "market data builtins are identifiers, not callable functions",
                             expr.span,
                         ));
+                    }
+                    Some(builtin) => {
+                        if let Some(arity) = builtin.arity() {
+                            if args.len() != arity {
+                                self.diagnostics.push(Diagnostic::new(
+                                    DiagnosticKind::Type,
+                                    expected_arity_message(callee, arity),
+                                    expr.span,
+                                ));
+                            }
+                        }
                     }
                     None => match self.functions_by_name.get(callee).copied() {
                         Some(target) if target.params.len() != args.len() => {
@@ -943,41 +953,6 @@ impl<'a> Analyzer<'a> {
                 }
                 ExprInfo::scalar(Type::Void)
             }
-            BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi => {
-                if args.len() != 2 {
-                    self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} expects exactly two arguments"),
-                        span,
-                    ));
-                    return ExprInfo::series(0);
-                }
-                let series_info = self.analyze_expr(&args[0]);
-                if !matches!(series_info.ty, InferredType::Concrete(Type::SeriesF64)) {
-                    self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} requires series<float> as the first argument"),
-                        args[0].span,
-                    ));
-                }
-                match literal_window(&args[1]) {
-                    Some(window) if window > 0 => {}
-                    Some(_) => self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} length must be greater than zero"),
-                        args[1].span,
-                    )),
-                    None => self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} length must be a non-negative integer literal"),
-                        args[1].span,
-                    )),
-                }
-                ExprInfo {
-                    ty: InferredType::Concrete(Type::SeriesF64),
-                    update_mask: series_info.update_mask,
-                }
-            }
             BuiltinId::Open
             | BuiltinId::High
             | BuiltinId::Low
@@ -993,6 +968,18 @@ impl<'a> Analyzer<'a> {
                     self.analyze_expr(arg);
                 }
                 ExprInfo::series(0)
+            }
+            _ => {
+                let arg_info: Vec<ExprInfo> =
+                    args.iter().map(|arg| self.analyze_expr(arg)).collect();
+                analyze_helper_builtin(
+                    builtin,
+                    callee,
+                    args,
+                    &arg_info,
+                    span,
+                    &mut self.diagnostics,
+                )
             }
         }
     }
@@ -1326,41 +1313,6 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 }
                 ExprInfo::scalar(Type::Void)
             }
-            BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi => {
-                if args.len() != 2 {
-                    self.parent.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} expects exactly two arguments"),
-                        span,
-                    ));
-                    return ExprInfo::series(0);
-                }
-                let series_info = self.analyze_expr(&args[0]);
-                if !matches!(series_info.ty, InferredType::Concrete(Type::SeriesF64)) {
-                    self.parent.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} requires series<float> as the first argument"),
-                        args[0].span,
-                    ));
-                }
-                match literal_window(&args[1]) {
-                    Some(window) if window > 0 => {}
-                    Some(_) => self.parent.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} length must be greater than zero"),
-                        args[1].span,
-                    )),
-                    None => self.parent.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("{callee} length must be a non-negative integer literal"),
-                        args[1].span,
-                    )),
-                }
-                ExprInfo {
-                    ty: InferredType::Concrete(Type::SeriesF64),
-                    update_mask: series_info.update_mask,
-                }
-            }
             BuiltinId::Open
             | BuiltinId::High
             | BuiltinId::Low
@@ -1376,6 +1328,18 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     self.analyze_expr(arg);
                 }
                 ExprInfo::series(0)
+            }
+            _ => {
+                let arg_info: Vec<ExprInfo> =
+                    args.iter().map(|arg| self.analyze_expr(arg)).collect();
+                analyze_helper_builtin(
+                    builtin,
+                    callee,
+                    args,
+                    &arg_info,
+                    span,
+                    &mut self.parent.diagnostics,
+                )
             }
         }
     }
@@ -1833,6 +1797,265 @@ fn infer_binary(
     }
 }
 
+fn analyze_helper_builtin(
+    builtin: BuiltinId,
+    callee: &str,
+    args: &[Expr],
+    arg_info: &[ExprInfo],
+    span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ExprInfo {
+    let Some(expected_arity) = builtin.arity() else {
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            "market data builtins are identifiers, not callable functions",
+            span,
+        ));
+        return ExprInfo::series(0);
+    };
+    if args.len() != expected_arity {
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            expected_arity_message(callee, expected_arity),
+            span,
+        ));
+        return fallback_expr_info_for_builtin(builtin);
+    }
+
+    match builtin.kind() {
+        BuiltinKind::Indicator | BuiltinKind::Highest | BuiltinKind::Lowest => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            validate_positive_window_literal(callee, &args[1], diagnostics);
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::Rising | BuiltinKind::Falling => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            validate_positive_window_literal(callee, &args[1], diagnostics);
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesBool),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::Relation2 => {
+            for (arg, info) in args.iter().zip(arg_info.iter()) {
+                if !info.ty.is_numeric_like() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires numeric or series numeric arguments"),
+                        arg.span,
+                    ));
+                }
+            }
+            bool_result(arg_info)
+        }
+        BuiltinKind::Relation3 => {
+            for (arg, info) in args.iter().zip(arg_info.iter()) {
+                if !info.ty.is_numeric_like() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires numeric or series numeric arguments"),
+                        arg.span,
+                    ));
+                }
+            }
+            bool_result(arg_info)
+        }
+        BuiltinKind::Cross => {
+            for (arg, info) in args.iter().zip(arg_info.iter()) {
+                if !info.ty.is_numeric_like() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires numeric or series numeric arguments"),
+                        arg.span,
+                    ));
+                }
+            }
+            if !arg_info.iter().any(|info| info.ty.is_series_numeric()) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires at least one series<float> argument"),
+                    span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesBool),
+                update_mask: arg_info
+                    .iter()
+                    .fold(0, |mask, info| mask | info.update_mask),
+            }
+        }
+        BuiltinKind::Change | BuiltinKind::Roc => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            validate_positive_window_literal(callee, &args[1], diagnostics);
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::BarsSince => {
+            let condition_info = arg_info[0];
+            if !condition_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: condition_info.update_mask,
+            }
+        }
+        BuiltinKind::ValueWhen => {
+            let condition_info = arg_info[0];
+            let source_info = arg_info[1];
+            if !condition_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !matches!(
+                source_info.ty,
+                InferredType::Concrete(Type::SeriesF64 | Type::SeriesBool)
+            ) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "{callee} requires series<float> or series<bool> as the second argument"
+                    ),
+                    args[1].span,
+                ));
+            }
+            validate_non_negative_literal(callee, "occurrence", &args[2], diagnostics);
+            ExprInfo {
+                ty: match source_info.ty {
+                    InferredType::Concrete(Type::SeriesBool) => {
+                        InferredType::Concrete(Type::SeriesBool)
+                    }
+                    _ => InferredType::Concrete(Type::SeriesF64),
+                },
+                update_mask: condition_info.update_mask | source_info.update_mask,
+            }
+        }
+        BuiltinKind::Plot | BuiltinKind::MarketSeries => unreachable!(),
+    }
+}
+
+fn fallback_expr_info_for_builtin(builtin: BuiltinId) -> ExprInfo {
+    match builtin.kind() {
+        BuiltinKind::Plot => ExprInfo::scalar(Type::Void),
+        BuiltinKind::Relation2 | BuiltinKind::Relation3 => ExprInfo::scalar(Type::Bool),
+        BuiltinKind::Cross => ExprInfo::series(0),
+        BuiltinKind::Rising | BuiltinKind::Falling => ExprInfo {
+            ty: InferredType::Concrete(Type::SeriesBool),
+            update_mask: 0,
+        },
+        BuiltinKind::ValueWhen => ExprInfo::series(0),
+        BuiltinKind::BarsSince
+        | BuiltinKind::Indicator
+        | BuiltinKind::Change
+        | BuiltinKind::Roc
+        | BuiltinKind::Highest
+        | BuiltinKind::Lowest => ExprInfo::series(0),
+        BuiltinKind::MarketSeries => ExprInfo::series(0),
+    }
+}
+
+fn bool_result(arg_info: &[ExprInfo]) -> ExprInfo {
+    let update_mask = arg_info
+        .iter()
+        .fold(0, |mask, info| mask | info.update_mask);
+    let has_series = arg_info.iter().any(|info| {
+        matches!(
+            info.ty,
+            InferredType::Concrete(Type::SeriesF64 | Type::SeriesBool)
+        )
+    });
+    ExprInfo {
+        ty: if has_series {
+            InferredType::Concrete(Type::SeriesBool)
+        } else if arg_info
+            .iter()
+            .all(|info| matches!(info.ty, InferredType::Na))
+        {
+            InferredType::Na
+        } else {
+            InferredType::Concrete(Type::Bool)
+        },
+        update_mask,
+    }
+}
+
+fn validate_positive_window_literal(callee: &str, expr: &Expr, diagnostics: &mut Vec<Diagnostic>) {
+    match literal_window(expr) {
+        Some(window) if window > 0 => {}
+        Some(_) => diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            format!("{callee} length must be greater than zero"),
+            expr.span,
+        )),
+        None => diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            format!("{callee} length must be a non-negative integer literal"),
+            expr.span,
+        )),
+    }
+}
+
+fn validate_non_negative_literal(
+    callee: &str,
+    noun: &str,
+    expr: &Expr,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if literal_window(expr).is_none() {
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            format!("{callee} {noun} must be a non-negative integer literal"),
+            expr.span,
+        ));
+    }
+}
+
+fn expected_arity_message(callee: &str, arity: usize) -> String {
+    let quantity = match arity {
+        1 => "one",
+        2 => "two",
+        3 => "three",
+        _ => return format!("{callee} expects exactly {arity} arguments"),
+    };
+    format!(
+        "{callee} expects exactly {quantity} argument{}",
+        if arity == 1 { "" } else { "s" }
+    )
+}
+
 fn literal_window(expr: &Expr) -> Option<usize> {
     match expr.kind {
         ExprKind::Number(value) if value >= 0.0 && value.fract() == 0.0 => Some(value as usize),
@@ -2218,9 +2441,91 @@ impl<'a> Compiler<'a> {
                 );
                 self.program.plot_count = self.program.plot_count.max(1);
             }
-            BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi => {
+            BuiltinId::Sma
+            | BuiltinId::Ema
+            | BuiltinId::Rsi
+            | BuiltinId::Highest
+            | BuiltinId::Lowest
+            | BuiltinId::Rising
+            | BuiltinId::Falling
+            | BuiltinId::BarsSince
+            | BuiltinId::ValueWhen
+            | BuiltinId::Cross
+            | BuiltinId::Crossover
+            | BuiltinId::Crossunder
+            | BuiltinId::Change
+            | BuiltinId::Roc => {
+                self.emit_runtime_builtin_call(
+                    builtin, expr, args, expr_info, user_calls, callsite,
+                );
+            }
+            BuiltinId::Above | BuiltinId::Below => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                let opcode = if matches!(builtin, BuiltinId::Above) {
+                    OpCode::Gt
+                } else {
+                    OpCode::Lt
+                };
+                self.emit(Instruction::new(opcode).with_span(expr.span));
+            }
+            BuiltinId::Between | BuiltinId::Outside => {
+                if matches!(builtin, BuiltinId::Between) {
+                    self.emit_expr(&args[1], expr_info, user_calls);
+                    self.emit_expr(&args[0], expr_info, user_calls);
+                    self.emit(Instruction::new(OpCode::Lt).with_span(expr.span));
+                    self.emit_expr(&args[0], expr_info, user_calls);
+                    self.emit_expr(&args[2], expr_info, user_calls);
+                    self.emit(Instruction::new(OpCode::Lt).with_span(expr.span));
+                } else {
+                    self.emit_expr(&args[0], expr_info, user_calls);
+                    self.emit_expr(&args[1], expr_info, user_calls);
+                    self.emit(Instruction::new(OpCode::Lt).with_span(expr.span));
+                    self.emit_expr(&args[2], expr_info, user_calls);
+                    self.emit_expr(&args[0], expr_info, user_calls);
+                    self.emit(Instruction::new(OpCode::Lt).with_span(expr.span));
+                }
+                let opcode = if matches!(builtin, BuiltinId::Between) {
+                    OpCode::And
+                } else {
+                    OpCode::Or
+                };
+                self.emit(Instruction::new(opcode).with_span(expr.span));
+            }
+            BuiltinId::Open
+            | BuiltinId::High
+            | BuiltinId::Low
+            | BuiltinId::Close
+            | BuiltinId::Volume
+            | BuiltinId::Time => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Compile,
+                    format!("builtin `{callee}` is not callable in v0.1"),
+                    expr.span,
+                ));
+            }
+        }
+    }
+
+    fn emit_runtime_builtin_call(
+        &mut self,
+        builtin: BuiltinId,
+        expr: &Expr,
+        args: &[Expr],
+        expr_info: &HashMap<NodeId, ExprInfo>,
+        user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
+        callsite: u16,
+    ) {
+        match builtin.kind() {
+            BuiltinKind::Indicator | BuiltinKind::Highest | BuiltinKind::Lowest => {
                 let required_history = literal_window(&args[1])
-                    .map(|window| window + 1)
+                    .map(|window| {
+                        if matches!(builtin, BuiltinId::Highest | BuiltinId::Lowest) {
+                            window
+                        } else {
+                            window + 1
+                        }
+                    })
                     .unwrap_or(2);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_expr(&args[1], expr_info, user_calls);
@@ -2232,13 +2537,94 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
-            _ => {
-                self.diagnostics.push(Diagnostic::new(
-                    DiagnosticKind::Compile,
-                    format!("builtin `{callee}` is not callable in v0.1"),
-                    expr.span,
-                ));
+            BuiltinKind::Rising | BuiltinKind::Falling => {
+                let required_history = literal_window(&args[1])
+                    .map(|window| window + 1)
+                    .unwrap_or(2);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
             }
+            BuiltinKind::BarsSince => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(1)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::ValueWhen => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::Cross => {
+                self.emit_cross_arg(&args[0], expr_info, user_calls, 2, 0);
+                self.emit_cross_arg(&args[1], expr_info, user_calls, 2, 0);
+                self.emit_cross_arg(&args[0], expr_info, user_calls, 2, 1);
+                self.emit_cross_arg(&args[1], expr_info, user_calls, 2, 1);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::Change | BuiltinKind::Roc => {
+                let required_history = literal_window(&args[1])
+                    .map(|window| window + 1)
+                    .unwrap_or(2);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn emit_cross_arg(
+        &mut self,
+        expr: &Expr,
+        expr_info: &HashMap<NodeId, ExprInfo>,
+        user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
+        required_history: usize,
+        offset: usize,
+    ) {
+        let info = expr_info
+            .get(&expr.id)
+            .copied()
+            .unwrap_or_else(|| ExprInfo::scalar(Type::F64));
+        if matches!(info.ty, InferredType::Concrete(Type::SeriesF64)) {
+            self.emit_series_ref(expr, required_history.max(2), expr_info, user_calls);
+            self.emit(
+                Instruction::new(OpCode::SeriesGet)
+                    .with_a(offset as u16)
+                    .with_span(expr.span),
+            );
+        } else {
+            self.emit_expr(expr, expr_info, user_calls);
         }
     }
 

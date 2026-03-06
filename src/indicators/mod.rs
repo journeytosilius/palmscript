@@ -4,10 +4,14 @@
 //! per-indicator logic stays modular and independently testable.
 
 pub(crate) mod ema;
+pub(crate) mod event;
+pub(crate) mod extrema;
 pub(crate) mod rsi;
 pub(crate) mod sma;
 
 pub(crate) use ema::EmaState;
+pub(crate) use event::{BarsSinceState, ValueWhenState};
+pub(crate) use extrema::{FallingState, HighestState, LowestState, RisingState};
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
 
@@ -16,4 +20,10 @@ pub(crate) enum IndicatorState {
     Sma(SmaState),
     Ema(EmaState),
     Rsi(RsiState),
+    Highest(HighestState),
+    Lowest(LowestState),
+    Rising(RisingState),
+    Falling(FallingState),
+    BarsSince(BarsSinceState),
+    ValueWhen(ValueWhenState),
 }

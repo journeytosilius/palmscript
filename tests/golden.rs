@@ -186,7 +186,7 @@ fn golden_zero_argument_function_shape_matches() {
 #[test]
 fn golden_function_indexing_over_series_shape_matches() {
     let compiled = compile(&with_interval(
-        "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
+        "fn is_rising(series) = series > series[1]\nif is_rising(close) { plot(1) } else { plot(0) }",
     ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
@@ -226,7 +226,7 @@ fn golden_nested_function_helpers_shape_matches() {
 #[test]
 fn golden_indicator_helper_shape_matches() {
     let compiled = compile(&with_interval(
-        "fn crossover(a, b) = a > b and a[1] <= b[1]\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif crossover(fast, slow) { plot(1) } else { plot(0) }",
+        "fn cross_signal(a, b) = a > b and a[1] <= b[1]\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif cross_signal(fast, slow) { plot(1) } else { plot(0) }",
     ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
@@ -236,6 +236,59 @@ fn golden_indicator_helper_shape_matches() {
         serde_json::json!(0.0)
     );
     assert_eq!(json["plots"][0]["points"].as_array().unwrap().len(), 20);
+}
+
+#[test]
+fn golden_crossover_builtin_shape_matches() {
+    let compiled = compile(&with_interval(
+        "if crossover(close, 104) { plot(1) } else { plot(0) }",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(0.0)
+    );
+    assert!(json["plots"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|point| point["value"] == serde_json::json!(1.0)));
+}
+
+#[test]
+fn golden_extrema_builtin_shape_matches() {
+    let compiled = compile(&with_interval("plot(highest(close, 5) - lowest(close, 5))"))
+        .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::json!(4.0)
+    );
+}
+
+#[test]
+fn golden_event_memory_builtin_shape_matches() {
+    let compiled = compile(&with_interval(
+        "plot(valuewhen(close > close[1], close, 0))",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::json!(101.0)
+    );
 }
 
 #[test]

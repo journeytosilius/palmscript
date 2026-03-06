@@ -127,7 +127,7 @@ fn reserves_logical_keywords() {
 #[test]
 fn parses_top_level_function_declarations() {
     compile(&with_interval(
-        "fn crossover(a, b) = a > b and a[1] <= b[1]\nif crossover(close, ema(close, 3)) { plot(1) } else { plot(0) }",
+        "fn cross_signal(a, b) = a > b and a[1] <= b[1]\nif cross_signal(close, ema(close, 3)) { plot(1) } else { plot(0) }",
     ))
     .expect("function declarations should compile");
 }
@@ -222,7 +222,7 @@ fn parses_interval_series_in_calls_and_indexing() {
 #[test]
 fn supports_qualified_series_in_user_functions() {
     compile(&with_intervals(
-        "fn rising(x) = x > x[1]\nif rising(1d.close) { plot(1) } else { plot(0) }",
+        "fn is_rising(x) = x > x[1]\nif is_rising(1d.close) { plot(1) } else { plot(0) }",
         &["1d"],
     ))
     .expect("qualified series should specialize");
