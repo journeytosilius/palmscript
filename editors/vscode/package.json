@@ -76,11 +76,16 @@
   },
   "scripts": {
     "compile": "tsc -p .",
+    "verify:server": "node ./scripts/verify-server-bundles.mjs",
+    "install:server": "node ./scripts/install-server-bundle.mjs",
+    "package:vsix": "npm run compile && npm run verify:server && npx @vscode/vsce package",
+    "publish:vsce": "npm run compile && npm run verify:server && npx @vscode/vsce publish",
     "watch": "tsc -watch -p .",
     "pretest": "npm run compile",
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
+    "@vscode/vsce": "^3.6.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.10.2",
     "@types/vscode": "^1.90.0",

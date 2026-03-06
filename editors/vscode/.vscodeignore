@@ -1,0 +1,6 @@
+**/.gitkeep
+**/.vscode-test/**
+**/node_modules/**
+src/**
+test-fixtures/**
+tsconfig.json

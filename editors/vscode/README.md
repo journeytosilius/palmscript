@@ -73,3 +73,34 @@ server/<platform>-<arch>/tradelang-lsp.exe
 
 The extension prefers those bundled binaries, then falls back to the local repo
 build output during development.
+
+To stage a locally built binary into the extension tree:
+
+```bash
+node ./scripts/install-server-bundle.mjs --platform linux-x64 --binary ../../target/release/tradelang-lsp
+```
+
+The extension package step validates that all required bundled binaries are
+present:
+
+```bash
+npm run verify:server
+npm run package:vsix
+```
+
+## Publishing
+
+This repository includes a GitHub Actions workflow at
+`.github/workflows/publish-vscode-extension.yml`.
+
+It:
+
+1. builds `tradelang-lsp` for the supported release platforms
+2. stages the binaries under `server/<platform>-<arch>/`
+3. packages the extension as a `.vsix`
+4. publishes it on tags matching `v*`
+
+Required secret:
+
+- `VSCE_PAT`: Visual Studio Marketplace personal access token with Marketplace
+  manage scope
