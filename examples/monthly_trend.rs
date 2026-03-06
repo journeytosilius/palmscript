@@ -4,8 +4,7 @@ mod support;
 use tradelang::{compile, run_multi_interval, Interval, MultiIntervalConfig, VmLimits};
 
 fn main() {
-    let source =
-        "if 1M.close > 1M.close[1] and 1d.volume > 1d.volume[1] { plot(1) } else { plot(0) }";
+    let source = "interval 1w\nuse 1M\nuse 1d\nif 1M.close > 1M.close[1] and 1d.volume > 1d.volume[1] { plot(1) } else { plot(0) }";
     let compiled = compile(source).expect("script compiles");
     let base_bars = support::flat_bars(
         support::JAN_1_2024_UTC_MS,

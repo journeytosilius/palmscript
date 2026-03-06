@@ -8,11 +8,11 @@ use tradelang::{
 
 fn main() {
     let producer = compile(
-        "export trend = close > ema(close, 3)\ntrigger breakout = close > high[1]\nplot(0)",
+        "interval 1m\nexport trend = close > ema(close, 3)\ntrigger breakout = close > high[1]\nplot(0)",
     )
     .expect("producer compiles");
     let consumer = compile_with_env(
-        "if trend and breakout { plot(1) } else { plot(0) }",
+        "interval 1m\nif trend and breakout { plot(1) } else { plot(0) }",
         &CompileEnvironment {
             external_inputs: vec![
                 ExternalInputDecl {

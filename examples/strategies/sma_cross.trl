@@ -1,3 +1,5 @@
+interval 1m
+
 // Single-interval example with exported state and a trigger.
 let fast = ema(close, 3)
 let slow = sma(close, 5)

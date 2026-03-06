@@ -18,7 +18,7 @@ For direct script execution outside Rust examples, use the CLI:
 
 ```bash
 tradelang check strategy.trl
-tradelang run strategy.trl --bars bars.csv --base-interval 1m
+tradelang run strategy.trl --bars bars.csv
 tradelang dump-bytecode strategy.trl
 ```
 
@@ -40,23 +40,22 @@ Suggested commands:
 ```bash
 ./tradelang check examples/strategies/sma_cross.trl
 ./tradelang run examples/strategies/sma_cross.trl \
-  --bars examples/data/minute_bars.csv \
-  --base-interval 1m
+  --bars examples/data/minute_bars.csv
 
 ./tradelang run examples/strategies/volume_breakout.trl \
   --bars examples/data/minute_bars.csv \
-  --base-interval 1m \
   --format text
 
 ./tradelang run examples/strategies/weekly_bias.trl \
   --bars examples/data/daily_bars.csv \
-  --base-interval 1d \
   --feed 1w=examples/data/weekly_bars.csv
 ```
 
 Current CLI-ready strategies:
 
-- `strategies/sma_cross.trl`: EMA/SMA trend state with `export` and `trigger`
-- `strategies/volume_breakout.trl`: breakout plus rising-volume trigger example
+- `strategies/sma_cross.trl`: `interval 1m` EMA/SMA trend state with `export`
+  and `trigger`
+- `strategies/volume_breakout.trl`: `interval 1m` breakout plus rising-volume
+  trigger example
 - `strategies/weekly_bias.trl`: daily execution using a weekly higher-timeframe
-  basis
+  basis with `interval 1d` and `use 1w`

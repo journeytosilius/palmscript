@@ -153,6 +153,8 @@ struct FunctionSpecialization {
 
 #[derive(Default)]
 struct Analysis {
+    base_interval: Option<Interval>,
+    declared_intervals: Vec<Interval>,
     expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
     resolved_let_slots: HashMap<NodeId, u16>,
@@ -200,6 +202,7 @@ impl<'a> Analyzer<'a> {
             );
         }
         analyzer.collect_external_inputs();
+        analyzer.validate_strategy_intervals(ast);
         analyzer.collect_functions(ast);
         analyzer.collect_qualified_series(ast);
         analyzer.validate_function_bodies();
@@ -215,6 +218,76 @@ impl<'a> Analyzer<'a> {
             Ok(self.analysis)
         } else {
             Err(CompileError::new(self.diagnostics))
+        }
+    }
+
+    fn validate_strategy_intervals(&mut self, ast: &Ast) {
+        match ast.strategy_intervals.base.as_slice() {
+            [] => self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "strategy must declare exactly one `interval <...>` directive",
+                Span::default(),
+            )),
+            [decl] => {
+                self.analysis.base_interval = Some(decl.interval);
+            }
+            [first, second, ..] => {
+                self.analysis.base_interval = Some(first.interval);
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "strategy must declare exactly one `interval <...>` directive",
+                    second.span,
+                ));
+            }
+        }
+
+        let Some(base_interval) = self.analysis.base_interval else {
+            return;
+        };
+
+        let mut supplemental = BTreeSet::new();
+        for decl in &ast.strategy_intervals.supplemental {
+            if decl.interval == base_interval {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "`use {}` duplicates the base interval",
+                        decl.interval.as_str()
+                    ),
+                    decl.span,
+                ));
+                continue;
+            }
+            if !supplemental.insert(decl.interval) {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("duplicate `use {}` declaration", decl.interval.as_str()),
+                    decl.span,
+                ));
+            }
+        }
+        self.analysis.declared_intervals = supplemental.iter().copied().collect();
+
+        let mut refs = BTreeSet::new();
+        for function in &ast.functions {
+            collect_qualified_series_refs(&function.body, &mut refs);
+        }
+        for stmt in &ast.statements {
+            collect_qualified_series_stmt(stmt, &mut refs);
+        }
+        for (interval, _field) in refs {
+            if interval != base_interval && !supplemental.contains(&interval) {
+                let span = interval_ref_span(ast, interval).unwrap_or_default();
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "interval `{}` must be declared with `use {}`",
+                        interval.as_str(),
+                        interval.as_str()
+                    ),
+                    span,
+                ));
+            }
         }
     }
 
@@ -1253,6 +1326,67 @@ fn collect_qualified_series_refs(expr: &Expr, refs: &mut BTreeSet<(Interval, Mar
     }
 }
 
+fn interval_ref_span(ast: &Ast, target: Interval) -> Option<Span> {
+    for function in &ast.functions {
+        if let Some(span) = expr_interval_ref_span(&function.body, target) {
+            return Some(span);
+        }
+    }
+    for stmt in &ast.statements {
+        if let Some(span) = stmt_interval_ref_span(stmt, target) {
+            return Some(span);
+        }
+    }
+    None
+}
+
+fn stmt_interval_ref_span(stmt: &Stmt, target: Interval) -> Option<Span> {
+    match &stmt.kind {
+        StmtKind::Let { expr, .. }
+        | StmtKind::Export { expr, .. }
+        | StmtKind::Trigger { expr, .. }
+        | StmtKind::Expr(expr) => expr_interval_ref_span(expr, target),
+        StmtKind::If {
+            condition,
+            then_block,
+            else_block,
+        } => expr_interval_ref_span(condition, target)
+            .or_else(|| {
+                then_block
+                    .statements
+                    .iter()
+                    .find_map(|stmt| stmt_interval_ref_span(stmt, target))
+            })
+            .or_else(|| {
+                else_block
+                    .statements
+                    .iter()
+                    .find_map(|stmt| stmt_interval_ref_span(stmt, target))
+            }),
+    }
+}
+
+fn expr_interval_ref_span(expr: &Expr, target: Interval) -> Option<Span> {
+    match &expr.kind {
+        ExprKind::QualifiedSeries { interval, .. } if *interval == target => Some(expr.span),
+        ExprKind::Unary { expr, .. } => expr_interval_ref_span(expr, target),
+        ExprKind::Binary { left, right, .. } => {
+            expr_interval_ref_span(left, target).or_else(|| expr_interval_ref_span(right, target))
+        }
+        ExprKind::Call { args, .. } => args
+            .iter()
+            .find_map(|arg| expr_interval_ref_span(arg, target)),
+        ExprKind::Index {
+            target: inner,
+            index,
+        } => {
+            expr_interval_ref_span(inner, target).or_else(|| expr_interval_ref_span(index, target))
+        }
+        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::Ident(_) => None,
+        ExprKind::QualifiedSeries { .. } => None,
+    }
+}
+
 fn called_user_functions<'a>(
     expr: &'a Expr,
     functions_by_name: &'a HashMap<String, &'a FunctionDecl>,
@@ -1516,6 +1650,8 @@ impl<'a> Compiler<'a> {
         self.program.locals = self.analysis.locals.clone();
         self.program.external_inputs = self.analysis.external_inputs.clone();
         self.program.outputs = self.analysis.outputs.clone();
+        self.program.base_interval = self.analysis.base_interval;
+        self.program.declared_intervals = self.analysis.declared_intervals.clone();
         self.rebuild_scopes();
         let expr_info = self.analysis.expr_info.clone();
         let user_calls = self.analysis.user_function_calls.clone();

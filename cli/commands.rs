@@ -29,6 +29,10 @@ fn run_script(args: RunArgs) -> Result<(), String> {
             "scripts with external inputs must run through the future pipeline command".to_string(),
         );
     }
+    let base_interval = compiled
+        .program
+        .base_interval
+        .ok_or_else(|| "compiled strategy is missing a base interval declaration".to_string())?;
 
     let base_bars = load_bars_csv(&args.bars)?;
     let supplemental = args
@@ -40,7 +44,7 @@ fn run_script(args: RunArgs) -> Result<(), String> {
         &compiled,
         &base_bars,
         MultiIntervalConfig {
-            base_interval: args.base_interval,
+            base_interval,
             supplemental,
         },
         VmLimits {

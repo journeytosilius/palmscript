@@ -11,8 +11,21 @@ pub type NodeId = u32;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Ast {
+    pub strategy_intervals: StrategyIntervals,
     pub functions: Vec<FunctionDecl>,
     pub statements: Vec<Stmt>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct StrategyIntervals {
+    pub base: Vec<IntervalDecl>,
+    pub supplemental: Vec<IntervalDecl>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct IntervalDecl {
+    pub interval: Interval,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

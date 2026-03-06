@@ -7,6 +7,10 @@ use tradelang::{Bar, MultiIntervalConfig};
 const MINUTE_MS: i64 = 60_000;
 const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
 
+fn with_interval(source: &str) -> String {
+    format!("interval 1m\n{source}")
+}
+
 fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar> {
     closes
         .iter()
@@ -24,9 +28,10 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
 
 #[test]
 fn pipeline_passes_exported_series_same_bar() {
-    let producer = compile("export trend = close > close[1]\nplot(0)").expect("producer");
+    let producer =
+        compile(&with_interval("export trend = close > close[1]\nplot(0)")).expect("producer");
     let consumer = compile_with_env(
-        "if trend and close > open { plot(1) } else { plot(0) }",
+        &with_interval("if trend and close > open { plot(1) } else { plot(0) }"),
         &CompileEnvironment {
             external_inputs: vec![ExternalInputDecl {
                 name: "trend".into(),
@@ -81,9 +86,12 @@ fn pipeline_passes_exported_series_same_bar() {
 
 #[test]
 fn pipeline_passes_trigger_series_and_events() {
-    let producer = compile("trigger long_entry = close > close[1]\nplot(0)").expect("producer");
+    let producer = compile(&with_interval(
+        "trigger long_entry = close > close[1]\nplot(0)",
+    ))
+    .expect("producer");
     let consumer = compile_with_env(
-        "if long_entry { plot(1) } else { plot(0) }",
+        &with_interval("if long_entry { plot(1) } else { plot(0) }"),
         &CompileEnvironment {
             external_inputs: vec![ExternalInputDecl {
                 name: "long_entry".into(),
@@ -138,7 +146,7 @@ fn pipeline_passes_trigger_series_and_events() {
 #[test]
 fn pipeline_rejects_cycles() {
     let a = compile_with_env(
-        "export a_out = a_in\nplot(0)",
+        &with_interval("export a_out = a_in\nplot(0)"),
         &CompileEnvironment {
             external_inputs: vec![ExternalInputDecl {
                 name: "a_in".into(),
@@ -149,7 +157,7 @@ fn pipeline_rejects_cycles() {
     )
     .expect("a");
     let b = compile_with_env(
-        "export b_out = b_in\nplot(0)",
+        &with_interval("export b_out = b_in\nplot(0)"),
         &CompileEnvironment {
             external_inputs: vec![ExternalInputDecl {
                 name: "b_in".into(),

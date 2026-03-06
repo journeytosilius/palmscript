@@ -5,6 +5,21 @@ use tradelang::{
     PipelineNodeSpec, PipelineSpec, Type, VmLimits,
 };
 
+fn with_interval(source: &str) -> String {
+    format!("interval 1m\n{source}")
+}
+
+fn with_intervals(base: &str, supplemental: &[&str], source: &str) -> String {
+    let mut script = format!("interval {base}\n");
+    for interval in supplemental {
+        script.push_str("use ");
+        script.push_str(interval);
+        script.push('\n');
+    }
+    script.push_str(source);
+    script
+}
+
 fn fixture_bars() -> Vec<Bar> {
     (0..20)
         .map(|index| {
@@ -46,7 +61,7 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
 
 #[test]
 fn golden_sma_shape_matches() {
-    let compiled = compile("plot(sma(close, 14))").expect("script compiles");
+    let compiled = compile(&with_interval("plot(sma(close, 14))")).expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
     assert_eq!(json["plots"][0]["id"], json!(0));
@@ -60,7 +75,7 @@ fn golden_sma_shape_matches() {
 
 #[test]
 fn golden_close_index_shape_matches() {
-    let compiled = compile("plot(close[1])").expect("script compiles");
+    let compiled = compile(&with_interval("plot(close[1])")).expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
     assert_eq!(
@@ -72,8 +87,10 @@ fn golden_close_index_shape_matches() {
 
 #[test]
 fn golden_if_else_shape_matches() {
-    let compiled =
-        compile("if close > sma(close, 14) { plot(1) } else { plot(0) }").expect("script compiles");
+    let compiled = compile(&with_interval(
+        "if close > sma(close, 14) { plot(1) } else { plot(0) }",
+    ))
+    .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
     assert_eq!(json["plots"][0]["points"].as_array().unwrap().len(), 20);
@@ -86,9 +103,10 @@ fn golden_if_else_shape_matches() {
 
 #[test]
 fn golden_logical_and_shape_matches() {
-    let compiled =
-        compile("if close > ema(close, 3) and rsi(close, 3) > 50 { plot(1) } else { plot(0) }")
-            .expect("script compiles");
+    let compiled = compile(&with_interval(
+        "if close > ema(close, 3) and rsi(close, 3) > 50 { plot(1) } else { plot(0) }",
+    ))
+    .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
     assert_eq!(
@@ -107,9 +125,9 @@ fn golden_logical_and_shape_matches() {
 
 #[test]
 fn golden_else_if_chain_shape_matches() {
-    let compiled = compile(
+    let compiled = compile(&with_interval(
         "if close < ema(close, 3) { plot(-1) } else if close > ema(close, 3) or close > close[1] { plot(1) } else { plot(0) }",
-    )
+    ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
@@ -129,9 +147,9 @@ fn golden_else_if_chain_shape_matches() {
 
 #[test]
 fn golden_boolean_series_reuse_shape_matches() {
-    let compiled = compile(
+    let compiled = compile(&with_interval(
         "let rising = close > close[1]\nif rising[1] or false { plot(1) } else { plot(0) }",
-    )
+    ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
@@ -151,9 +169,10 @@ fn golden_boolean_series_reuse_shape_matches() {
 
 #[test]
 fn golden_zero_argument_function_shape_matches() {
-    let compiled =
-        compile("fn bullish_bar() = close > open\nif bullish_bar() { plot(1) } else { plot(0) }")
-            .expect("script compiles");
+    let compiled = compile(&with_interval(
+        "fn bullish_bar() = close > open\nif bullish_bar() { plot(1) } else { plot(0) }",
+    ))
+    .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
     assert_eq!(
@@ -168,9 +187,9 @@ fn golden_zero_argument_function_shape_matches() {
 
 #[test]
 fn golden_function_indexing_over_series_shape_matches() {
-    let compiled = compile(
+    let compiled = compile(&with_interval(
         "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
-    )
+    ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
@@ -190,9 +209,9 @@ fn golden_function_indexing_over_series_shape_matches() {
 
 #[test]
 fn golden_nested_function_helpers_shape_matches() {
-    let compiled = compile(
+    let compiled = compile(&with_interval(
         "fn bullish_bar() = close > open\nfn signal() = bullish_bar() and close > close[1]\nif signal() { plot(1) } else { plot(0) }",
-    )
+    ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
@@ -208,9 +227,9 @@ fn golden_nested_function_helpers_shape_matches() {
 
 #[test]
 fn golden_indicator_helper_shape_matches() {
-    let compiled = compile(
+    let compiled = compile(&with_interval(
         "fn crossover(a, b) = a > b and a[1] <= b[1]\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif crossover(fast, slow) { plot(1) } else { plot(0) }",
-    )
+    ))
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
     let json = serde_json::to_value(outputs).expect("json");
@@ -223,8 +242,12 @@ fn golden_indicator_helper_shape_matches() {
 
 #[test]
 fn golden_minute_execution_with_weekly_signal_shape_matches() {
-    let compiled =
-        compile("if close > ema(1w.close, 2) { plot(1) } else { plot(0) }").expect("compiles");
+    let compiled = compile(&with_intervals(
+        "1d",
+        &["1w"],
+        "if close > ema(1w.close, 2) { plot(1) } else { plot(0) }",
+    ))
+    .expect("compiles");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[100.0; 21]);
     let weekly = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[90.0, 95.0, 105.0]);
     let outputs = run_multi_interval(
@@ -257,8 +280,12 @@ fn golden_minute_execution_with_weekly_signal_shape_matches() {
 
 #[test]
 fn golden_monthly_reference_shape_matches() {
-    let compiled =
-        compile("if 1M.close > 1M.close[1] { plot(1) } else { plot(0) }").expect("compiles");
+    let compiled = compile(&with_intervals(
+        "1w",
+        &["1M"],
+        "if 1M.close > 1M.close[1] { plot(1) } else { plot(0) }",
+    ))
+    .expect("compiles");
     let base = bars_with_spacing(
         JAN_1_2024_UTC_MS,
         WEEK_MS,
@@ -295,7 +322,8 @@ fn golden_monthly_reference_shape_matches() {
 
 #[test]
 fn golden_export_series_shape_matches() {
-    let compiled = compile("export trend = close > close[1]\nplot(0)").expect("compiles");
+    let compiled =
+        compile(&with_interval("export trend = close > close[1]\nplot(0)")).expect("compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
     let json = serde_json::to_value(outputs).expect("json");
     assert_eq!(json["exports"][0]["name"], json!("trend"));
@@ -305,9 +333,10 @@ fn golden_export_series_shape_matches() {
 
 #[test]
 fn golden_pipeline_shape_matches() {
-    let producer = compile("export trend = close > close[1]\nplot(0)").expect("producer");
+    let producer =
+        compile(&with_interval("export trend = close > close[1]\nplot(0)")).expect("producer");
     let consumer = compile_with_env(
-        "if trend { plot(1) } else { plot(0) }",
+        &with_interval("if trend { plot(1) } else { plot(0) }"),
         &CompileEnvironment {
             external_inputs: vec![ExternalInputDecl {
                 name: "trend".into(),

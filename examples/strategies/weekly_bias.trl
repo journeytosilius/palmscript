@@ -1,3 +1,6 @@
+interval 1d
+use 1w
+
 // Multi-interval example using weekly context on a daily execution feed.
 let weekly_basis = ema(1w.close, 2)
 

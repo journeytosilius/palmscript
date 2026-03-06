@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub enum TokenKind {
     Fn,
     Let,
+    IntervalKw,
+    Use,
     Export,
     Trigger,
     If,

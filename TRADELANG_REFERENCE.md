@@ -17,6 +17,8 @@ the existing compiler and runtime APIs.
 The implemented language supports:
 
 - numeric, boolean, and `na` literals
+- one mandatory top-level `interval <...>` execution directive
+- top-level `use <...>` declarations for additional referenced intervals
 - `let` bindings
 - top-level `export` and `trigger` statements
 - top-level user-defined functions
@@ -33,8 +35,8 @@ The implemented language supports:
 
 ## Execution Model
 
-TradeLang scripts are compiled once and then executed once per base-interval
-bar.
+TradeLang scripts are compiled once and then executed once per declared base
+interval bar.
 
 At each bar:
 
@@ -48,9 +50,13 @@ At each bar:
 6. `plot(...)`, `export`, and `trigger` outputs are emitted for the current
    bar
 
+The base execution interval is declared in source with `interval <binance-interval>`.
+
 For multi-interval scripts:
 
 - `Bar.time` is interpreted as candle open time in Unix milliseconds UTC
+- every strategy must declare exactly one base interval with `interval <...>`
+- every referenced non-base interval must be declared with `use <...>`
 - interval-qualified series expose the last fully closed candle for that
   interval
 - no partial higher-timeframe candle is ever visible
@@ -79,6 +85,8 @@ A program is a sequence of top-level items.
 
 Supported top-level item forms:
 
+- `interval <interval>`
+- `use <interval>`
 - `fn name(params...) = expr`
 - `let name = expr`
 - `export name = expr`
@@ -92,6 +100,8 @@ bytecode directly.
 Example:
 
 ```tradelang
+interval 1m
+
 fn crossover(a, b) = a > b and a[1] <= b[1]
 
 let fast = ema(close, 5)
@@ -154,6 +164,8 @@ Reserved keywords:
 
 - `fn`
 - `let`
+- `interval`
+- `use`
 - `export`
 - `trigger`
 - `if`
@@ -216,7 +228,9 @@ This is a practical sketch of the implemented grammar, not a formal grammar.
 
 ```text
 program      := item*
-item         := fn_decl | stmt
+item         := interval_decl | use_decl | fn_decl | stmt
+interval_decl:= "interval" interval
+use_decl     := "use" interval
 fn_decl      := "fn" ident "(" params? ")" "=" expr
 params       := ident ("," ident)*
 stmt         := let_stmt | if_stmt | expr_stmt
@@ -336,6 +350,8 @@ TradeLang also supports interval-qualified market series:
 
 Rules:
 
+- exactly one `interval <...>` directive is required per strategy
+- every non-base interval reference must be declared with `use <...>`
 - interval-qualified market series are `series<f64>`
 - the visible value is the last fully closed candle for that interval
 - if no candle for that interval has closed yet, the value is `na`
@@ -344,6 +360,7 @@ Rules:
 This is valid:
 
 ```tradelang
+interval 1m
 plot(close[1])
 ```
 
@@ -351,6 +368,21 @@ This is invalid:
 
 ```tradelang
 close()
+```
+
+Multi-interval example:
+
+```tradelang
+interval 1d
+use 1w
+
+let weekly_basis = ema(1w.close, 8)
+
+if close > weekly_basis {
+    plot(1)
+} else {
+    plot(0)
+}
 ```
 
 ## Variables and Scope
@@ -842,7 +874,7 @@ The official CLI can also execute scripts directly:
 
 ```bash
 tradelang check strategy.trl
-tradelang run strategy.trl --bars bars.csv --base-interval 1m
+tradelang run strategy.trl --bars bars.csv
 tradelang dump-bytecode strategy.trl
 ```
 
@@ -867,6 +899,8 @@ Examples of current compile errors:
 - `plot(...)` inside a function body
 - invalid interval literals such as `1W`
 - invalid interval-qualified market fields such as `1w.foo`
+- missing `interval <...>` directives
+- referenced intervals that are not declared with `use <...>`
 
 The runtime reports errors for:
 

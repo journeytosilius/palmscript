@@ -130,6 +130,8 @@ pub struct Program {
     pub locals: Vec<LocalInfo>,
     pub external_inputs: Vec<ExternalInputInfo>,
     pub outputs: Vec<OutputDecl>,
+    pub base_interval: Option<crate::Interval>,
+    pub declared_intervals: Vec<crate::Interval>,
     pub history_capacity: usize,
     pub plot_count: usize,
 }

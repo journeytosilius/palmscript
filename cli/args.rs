@@ -23,8 +23,6 @@ pub struct RunArgs {
     pub script: PathBuf,
     #[arg(long)]
     pub bars: PathBuf,
-    #[arg(long, value_parser = parse_interval)]
-    pub base_interval: Interval,
     #[arg(long = "feed", value_parser = parse_feed_arg)]
     pub feeds: Vec<FeedArg>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]

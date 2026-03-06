@@ -80,6 +80,27 @@ pub fn render_outputs_text(outputs: &Outputs) -> String {
 pub fn render_bytecode_text(compiled: &CompiledProgram) -> String {
     let mut out = String::new();
     let program = &compiled.program;
+    let _ = writeln!(
+        out,
+        "Strategy Intervals\n  base={}\n  declared={}",
+        program
+            .base_interval
+            .map(|interval| interval.as_str())
+            .unwrap_or("none"),
+        if program.declared_intervals.is_empty() {
+            "[]".to_string()
+        } else {
+            format!(
+                "[{}]",
+                program
+                    .declared_intervals
+                    .iter()
+                    .map(|interval| interval.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
+    );
     let _ = writeln!(out, "Constants");
     for (index, constant) in program.constants.iter().enumerate() {
         let _ = writeln!(out, "  [{}] {}", index, fmt_constant(constant));

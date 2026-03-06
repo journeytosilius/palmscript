@@ -44,7 +44,7 @@ fn help_prints_usage() {
 #[test]
 fn run_requires_bars_argument() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(close)");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
     let mut cmd = tradelang_cmd();
     cmd.args(["run", script.to_str().unwrap()]);
     cmd.assert()
@@ -53,7 +53,7 @@ fn run_requires_bars_argument() {
 }
 
 #[test]
-fn run_rejects_invalid_base_interval() {
+fn run_rejects_missing_interval_directive() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.trl", "plot(close)");
     let bars = write_file(
@@ -67,18 +67,20 @@ fn run_rejects_invalid_base_interval() {
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
-        "--base-interval",
-        "1W",
     ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("invalid interval `1W`"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "strategy must declare exactly one `interval <...>` directive",
+    ));
 }
 
 #[test]
 fn run_rejects_malformed_feed_argument() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(1w.close)");
+    let script = write_file(
+        dir.path(),
+        "script.trl",
+        "interval 1d\nuse 1w\nplot(1w.close)",
+    );
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -90,8 +92,6 @@ fn run_rejects_malformed_feed_argument() {
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
-        "--base-interval",
-        "1d",
         "--feed",
         "1w",
     ]);
@@ -103,7 +103,7 @@ fn run_rejects_malformed_feed_argument() {
 #[test]
 fn check_reports_success_for_valid_script() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "valid.trl", "plot(sma(close, 3))");
+    let script = write_file(dir.path(), "valid.trl", "interval 1m\nplot(sma(close, 3))");
     let mut cmd = tradelang_cmd();
     cmd.args(["check", script.to_str().unwrap()]);
     cmd.assert()
@@ -114,7 +114,11 @@ fn check_reports_success_for_valid_script() {
 #[test]
 fn check_reports_compile_diagnostics() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "invalid.trl", "if true { plot(1) }");
+    let script = write_file(
+        dir.path(),
+        "invalid.trl",
+        "interval 1m\nif true { plot(1) }",
+    );
     let mut cmd = tradelang_cmd();
     cmd.args(["check", script.to_str().unwrap()]);
     cmd.assert()
@@ -128,7 +132,7 @@ fn check_supports_compile_environment_files() {
     let script = write_file(
         dir.path(),
         "consumer.trl",
-        "if trend { plot(1) } else { plot(0) }",
+        "interval 1m\nif trend { plot(1) } else { plot(0) }",
     );
     let env = write_file(
         dir.path(),
@@ -148,7 +152,7 @@ fn check_supports_compile_environment_files() {
 #[test]
 fn run_executes_single_interval_script_and_prints_json_by_default() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(close[1])");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close[1])");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -163,8 +167,6 @@ fn run_executes_single_interval_script_and_prints_json_by_default() {
             script.to_str().unwrap(),
             "--bars",
             bars.to_str().unwrap(),
-            "--base-interval",
-            "1m",
         ])
         .output()
         .expect("run command executes");
@@ -177,7 +179,11 @@ fn run_executes_single_interval_script_and_prints_json_by_default() {
 #[test]
 fn run_executes_multi_interval_script() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(1w.close)");
+    let script = write_file(
+        dir.path(),
+        "script.trl",
+        "interval 1d\nuse 1w\nplot(1w.close)",
+    );
     let base = write_file(
         dir.path(),
         "base.csv",
@@ -202,8 +208,6 @@ fn run_executes_multi_interval_script() {
             script.to_str().unwrap(),
             "--bars",
             base.to_str().unwrap(),
-            "--base-interval",
-            "1d",
             "--feed",
             &format!("1w={}", weekly.display()),
         ])
@@ -218,7 +222,11 @@ fn run_executes_multi_interval_script() {
 #[test]
 fn run_reports_missing_supplemental_feed_errors() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(1w.close)");
+    let script = write_file(
+        dir.path(),
+        "script.trl",
+        "interval 1d\nuse 1w\nplot(1w.close)",
+    );
     let base = write_file(
         dir.path(),
         "base.csv",
@@ -230,8 +238,6 @@ fn run_reports_missing_supplemental_feed_errors() {
         script.to_str().unwrap(),
         "--bars",
         base.to_str().unwrap(),
-        "--base-interval",
-        "1d",
     ]);
     cmd.assert()
         .failure()
@@ -241,7 +247,7 @@ fn run_reports_missing_supplemental_feed_errors() {
 #[test]
 fn run_rejects_invalid_csv_rows() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(close)");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -253,8 +259,6 @@ fn run_rejects_invalid_csv_rows() {
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
-        "--base-interval",
-        "1m",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "must contain 6 comma-separated fields",
@@ -264,7 +268,7 @@ fn run_rejects_invalid_csv_rows() {
 #[test]
 fn run_rejects_invalid_timestamps() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(close)");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
     let bars = write_file(
         dir.path(),
         "bars.csv",
@@ -276,8 +280,6 @@ fn run_rejects_invalid_timestamps() {
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
-        "--base-interval",
-        "1m",
     ]);
     cmd.assert()
         .failure()
@@ -290,7 +292,7 @@ fn run_supports_text_output() {
     let script = write_file(
         dir.path(),
         "script.trl",
-        "export rising = close > close[1]\ntrigger long = close > open\nplot(close)",
+        "interval 1m\nexport rising = close > close[1]\ntrigger long = close > open\nplot(close)",
     );
     let bars = write_file(
         dir.path(),
@@ -306,8 +308,6 @@ fn run_supports_text_output() {
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
-        "--base-interval",
-        "1m",
         "--format",
         "text",
     ]);
@@ -322,11 +322,12 @@ fn run_supports_text_output() {
 #[test]
 fn dump_bytecode_text_contains_sections() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(sma(close, 3))");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(sma(close, 3))");
     let mut cmd = tradelang_cmd();
     cmd.args(["dump-bytecode", script.to_str().unwrap()]);
     cmd.assert()
         .success()
+        .stdout(predicate::str::contains("Strategy Intervals"))
         .stdout(predicate::str::contains("Constants"))
         .stdout(predicate::str::contains("Locals"))
         .stdout(predicate::str::contains("Instructions"));
@@ -335,7 +336,7 @@ fn dump_bytecode_text_contains_sections() {
 #[test]
 fn dump_bytecode_json_serializes_compiled_program() {
     let dir = tempdir().expect("tempdir");
-    let script = write_file(dir.path(), "script.trl", "plot(close)");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
     let output = tradelang_cmd()
         .args([
             "dump-bytecode",
@@ -349,6 +350,7 @@ fn dump_bytecode_json_serializes_compiled_program() {
     let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
     assert!(json["program"]["instructions"].is_array());
     assert!(json["program"]["locals"].is_array());
+    assert_eq!(json["program"]["base_interval"], Value::from("Min1"));
 }
 
 #[test]
@@ -357,7 +359,7 @@ fn dump_bytecode_supports_compile_environment_files() {
     let script = write_file(
         dir.path(),
         "consumer.trl",
-        "if trend { plot(1) } else { plot(0) }",
+        "interval 1m\nif trend { plot(1) } else { plot(0) }",
     );
     let env = write_file(
         dir.path(),
@@ -393,8 +395,6 @@ fn checked_in_single_interval_example_runs_via_cli() {
                 .unwrap(),
             "--bars",
             repo_path("examples/data/minute_bars.csv").to_str().unwrap(),
-            "--base-interval",
-            "1m",
         ])
         .output()
         .expect("run command executes");
@@ -414,8 +414,6 @@ fn checked_in_multi_interval_example_runs_via_cli() {
                 .unwrap(),
             "--bars",
             repo_path("examples/data/daily_bars.csv").to_str().unwrap(),
-            "--base-interval",
-            "1d",
             "--feed",
             &format!(
                 "1w={}",

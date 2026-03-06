@@ -1,3 +1,5 @@
+interval 1m
+
 // Single-interval breakout example with explicit trigger output.
 let breakout = close > high[1]
 let rising_volume = volume > volume[1]

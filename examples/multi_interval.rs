@@ -4,8 +4,7 @@ mod support;
 use tradelang::{compile, run_multi_interval, Interval, MultiIntervalConfig, VmLimits};
 
 fn main() {
-    let source =
-        "let weekly_basis = ema(1w.close, 2)\nif close > weekly_basis { plot(1) } else { plot(0) }";
+    let source = "interval 1d\nuse 1w\nlet weekly_basis = ema(1w.close, 2)\nif close > weekly_basis { plot(1) } else { plot(0) }";
     let compiled = compile(source).expect("script compiles");
     let base_bars = support::flat_bars(
         support::JAN_1_2024_UTC_MS,

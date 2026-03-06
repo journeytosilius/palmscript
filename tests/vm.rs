@@ -10,6 +10,21 @@ use tradelang::{
     compile_with_env, ExternalInputKind, Interval, MarketBinding, MarketField, MarketSource, Type,
 };
 
+fn with_interval(source: &str) -> String {
+    format!("interval 1m\n{source}")
+}
+
+fn with_intervals(base: &str, supplemental: &[&str], source: &str) -> String {
+    let mut script = format!("interval {base}\n");
+    for interval in supplemental {
+        script.push_str("use ");
+        script.push_str(interval);
+        script.push('\n');
+    }
+    script.push_str(source);
+    script
+}
+
 fn empty_locals() -> Vec<LocalInfo> {
     vec![
         LocalInfo::series(
@@ -97,8 +112,9 @@ fn logic_literal(value: &str) -> &'static str {
 
 fn evaluate_logic(op: &str, left: &str, right: &str) -> Option<f64> {
     let expr = format!("{} {} {}", logic_literal(left), op, logic_literal(right));
-    let script =
-        format!("if {expr} {{ plot(1) }} else if !({expr}) {{ plot(2) }} else {{ plot(3) }}");
+    let script = with_interval(&format!(
+        "if {expr} {{ plot(1) }} else if !({expr}) {{ plot(2) }} else {{ plot(3) }}"
+    ));
     let compiled = tradelang::compile(&script).expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     outputs.plots[0].points[0].value
@@ -121,6 +137,8 @@ fn tiny_program_push_add_plot_executes() {
         locals: empty_locals(),
         external_inputs: vec![],
         outputs: vec![],
+        base_interval: None,
+        declared_intervals: vec![],
         history_capacity: 2,
         plot_count: 1,
     };
@@ -143,6 +161,8 @@ fn stack_underflow_is_reported() {
         locals: empty_locals(),
         external_inputs: vec![],
         outputs: vec![],
+        base_interval: None,
+        declared_intervals: vec![],
         history_capacity: 2,
         plot_count: 0,
     };
@@ -165,6 +185,8 @@ fn invalid_jump_is_reported() {
         locals: empty_locals(),
         external_inputs: vec![],
         outputs: vec![],
+        base_interval: None,
+        declared_intervals: vec![],
         history_capacity: 2,
         plot_count: 0,
     };
@@ -178,7 +200,8 @@ fn invalid_jump_is_reported() {
 
 #[test]
 fn instruction_budget_exhaustion_is_reported() {
-    let compiled = tradelang::compile("plot(sma(close, 5))").expect("script should compile");
+    let compiled =
+        tradelang::compile(&with_interval("plot(sma(close, 5))")).expect("script should compile");
     let fixture = vec![
         Bar {
             open: 1.0,
@@ -247,17 +270,20 @@ fn or_truth_table_matches_spec() {
 
 #[test]
 fn logical_precedence_matches_spec() {
-    let compiled = tradelang::compile("if true or false and false { plot(1) } else { plot(0) }")
-        .expect("script should compile");
+    let compiled = tradelang::compile(&with_interval(
+        "if true or false and false { plot(1) } else { plot(0) }",
+    ))
+    .expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     assert_eq!(outputs.plots[0].points[0].value, Some(1.0));
 }
 
 #[test]
 fn else_if_selects_the_first_matching_branch() {
-    let compiled =
-        tradelang::compile("if false { plot(0) } else if true { plot(1) } else { plot(2) }")
-            .expect("script should compile");
+    let compiled = tradelang::compile(&with_interval(
+        "if false { plot(0) } else if true { plot(1) } else { plot(2) }",
+    ))
+    .expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     assert_eq!(outputs.plots[0].points[0].value, Some(1.0));
 }
@@ -303,12 +329,14 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
 
 #[test]
 fn user_function_inlining_matches_inline_expression() {
-    let helper = tradelang::compile(
+    let helper = tradelang::compile(&with_interval(
         "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
-    )
+    ))
     .expect("helper script should compile");
-    let inline = tradelang::compile("if close > close[1] { plot(1) } else { plot(0) }")
-        .expect("inline script should compile");
+    let inline = tradelang::compile(&with_interval(
+        "if close > close[1] { plot(1) } else { plot(0) }",
+    ))
+    .expect("inline script should compile");
     let helper_outputs = run(&helper, &fixture_bars(), VmLimits::default()).expect("helper runs");
     let inline_outputs = run(&inline, &fixture_bars(), VmLimits::default()).expect("inline runs");
     assert_eq!(helper_outputs, inline_outputs);
@@ -317,7 +345,9 @@ fn user_function_inlining_matches_inline_expression() {
 #[test]
 fn nested_user_functions_execute_over_indicators() {
     let compiled = tradelang::compile(
-        "fn crossover(a, b) = a > b and a[1] <= b[1]\nfn long_signal(fast, slow) = crossover(fast, slow) or fast > slow\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif long_signal(fast, slow) { plot(1) } else { plot(0) }",
+        &with_interval(
+            "fn crossover(a, b) = a > b and a[1] <= b[1]\nfn long_signal(fast, slow) = crossover(fast, slow) or fast > slow\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif long_signal(fast, slow) { plot(1) } else { plot(0) }",
+        ),
     )
     .expect("script should compile");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script should run");
@@ -327,22 +357,24 @@ fn nested_user_functions_execute_over_indicators() {
 
 #[test]
 fn user_function_with_na_result_preserves_null_plot() {
-    let compiled =
-        tradelang::compile("fn missing() = na\nplot(missing())").expect("script should compile");
+    let compiled = tradelang::compile(&with_interval("fn missing() = na\nplot(missing())"))
+        .expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     assert_eq!(outputs.plots[0].points[0].value, None);
 }
 
 #[test]
 fn qualified_series_requires_multi_interval_config() {
-    let compiled = tradelang::compile("plot(1h.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
+        .expect("script should compile");
     let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("config required");
     assert!(matches!(err, RuntimeError::MissingIntervalConfig));
 }
 
 #[test]
 fn lower_interval_references_are_rejected() {
-    let compiled = tradelang::compile("plot(1m.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1h", &["1m"], "plot(1m.close)"))
+        .expect("script should compile");
     let err = run_multi_interval(
         &compiled,
         &bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[1.0, 2.0]),
@@ -364,7 +396,8 @@ fn lower_interval_references_are_rejected() {
 
 #[test]
 fn hourly_series_only_updates_on_hour_close_boundaries() {
-    let compiled = tradelang::compile("plot(1h.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
+        .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0; 120]);
     let hourly = bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[100.0, 200.0]);
     let outputs = run_multi_interval(
@@ -388,7 +421,8 @@ fn hourly_series_only_updates_on_hour_close_boundaries() {
 
 #[test]
 fn minute_series_only_updates_on_minute_close_boundaries_from_seconds() {
-    let compiled = tradelang::compile("plot(1m.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1s", &["1m"], "plot(1m.close)"))
+        .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, SECOND_MS, &[1.0; 120]);
     let minute = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 20.0]);
     let outputs = run_multi_interval(
@@ -411,7 +445,8 @@ fn minute_series_only_updates_on_minute_close_boundaries_from_seconds() {
 
 #[test]
 fn weekly_series_only_updates_on_week_close_boundaries() {
-    let compiled = tradelang::compile("plot(1w.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1d", &["1w"], "plot(1w.close)"))
+        .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[1.0; 14]);
     let weekly = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[10.0, 20.0]);
     let outputs = run_multi_interval(
@@ -435,7 +470,8 @@ fn weekly_series_only_updates_on_week_close_boundaries() {
 
 #[test]
 fn monthly_series_uses_calendar_close_boundaries() {
-    let compiled = tradelang::compile("plot(1M.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1w", &["1M"], "plot(1M.close)"))
+        .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
     let monthly = bars_with_spacing(
         JAN_1_2024_UTC_MS,
@@ -461,7 +497,8 @@ fn monthly_series_uses_calendar_close_boundaries() {
 
 #[test]
 fn missing_interval_bars_become_na_steps() {
-    let compiled = tradelang::compile("plot(1d.close)").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1h", &["1d"], "plot(1d.close)"))
+        .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[1.0; 72]);
     let daily = vec![
         bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[10.0])[0],
@@ -490,7 +527,8 @@ fn missing_interval_bars_become_na_steps() {
 
 #[test]
 fn insufficient_history_capacity_rejects_at_engine_construction() {
-    let compiled = tradelang::compile("plot(1w.close[3])").expect("script should compile");
+    let compiled = tradelang::compile(&with_intervals("1d", &["1w"], "plot(1w.close[3])"))
+        .expect("script should compile");
     let err = run_multi_interval(
         &compiled,
         &bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[1.0; 28]),
@@ -519,8 +557,8 @@ fn insufficient_history_capacity_rejects_at_engine_construction() {
 
 #[test]
 fn exports_are_recorded_each_bar() {
-    let compiled =
-        tradelang::compile("export trend = close > close[1]\nplot(0)").expect("script compiles");
+    let compiled = tradelang::compile(&with_interval("export trend = close > close[1]\nplot(0)"))
+        .expect("script compiles");
     let outputs = run(
         &compiled,
         &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0]),
@@ -546,8 +584,10 @@ fn exports_are_recorded_each_bar() {
 
 #[test]
 fn triggers_emit_samples_and_events() {
-    let compiled = tradelang::compile("trigger long_entry = close > close[1]\nplot(0)")
-        .expect("script compiles");
+    let compiled = tradelang::compile(&with_interval(
+        "trigger long_entry = close > close[1]\nplot(0)",
+    ))
+    .expect("script compiles");
     let outputs = run(
         &compiled,
         &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 12.0]),
@@ -570,7 +610,8 @@ fn external_inputs_support_indexing_and_indicators() {
             kind: ExternalInputKind::ExportSeries,
         }],
     };
-    let compiled = compile_with_env("plot(ema(trend, 2) + trend[1])", &env).expect("compiles");
+    let compiled =
+        compile_with_env(&with_interval("plot(ema(trend, 2) + trend[1])"), &env).expect("compiles");
     let bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0, 1.0, 1.0]);
     let mut engine = Engine::try_new(compiled, VmLimits::default()).expect("engine builds");
     let inputs = [[Value::F64(10.0)], [Value::F64(12.0)], [Value::F64(14.0)]];
@@ -596,8 +637,11 @@ fn missing_external_inputs_reject_at_runtime() {
             kind: ExternalInputKind::ExportSeries,
         }],
     };
-    let compiled =
-        compile_with_env("if trend { plot(1) } else { plot(0) }", &env).expect("compiles");
+    let compiled = compile_with_env(
+        &with_interval("if trend { plot(1) } else { plot(0) }"),
+        &env,
+    )
+    .expect("compiles");
     let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("missing input");
     assert!(matches!(
         err,

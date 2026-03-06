@@ -4,8 +4,8 @@
 //! parse diagnostics instead of emitting bytecode directly.
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, FunctionParam, NodeId, Stmt, StmtKind,
-    UnaryOp,
+    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl, NodeId, Stmt,
+    StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -36,11 +36,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse(mut self) -> Result<Ast, CompileError> {
+        let mut strategy_intervals = StrategyIntervals::default();
         let mut functions = Vec::new();
         let mut statements = Vec::new();
         self.skip_separators();
         while !self.is_eof() {
             match self.parse_item() {
+                Some(ParsedItem::BaseInterval(decl)) => strategy_intervals.base.push(decl),
+                Some(ParsedItem::UseInterval(decl)) => strategy_intervals.supplemental.push(decl),
                 Some(ParsedItem::Function(function)) => functions.push(function),
                 Some(ParsedItem::Stmt(stmt)) => statements.push(stmt),
                 None => self.synchronize(),
@@ -50,6 +53,7 @@ impl<'a> Parser<'a> {
 
         if self.diagnostics.is_empty() {
             Ok(Ast {
+                strategy_intervals,
                 functions,
                 statements,
             })
@@ -59,6 +63,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> Option<ParsedItem> {
+        if self.matches_keyword(&TokenKind::IntervalKw) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "interval directives are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_interval_decl(true).map(ParsedItem::BaseInterval);
+        }
+        if self.matches_keyword(&TokenKind::Use) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "interval directives are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_interval_decl(false).map(ParsedItem::UseInterval);
+        }
         if self.matches_keyword(&TokenKind::Fn) {
             return self.parse_function_decl().map(ParsedItem::Function);
         }
@@ -69,6 +93,13 @@ impl<'a> Parser<'a> {
         if self.matches_keyword(&TokenKind::Fn) {
             self.push_diagnostic(
                 "function declarations are only allowed at the top level",
+                self.previous().span,
+            );
+            return None;
+        }
+        if self.matches_keyword(&TokenKind::IntervalKw) || self.matches_keyword(&TokenKind::Use) {
+            self.push_diagnostic(
+                "interval directives are only allowed at the top level",
                 self.previous().span,
             );
             return None;
@@ -181,6 +212,25 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span,
             kind: StmtKind::Let { name, expr },
+        })
+    }
+
+    fn parse_interval_decl(&mut self, base: bool) -> Option<IntervalDecl> {
+        let start = self.previous().span;
+        let token = self.expect_kind(
+            |kind| matches!(kind, TokenKind::Interval(_)),
+            if base {
+                "expected interval literal after `interval`"
+            } else {
+                "expected interval literal after `use`"
+            },
+        )?;
+        let TokenKind::Interval(interval) = token.kind else {
+            unreachable!();
+        };
+        Some(IntervalDecl {
+            interval,
+            span: start.merge(token.span),
         })
     }
 
@@ -545,6 +595,8 @@ impl<'a> Parser<'a> {
 }
 
 enum ParsedItem {
+    BaseInterval(IntervalDecl),
+    UseInterval(IntervalDecl),
     Function(FunctionDecl),
     Stmt(Stmt),
 }
