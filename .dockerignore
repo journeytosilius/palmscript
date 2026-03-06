@@ -1,0 +1,12 @@
+.git
+.github
+target
+site
+.venv-docs
+editors/vscode/node_modules
+editors/vscode/out
+editors/vscode/.vscode-test
+__pycache__
+*.pyc
+palmscript
+tradelang

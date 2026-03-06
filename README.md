@@ -31,4 +31,5 @@ cargo build --bin palmscript --bin palmscript-lsp
 target/debug/palmscript check examples/strategies/sma_cross.trl
 target/debug/palmscript run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
 mkdocs build --strict
+docker build -f Dockerfile.docs -t palmscript-docs .
 ```

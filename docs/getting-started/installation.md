@@ -41,6 +41,35 @@ make docs-serve
 make docs-build-strict
 ```
 
+## Serve Documentation with Docker and nginx
+
+The repository also provides a dedicated docs container image. It builds the MkDocs site and serves the static output through nginx.
+
+Build the image:
+
+```bash
+docker build -f Dockerfile.docs -t palmscript-docs .
+```
+
+Run it locally:
+
+```bash
+docker run --rm -p 8080:8080 palmscript-docs
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8080
+```
+
+Equivalent `Makefile` helpers:
+
+```bash
+make docs-docker-build
+make docs-docker-run
+```
+
 ## Install VS Code Extension Dependencies
 
 ```bash
