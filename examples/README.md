@@ -14,11 +14,13 @@ cargo run --example pipeline
 Each example compiles a TradeLang script, runs it against a small OHLCV fixture,
 and prints the resulting outputs.
 
-For direct script execution outside Rust examples, use the CLI:
+For direct script execution outside Rust examples, use the CLI CSV mode. The
+single `--bars` file is treated as raw market data and rolled up automatically
+to the strategy's declared `interval` and `use` intervals when possible:
 
 ```bash
 tradelang check strategy.trl
-tradelang run strategy.trl --bars bars.csv
+tradelang run csv strategy.trl --bars bars.csv
 tradelang dump-bytecode strategy.trl
 ```
 
@@ -39,16 +41,15 @@ Suggested commands:
 
 ```bash
 ./tradelang check examples/strategies/sma_cross.trl
-./tradelang run examples/strategies/sma_cross.trl \
+./tradelang run csv examples/strategies/sma_cross.trl \
   --bars examples/data/minute_bars.csv
 
-./tradelang run examples/strategies/volume_breakout.trl \
+./tradelang run csv examples/strategies/volume_breakout.trl \
   --bars examples/data/minute_bars.csv \
   --format text
 
-./tradelang run examples/strategies/weekly_bias.trl \
-  --bars examples/data/daily_bars.csv \
-  --feed 1w=examples/data/weekly_bars.csv
+./tradelang run csv examples/strategies/weekly_bias.trl \
+  --bars examples/data/daily_bars.csv
 ```
 
 Current CLI-ready strategies:

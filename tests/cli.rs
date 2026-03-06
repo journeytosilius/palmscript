@@ -42,11 +42,20 @@ fn help_prints_usage() {
 }
 
 #[test]
+fn run_help_mentions_csv_mode() {
+    let mut cmd = tradelang_cmd();
+    cmd.args(["run", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("csv"));
+}
+
+#[test]
 fn run_requires_bars_argument() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
     let mut cmd = tradelang_cmd();
-    cmd.args(["run", script.to_str().unwrap()]);
+    cmd.args(["run", "csv", script.to_str().unwrap()]);
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("--bars"));
@@ -64,6 +73,7 @@ fn run_rejects_missing_interval_directive() {
     let mut cmd = tradelang_cmd();
     cmd.args([
         "run",
+        "csv",
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
@@ -74,7 +84,7 @@ fn run_rejects_missing_interval_directive() {
 }
 
 #[test]
-fn run_rejects_malformed_feed_argument() {
+fn run_rejects_removed_feed_argument() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
@@ -89,15 +99,16 @@ fn run_rejects_malformed_feed_argument() {
     let mut cmd = tradelang_cmd();
     cmd.args([
         "run",
+        "csv",
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
         "--feed",
-        "1w",
+        "1w=weekly.csv",
     ]);
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("feed must use <interval=path>"));
+        .stderr(predicate::str::contains("unexpected argument '--feed'"));
 }
 
 #[test]
@@ -164,6 +175,7 @@ fn run_executes_single_interval_script_and_prints_json_by_default() {
     let output = tradelang_cmd()
         .args([
             "run",
+            "csv",
             script.to_str().unwrap(),
             "--bars",
             bars.to_str().unwrap(),
@@ -188,28 +200,22 @@ fn run_executes_multi_interval_script() {
         dir.path(),
         "base.csv",
         &bars_csv(&[
-            "1704067200000,1,2,0.5,1.5,10",
-            "1704153600000,1,2,0.5,1.5,10",
-            "1704240000000,1,2,0.5,1.5,10",
-            "1704326400000,1,2,0.5,1.5,10",
-            "1704412800000,1,2,0.5,1.5,10",
-            "1704499200000,1,2,0.5,1.5,10",
-            "1704585600000,1,2,0.5,1.5,10",
+            "1704067200000,1,2,0.5,1.0,10",
+            "1704153600000,1,2,0.5,2.0,10",
+            "1704240000000,1,2,0.5,3.0,10",
+            "1704326400000,1,2,0.5,4.0,10",
+            "1704412800000,1,2,0.5,5.0,10",
+            "1704499200000,1,2,0.5,6.0,10",
+            "1704585600000,1,2,0.5,10.0,10",
         ]),
-    );
-    let weekly = write_file(
-        dir.path(),
-        "weekly.csv",
-        &bars_csv(&["1704067200000,9,11,8,10,100"]),
     );
     let output = tradelang_cmd()
         .args([
             "run",
+            "csv",
             script.to_str().unwrap(),
             "--bars",
             base.to_str().unwrap(),
-            "--feed",
-            &format!("1w={}", weekly.display()),
         ])
         .output()
         .expect("run command executes");
@@ -220,7 +226,7 @@ fn run_executes_multi_interval_script() {
 }
 
 #[test]
-fn run_reports_missing_supplemental_feed_errors() {
+fn run_rejects_incomplete_rollup_bucket() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
@@ -230,18 +236,52 @@ fn run_reports_missing_supplemental_feed_errors() {
     let base = write_file(
         dir.path(),
         "base.csv",
-        &bars_csv(&["1704067200000,1,2,0.5,1.5,10"]),
+        &bars_csv(&[
+            "1704067200000,1,2,0.5,1.0,10",
+            "1704153600000,1,2,0.5,2.0,10",
+            "1704240000000,1,2,0.5,3.0,10",
+            "1704326400000,1,2,0.5,4.0,10",
+            "1704412800000,1,2,0.5,5.0,10",
+            "1704499200000,1,2,0.5,6.0,10",
+        ]),
     );
     let mut cmd = tradelang_cmd();
     cmd.args([
         "run",
+        "csv",
         script.to_str().unwrap(),
         "--bars",
         base.to_str().unwrap(),
     ]);
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("missing interval feed"));
+        .stderr(predicate::str::contains("CSV mode error"))
+        .stderr(predicate::str::contains("incomplete rollup bucket"));
+}
+
+#[test]
+fn run_rejects_raw_input_that_is_too_coarse() {
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
+    let bars = write_file(
+        dir.path(),
+        "bars.csv",
+        &bars_csv(&[
+            "1704067200000,1,2,0.5,1.5,10",
+            "1704153600000,2,3,1.5,2.5,11",
+        ]),
+    );
+    let mut cmd = tradelang_cmd();
+    cmd.args([
+        "run",
+        "csv",
+        script.to_str().unwrap(),
+        "--bars",
+        bars.to_str().unwrap(),
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "raw input interval Day1 is too coarse",
+    ));
 }
 
 #[test]
@@ -256,6 +296,7 @@ fn run_rejects_invalid_csv_rows() {
     let mut cmd = tradelang_cmd();
     cmd.args([
         "run",
+        "csv",
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
@@ -277,6 +318,7 @@ fn run_rejects_invalid_timestamps() {
     let mut cmd = tradelang_cmd();
     cmd.args([
         "run",
+        "csv",
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
@@ -305,6 +347,7 @@ fn run_supports_text_output() {
     let mut cmd = tradelang_cmd();
     cmd.args([
         "run",
+        "csv",
         script.to_str().unwrap(),
         "--bars",
         bars.to_str().unwrap(),
@@ -390,6 +433,7 @@ fn checked_in_single_interval_example_runs_via_cli() {
     let output = tradelang_cmd()
         .args([
             "run",
+            "csv",
             repo_path("examples/strategies/sma_cross.trl")
                 .to_str()
                 .unwrap(),
@@ -409,16 +453,12 @@ fn checked_in_multi_interval_example_runs_via_cli() {
     let output = tradelang_cmd()
         .args([
             "run",
+            "csv",
             repo_path("examples/strategies/weekly_bias.trl")
                 .to_str()
                 .unwrap(),
             "--bars",
             repo_path("examples/data/daily_bars.csv").to_str().unwrap(),
-            "--feed",
-            &format!(
-                "1w={}",
-                repo_path("examples/data/weekly_bars.csv").display()
-            ),
         ])
         .output()
         .expect("run command executes");

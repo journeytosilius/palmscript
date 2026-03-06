@@ -2,26 +2,32 @@ use std::fs;
 use std::path::Path;
 
 use tradelang::{
-    compile, compile_with_env, run_multi_interval, CompileEnvironment, CompiledProgram,
-    MultiIntervalConfig, RuntimeError, VmLimits,
+    compile, compile_with_env, prepare_csv_inputs_for_program, run_multi_interval,
+    CompileEnvironment, CompiledProgram, RuntimeError, VmLimits,
 };
 
 use crate::args::{
-    BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs, OutputFormat, RunArgs,
+    BytecodeFormat, CheckArgs, Cli, Command, CsvRunArgs, DumpBytecodeArgs, OutputFormat, RunCommand,
 };
-use crate::data::{load_bars_csv, load_compile_env, load_interval_feed};
-use crate::diagnostics::{format_compile_error, format_runtime_error};
+use crate::data::{load_bars_csv, load_compile_env};
+use crate::diagnostics::{format_compile_error, format_data_prep_error, format_runtime_error};
 use crate::format::{render_bytecode_text, render_outputs_text};
 
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
-        Command::Run(args) => run_script(args),
+        Command::Run { mode } => run_mode(mode),
         Command::Check(args) => check_script(args),
         Command::DumpBytecode(args) => dump_bytecode(args),
     }
 }
 
-fn run_script(args: RunArgs) -> Result<(), String> {
+fn run_mode(mode: RunCommand) -> Result<(), String> {
+    match mode {
+        RunCommand::Csv(args) => run_csv(args),
+    }
+}
+
+fn run_csv(args: CsvRunArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
     let compiled = compile(&source).map_err(|err| format_compile_error(&args.script, &err))?;
     if !compiled.program.external_inputs.is_empty() {
@@ -29,24 +35,13 @@ fn run_script(args: RunArgs) -> Result<(), String> {
             "scripts with external inputs must run through the future pipeline command".to_string(),
         );
     }
-    let base_interval = compiled
-        .program
-        .base_interval
-        .ok_or_else(|| "compiled strategy is missing a base interval declaration".to_string())?;
-
-    let base_bars = load_bars_csv(&args.bars)?;
-    let supplemental = args
-        .feeds
-        .iter()
-        .map(|feed| load_interval_feed(feed.interval, &feed.path))
-        .collect::<Result<Vec<_>, _>>()?;
+    let raw_bars = load_bars_csv(&args.bars)?;
+    let prepared = prepare_csv_inputs_for_program(&compiled, raw_bars)
+        .map_err(|err| format_data_prep_error(&err))?;
     let outputs = run_multi_interval(
         &compiled,
-        &base_bars,
-        MultiIntervalConfig {
-            base_interval,
-            supplemental,
-        },
+        &prepared.base_bars,
+        prepared.config,
         VmLimits {
             max_instructions_per_bar: args.max_instructions_per_bar,
             max_history_capacity: args.max_history_capacity,

@@ -51,6 +51,37 @@ impl CompileError {
     }
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DataPrepError {
+    #[error("CSV mode could not infer an input interval from bar timestamps")]
+    CannotInferInputInterval,
+    #[error("compiled strategy is missing a base interval declaration")]
+    MissingBaseIntervalDeclaration,
+    #[error("raw input interval {raw:?} is too coarse for required interval {required:?}")]
+    RawIntervalTooCoarse { raw: Interval, required: Interval },
+    #[error("cannot roll raw input interval {raw:?} into target interval {target:?}")]
+    UnsupportedRollupPath { raw: Interval, target: Interval },
+    #[error("input data does not contain enough complete bars for interval {interval:?}")]
+    InsufficientDataForInterval { interval: Interval },
+    #[error("incomplete rollup bucket for {target:?} at open time {bucket_open_time}: expected {expected} {raw:?} bar(s), found {found}")]
+    IncompleteRollupBucket {
+        raw: Interval,
+        target: Interval,
+        bucket_open_time: i64,
+        expected: usize,
+        found: usize,
+    },
+    #[error("input bars are not strictly increasing: previous time {previous_time}, current time {current_time}")]
+    UnsortedInputBars {
+        previous_time: i64,
+        current_time: i64,
+    },
+    #[error("input bars contain a duplicate timestamp at {time}")]
+    DuplicateInputBarTime { time: i64 },
+    #[error("input bar time {time} is invalid")]
+    InvalidInputBarTime { time: i64 },
+}
+
 #[derive(Debug, Error, PartialEq)]
 pub enum RuntimeError {
     #[error("instruction budget exhausted at bar {bar_index}, pc {pc}")]

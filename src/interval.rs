@@ -248,6 +248,25 @@ impl Interval {
                 .and_then(|duration| open_time_ms.checked_add(duration)),
         }
     }
+
+    pub fn bucket_open_time(self, time_ms: i64) -> Option<i64> {
+        match self {
+            Self::Week1 => {
+                let (days, remainder) = split_days(time_ms);
+                let day_start = time_ms - remainder;
+                Some(day_start - weekday_monday_based(days) * DAY_MS)
+            }
+            Self::Month1 => {
+                let (days, remainder) = split_days(time_ms);
+                let _ = remainder;
+                let (year, month, _day) = civil_from_days(days);
+                Some(days_from_civil(year, month, 1) * DAY_MS)
+            }
+            _ => self
+                .fixed_duration_ms()
+                .map(|duration| time_ms - time_ms.rem_euclid(duration)),
+        }
+    }
 }
 
 impl MarketField {
@@ -364,5 +383,21 @@ mod tests {
     fn month_alignment_uses_first_day_at_midnight_utc() {
         assert!(Interval::Month1.is_aligned(1_704_067_200_000));
         assert!(!Interval::Month1.is_aligned(1_704_153_600_000));
+    }
+
+    #[test]
+    fn bucket_open_time_floors_to_interval_boundary() {
+        assert_eq!(
+            Interval::Min1.bucket_open_time(1_704_067_261_234),
+            Some(1_704_067_260_000)
+        );
+        assert_eq!(
+            Interval::Week1.bucket_open_time(1_704_240_000_000),
+            Some(1_704_067_200_000)
+        );
+        assert_eq!(
+            Interval::Month1.bucket_open_time(1_706_832_000_000),
+            Some(1_706_745_600_000)
+        );
     }
 }

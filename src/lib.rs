@@ -9,6 +9,7 @@ pub mod ast;
 pub mod builtins;
 pub mod bytecode;
 pub mod compiler;
+pub mod data_prep;
 pub mod diagnostic;
 mod indicators;
 pub mod interval;
@@ -26,7 +27,8 @@ pub use bytecode::{ExternalInputKind, OutputDecl, OutputKind};
 pub use compiler::{
     compile, compile_with_env, CompileEnvironment, CompiledProgram, ExternalInputDecl,
 };
-pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
+pub use data_prep::{infer_input_interval, prepare_csv_inputs_for_program, PreparedInputs};
+pub use diagnostic::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use interval::{Interval, MarketBinding, MarketField, MarketSource, INTERVAL_SPECS};
 pub use output::{
     Alert, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,

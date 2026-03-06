@@ -1,20 +1,13 @@
 use std::fs;
 use std::path::Path;
 
-use tradelang::{Bar, CompileEnvironment, Interval, IntervalFeed};
+use tradelang::{Bar, CompileEnvironment};
 
 pub fn load_compile_env(path: &Path) -> Result<CompileEnvironment, String> {
     let raw = fs::read_to_string(path)
         .map_err(|err| format!("failed to read `{}`: {err}", path.display()))?;
     serde_json::from_str(&raw)
         .map_err(|err| format!("failed to parse compile env `{}`: {err}", path.display()))
-}
-
-pub fn load_interval_feed(interval: Interval, path: &Path) -> Result<IntervalFeed, String> {
-    Ok(IntervalFeed {
-        interval,
-        bars: load_bars_csv(path)?,
-    })
 }
 
 pub fn load_bars_csv(path: &Path) -> Result<Vec<Bar>, String> {

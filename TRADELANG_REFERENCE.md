@@ -870,11 +870,13 @@ Each export/trigger sample contains:
 
 Examples of generated output are available under `examples/`.
 
-The official CLI can also execute scripts directly:
+The official CLI can also execute scripts directly through CSV mode. In CSV
+mode, one raw `--bars` file is loaded and rolled up automatically to the
+strategy's declared base and supplemental intervals when possible:
 
 ```bash
 tradelang check strategy.trl
-tradelang run strategy.trl --bars bars.csv
+tradelang run csv strategy.trl --bars bars.csv
 tradelang dump-bytecode strategy.trl
 ```
 
