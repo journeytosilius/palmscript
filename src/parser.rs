@@ -730,7 +730,11 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_kind(&self) -> &TokenKind {
-        &self.tokens[self.cursor].kind
+        &self
+            .tokens
+            .get(self.cursor)
+            .unwrap_or_else(|| self.tokens.last().expect("parser requires EOF token"))
+            .kind
     }
 
     fn is_eof(&self) -> bool {

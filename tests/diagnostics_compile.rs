@@ -1,0 +1,389 @@
+use palmscript::DiagnosticKind;
+
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{assert_compile_diagnostics, compile_diagnostics, ExpectedDiagnostic};
+
+fn with_interval(source: &str) -> String {
+    format!("interval 1m\n{source}")
+}
+
+fn with_sources(source: &str) -> String {
+    format!("interval 1m\nsource a = binance.spot(\"BTCUSDT\")\n{source}")
+}
+
+fn expected(kind: DiagnosticKind, message: &'static str) -> ExpectedDiagnostic {
+    ExpectedDiagnostic { kind, message }
+}
+
+// Diagnostic inventory for public compiler/pre-execution coverage.
+//
+// Public lex diagnostics covered here:
+// - unexpected character
+// - unknown interval literal
+// - unsupported string escape
+// - unterminated string literal
+//
+// Public parse diagnostics covered here:
+// - unsupported source template
+// - malformed source declaration pieces
+// - malformed source-qualified series
+// - malformed `use <alias> <interval>`
+// - malformed call expression
+//
+// Public type/semantic diagnostics covered here:
+// - source alias errors
+// - source interval declaration/reference errors
+// - duplicate bindings
+// - builtin/type/indexing/operator errors
+// - function-body source-aware restrictions
+// - ordered multi-diagnostic aggregation
+//
+// Internal-only diagnostics intentionally not part of the public compile contract:
+// - function name `{...}` collides with a predefined binding
+//   Reason: all current predefined bindings are also builtin names, so the builtin
+//   collision path fires first.
+// - string literals are not executable expressions
+// - unknown identifier `{...}` during emission
+// - unknown function `{...}` during emission
+// - missing specialization for function `{...}`
+// - unknown builtin `{...}`
+// - builtin `{...}` is not callable in v0.1
+// - unknown function specialization target
+//   Reason: these are bytecode-emission consistency guards after semantic analysis.
+
+#[test]
+fn compile_diagnostic_catalog_matches_contract() {
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 25] = [
+        (
+            "lex_unexpected_character",
+            with_interval("plot(@)"),
+            vec![expected(DiagnosticKind::Lex, "unexpected character `@`")],
+        ),
+        (
+            "lex_unknown_interval_literal",
+            "interval 1q\nplot(close)".to_string(),
+            vec![expected(DiagnosticKind::Lex, "unknown interval literal `1q`")],
+        ),
+        (
+            "lex_unsupported_string_escape",
+            "interval 1m\nsource a = binance.spot(\"BTC\\x\")\nplot(1)".to_string(),
+            vec![expected(
+                DiagnosticKind::Lex,
+                "unsupported string escape `\\x`",
+            )],
+        ),
+        (
+            "lex_unterminated_string_literal",
+            "interval 1m\nsource a = binance.spot(\"BTC\nplot(1)".to_string(),
+            vec![expected(DiagnosticKind::Lex, "unterminated string literal")],
+        ),
+        (
+            "parse_unsupported_source_template",
+            "interval 1m\nsource a = foo.bar(\"BTC\")\nplot(1)".to_string(),
+            vec![expected(DiagnosticKind::Parse, "unsupported source template")],
+        ),
+        (
+            "parse_missing_source_template_dot",
+            "interval 1m\nsource a = binance(\"BTC\")\nplot(1)".to_string(),
+            vec![expected(DiagnosticKind::Parse, "expected `.` after exchange name")],
+        ),
+        (
+            "parse_missing_source_symbol",
+            "interval 1m\nsource a = binance.spot()\nplot(1)".to_string(),
+            vec![expected(
+                DiagnosticKind::Parse,
+                "expected string literal source symbol",
+            )],
+        ),
+        (
+            "parse_malformed_source_series",
+            with_sources("plot(a.)"),
+            vec![expected(
+                DiagnosticKind::Parse,
+                "expected market field or interval after `.`",
+            )],
+        ),
+        (
+            "parse_malformed_source_use",
+            "interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nuse a\nplot(a.close)"
+                .to_string(),
+            vec![expected(
+                DiagnosticKind::Parse,
+                "expected interval literal after source alias",
+            )],
+        ),
+        (
+            "parse_malformed_call_expression",
+            with_interval("plot(close,)"),
+            vec![expected(DiagnosticKind::Parse, "expected expression")],
+        ),
+        (
+            "type_duplicate_source_alias",
+            "interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nsource a = binance.usdm(\"BTCUSDT\")\nplot(a.close)"
+                .to_string(),
+            vec![expected(
+                DiagnosticKind::Type,
+                "duplicate source alias `a`",
+            )],
+        ),
+        (
+            "type_unknown_source_alias_in_use",
+            "interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nuse b 1h\nplot(a.close)"
+                .to_string(),
+            vec![expected(
+                DiagnosticKind::Type,
+                "unknown source alias `b`",
+            )],
+        ),
+        (
+            "type_unknown_source_alias_in_series",
+            with_sources("plot(b.close)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "unknown source alias `b`",
+            )],
+        ),
+        (
+            "type_missing_source_interval_use",
+            "interval 1m\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.1h.close)".to_string(),
+            vec![expected(
+                DiagnosticKind::Type,
+                "source interval `1h` for `a` must be declared with `use a 1h`",
+            )],
+        ),
+        (
+            "type_duplicate_let_binding",
+            with_interval("let x = close\nlet x = close[1]\nplot(x)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "duplicate binding `x` in the same scope",
+            )],
+        ),
+        (
+            "type_duplicate_export_binding",
+            with_interval("export trend = close > open\nexport trend = close < open\nplot(1)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "duplicate binding `trend` in the same scope",
+            )],
+        ),
+        (
+            "type_if_condition_must_be_boolean_like",
+            with_interval("if 1 { plot(1) } else { plot(0) }"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "if condition must be bool, series<bool>, or na",
+            )],
+        ),
+        (
+            "type_string_literals_only_in_source_declarations",
+            with_interval("plot(\"x\")"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "string literals are only allowed in source declarations",
+            )],
+        ),
+        (
+            "type_unary_neg_requires_numeric_input",
+            with_interval("plot(-true)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "unary `-` requires numeric input",
+            )],
+        ),
+        (
+            "type_unary_not_requires_bool_input",
+            with_interval("if !1 { plot(1) } else { plot(0) }"),
+            vec![expected(DiagnosticKind::Type, "unary `!` requires bool input")],
+        ),
+        (
+            "type_arithmetic_requires_numeric_operands",
+            with_interval("plot(true + 1)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "arithmetic operators require numeric operands",
+            )],
+        ),
+        (
+            "type_comparison_requires_numeric_operands",
+            with_interval("if true < false { plot(1) } else { plot(0) }"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "comparison operators require numeric operands",
+            )],
+        ),
+        (
+            "type_market_data_builtins_are_not_callable",
+            with_interval("plot(close())"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "market data builtins are identifiers, not callable functions",
+            )],
+        ),
+        (
+            "type_plot_wrong_arity",
+            with_interval("plot()"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "plot expects exactly one argument",
+            )],
+        ),
+        (
+            "type_plot_wrong_argument_type",
+            with_interval("plot(true)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "plot expects a numeric or series numeric value",
+            )],
+        ),
+    ];
+
+    for (name, source, expected_diags) in cases {
+        assert_compile_diagnostics(name, &source, &expected_diags);
+    }
+}
+
+#[test]
+fn compile_source_specific_and_builtin_catalog_matches_contract() {
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 8] = [
+        (
+            "type_lower_source_interval_reports_both_use_and_reference",
+            "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
+                .to_string(),
+            vec![
+                expected(
+                    DiagnosticKind::Type,
+                    "lower interval reference `1m` is not allowed with base interval `1h`",
+                ),
+                expected(
+                    DiagnosticKind::Type,
+                    "lower interval reference `1m` is not allowed with base interval `1h`",
+                ),
+            ],
+        ),
+        (
+            "type_indicator_wrong_arity",
+            with_interval("plot(sma(close))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "sma expects exactly two arguments",
+            )],
+        ),
+        (
+            "type_indicator_wrong_first_argument",
+            with_interval("plot(sma(true, 5))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "sma requires series<float> as the first argument",
+            )],
+        ),
+        (
+            "type_indicator_zero_window",
+            with_interval("plot(sma(close, 0))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "sma length must be greater than zero",
+            )],
+        ),
+        (
+            "type_non_series_indexing",
+            with_interval("plot(1[0])"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "only series values can be indexed",
+            )],
+        ),
+        (
+            "type_source_aware_bare_series",
+            with_sources("plot(close)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "source-aware scripts require source-qualified market series; found `close`",
+            )],
+        ),
+        (
+            "type_source_aware_function_body_capture_variant",
+            "interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nlet basis = a.close\nfn helper() = basis\nplot(1)"
+                .to_string(),
+            vec![expected(
+                DiagnosticKind::Type,
+                "function bodies may only reference parameters or declared source series; found `basis`",
+            )],
+        ),
+        (
+            "type_function_returning_void_is_rejected_in_order",
+            with_interval("fn bad(x) = plot(x)\nplot(bad(close))"),
+            vec![
+                expected(DiagnosticKind::Type, "function bodies may not call `plot`"),
+                expected(DiagnosticKind::Type, "function bodies may not call `plot`"),
+                expected(
+                    DiagnosticKind::Type,
+                    "function `bad` must not return void",
+                ),
+                expected(
+                    DiagnosticKind::Type,
+                    "plot expects a numeric or series numeric value",
+                ),
+            ],
+        ),
+    ];
+
+    for (name, source, expected_diags) in cases {
+        assert_compile_diagnostics(name, &source, &expected_diags);
+    }
+}
+
+#[test]
+fn compile_multi_diagnostic_order_is_stable() {
+    assert_compile_diagnostics(
+        "ordered_semantic_diagnostics",
+        &with_interval("let x = close\nlet x = close[1]\nplot(true + 1)"),
+        &[
+            expected(
+                DiagnosticKind::Type,
+                "duplicate binding `x` in the same scope",
+            ),
+            expected(
+                DiagnosticKind::Type,
+                "arithmetic operators require numeric operands",
+            ),
+        ],
+    );
+}
+
+#[test]
+fn parse_diagnostics_aggregate_cleanly_without_panics() {
+    assert_compile_diagnostics(
+        "ordered_parse_diagnostics",
+        "interval\nuse\nplot(",
+        &[
+            expected(
+                DiagnosticKind::Parse,
+                "expected interval literal after `interval`",
+            ),
+            expected(DiagnosticKind::Parse, "expected expression"),
+        ],
+    );
+}
+
+#[test]
+fn compile_api_keeps_internal_compile_diagnostics_internal() {
+    let cases = [
+        "plot(\"x\")",
+        "interval 1m\nplot(close())",
+        "interval 1m\nfn bad(x) = plot(x)\nplot(bad(close))",
+        "interval 1m\nif true { plot(1) }",
+    ];
+
+    for source in cases {
+        let diagnostics = compile_diagnostics(source);
+        assert!(
+            diagnostics
+                .iter()
+                .all(|(kind, _)| *kind != DiagnosticKind::Compile),
+            "{source}"
+        );
+    }
+}

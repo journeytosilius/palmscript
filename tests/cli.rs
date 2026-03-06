@@ -139,6 +139,26 @@ fn check_reports_compile_diagnostics() {
 }
 
 #[test]
+fn check_reports_multiple_compile_diagnostics() {
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "invalid.palm",
+        "interval 1m\nlet x = close\nlet x = close[1]\nplot(true + 1)",
+    );
+    let mut cmd = palmscript_cmd();
+    cmd.args(["check", script.to_str().unwrap()]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "duplicate binding `x` in the same scope",
+        ))
+        .stderr(predicate::str::contains(
+            "arithmetic operators require numeric operands",
+        ));
+}
+
+#[test]
 fn run_executes_single_interval_script_and_prints_json_by_default() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close[1])");
@@ -484,4 +504,45 @@ fn run_market_executes_source_aware_script() {
     let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
     assert_eq!(json["plots"][0]["points"][0]["value"], Value::from(1.5));
     assert_eq!(json["plots"][0]["points"][1]["value"], Value::from(2.5));
+}
+
+#[test]
+fn run_market_reports_fetch_failures_with_cli_prefix() {
+    let mut server = Server::new();
+    let _bad_open = server
+        .mock("GET", "/api/v3/klines")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            Matcher::UrlEncoded("interval".into(), "1m".into()),
+        ]))
+        .with_status(200)
+        .with_body(
+            serde_json::json!([[1704067200000_i64, "bad", "2.0", "0.5", "1.5", "10.0"]])
+                .to_string(),
+        )
+        .create();
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "market.palm",
+        "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(bn.close)",
+    );
+
+    let mut cmd = palmscript_cmd();
+    cmd.env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "market",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067260000",
+        ]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("market mode error:"))
+        .stderr(predicate::str::contains("malformed response"))
+        .stderr(predicate::str::contains("invalid `open` value"));
 }

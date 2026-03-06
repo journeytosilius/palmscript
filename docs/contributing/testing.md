@@ -25,3 +25,19 @@ Depending on the change, add or update:
 - documentation links and command examples when docs-facing behavior changes
 
 Regression fixes should include a regression test whenever practical.
+
+## Diagnostic Coverage
+
+Public diagnostics are part of the contract.
+
+When a change adds or changes a user-facing failure in:
+
+- lexing
+- parsing
+- semantic/type analysis
+- CSV data preparation
+- exchange-backed market fetching
+
+add or update the catalog-driven regression tests under `tests/diagnostics_*.rs`.
+
+Library-level diagnostic assertions should prefer exact diagnostic kind and exact message text. CLI-layer tests may assert representative framing and selected rendered lines.
