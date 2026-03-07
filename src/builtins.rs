@@ -128,10 +128,14 @@ pub enum BuiltinId {
     Tsf = 69,
     Beta = 70,
     Correl = 71,
+    Mom = 72,
+    Rocp = 73,
+    Rocr = 74,
+    Rocr100 = 75,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 72] = [
+    pub const RESERVED: [Self; 76] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -204,9 +208,13 @@ impl BuiltinId {
         Self::Tsf,
         Self::Beta,
         Self::Correl,
+        Self::Mom,
+        Self::Rocp,
+        Self::Rocr,
+        Self::Rocr100,
     ];
 
-    pub const CALLABLE: [Self; 66] = [
+    pub const CALLABLE: [Self; 70] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -273,6 +281,10 @@ impl BuiltinId {
         Self::Tsf,
         Self::Beta,
         Self::Correl,
+        Self::Mom,
+        Self::Rocp,
+        Self::Rocr,
+        Self::Rocr100,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -349,6 +361,10 @@ impl BuiltinId {
             "tsf" => Some(Self::Tsf),
             "beta" => Some(Self::Beta),
             "correl" => Some(Self::Correl),
+            "mom" => Some(Self::Mom),
+            "rocp" => Some(Self::Rocp),
+            "rocr" => Some(Self::Rocr),
+            "rocr100" => Some(Self::Rocr100),
             _ => None,
         }
     }
@@ -427,6 +443,10 @@ impl BuiltinId {
             69 => Some(Self::Tsf),
             70 => Some(Self::Beta),
             71 => Some(Self::Correl),
+            72 => Some(Self::Mom),
+            73 => Some(Self::Rocp),
+            74 => Some(Self::Rocr),
+            75 => Some(Self::Rocr100),
             _ => None,
         }
     }
@@ -505,6 +525,10 @@ impl BuiltinId {
             Self::Tsf => "tsf",
             Self::Beta => "beta",
             Self::Correl => "correl",
+            Self::Mom => "mom",
+            Self::Rocp => "rocp",
+            Self::Rocr => "rocr",
+            Self::Rocr100 => "rocr100",
         }
     }
 
@@ -555,7 +579,7 @@ impl BuiltinId {
             Self::Between | Self::Outside => BuiltinKind::Relation3,
             Self::Cross | Self::Crossover | Self::Crossunder => BuiltinKind::Cross,
             Self::Change => BuiltinKind::Change,
-            Self::Roc => BuiltinKind::Roc,
+            Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => BuiltinKind::Roc,
             Self::Highest => BuiltinKind::Highest,
             Self::Lowest => BuiltinKind::Lowest,
             Self::Rising => BuiltinKind::Rising,
@@ -600,7 +624,6 @@ impl BuiltinId {
             | Self::Crossover
             | Self::Crossunder
             | Self::Change
-            | Self::Roc
             | Self::Highest
             | Self::Lowest
             | Self::Rising
@@ -611,6 +634,9 @@ impl BuiltinId {
             | Self::Sub
             | Self::Medprice
             | Self::Obv => BuiltinArity::Exact(2),
+            Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => {
+                BuiltinArity::Range { min: 1, max: 2 }
+            }
             Self::Avgprice => BuiltinArity::Exact(4),
             Self::Typprice
             | Self::Wclprice
@@ -661,7 +687,7 @@ impl BuiltinId {
             Self::Crossover => "crossover(a, b)",
             Self::Crossunder => "crossunder(a, b)",
             Self::Change => "change(series, length)",
-            Self::Roc => "roc(series, length)",
+            Self::Roc => "roc(series[, length=10])",
             Self::Highest => "highest(series, length)",
             Self::Lowest => "lowest(series, length)",
             Self::Rising => "rising(series, length)",
@@ -715,6 +741,10 @@ impl BuiltinId {
             Self::Tsf => "tsf(series[, length=14])",
             Self::Beta => "beta(series0, series1[, length=5])",
             Self::Correl => "correl(series0, series1[, length=30])",
+            Self::Mom => "mom(series[, length=10])",
+            Self::Rocp => "rocp(series[, length=10])",
+            Self::Rocr => "rocr(series[, length=10])",
+            Self::Rocr100 => "rocr100(series[, length=10])",
         }
     }
 
@@ -739,6 +769,10 @@ impl BuiltinId {
             Self::Crossunder => "True when `a` crosses below `b`.",
             Self::Change => "Difference between the current sample and a prior sample.",
             Self::Roc => "Rate of change in percent.",
+            Self::Mom => "Momentum over a trailing period.",
+            Self::Rocp => "Rate of change ratio.",
+            Self::Rocr => "Rate of change ratio over one.",
+            Self::Rocr100 => "Rate of change ratio scaled by 100.",
             Self::Highest => "Highest value over a trailing window including the current sample.",
             Self::Lowest => "Lowest value over a trailing window including the current sample.",
             Self::Rising => "True when the current sample is strictly greater than every prior sample in the trailing window.",

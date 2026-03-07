@@ -762,6 +762,11 @@ def fixture_cases() -> list[Case]:
             Case("tsf_default", script_for_single_export("value", "tsf(close)"), ("value",), "window", "tsf", input_fields=("close",), int_options=(14,)),
             Case("beta_open_close_default", script_for_single_export("value", "beta(open, close)"), ("value",), "window_double", "beta", input_fields=("open", "close"), int_options=(5,)),
             Case("correl_open_close_default", script_for_single_export("value", "correl(open, close)"), ("value",), "window_double", "correl", input_fields=("open", "close"), int_options=(30,)),
+            Case("mom_default", script_for_single_export("value", "mom(close)"), ("value",), "window", "mom", input_fields=("close",), int_options=(10,)),
+            Case("roc_default", script_for_single_export("value", "roc(close)"), ("value",), "window", "roc", input_fields=("close",), int_options=(10,)),
+            Case("rocp_default", script_for_single_export("value", "rocp(close)"), ("value",), "window", "rocp", input_fields=("close",), int_options=(10,)),
+            Case("rocr_default", script_for_single_export("value", "rocr(close)"), ("value",), "window", "rocr", input_fields=("close",), int_options=(10,)),
+            Case("rocr100_default", script_for_single_export("value", "rocr100(close)"), ("value",), "window", "rocr100", input_fields=("close",), int_options=(10,)),
             Case(
                 "minmax_default",
                 "interval 1m\nlet (lo, hi) = minmax(close)\nexport min_value = lo\nexport max_value = hi\nplot(0)",

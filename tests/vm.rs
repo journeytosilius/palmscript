@@ -660,6 +660,26 @@ fn change_and_roc_handle_history_and_zero_denominator() {
 }
 
 #[test]
+fn talib_roc_family_uses_default_window_and_expected_formulas() {
+    let bars = bars_with_spacing(
+        JAN_1_2024_UTC_MS,
+        MINUTE_MS,
+        &[
+            100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0,
+        ],
+    );
+
+    assert_eq!(plot_values("plot(mom(close))", &bars)[10], Some(10.0));
+    assert_eq!(plot_values("plot(roc(close))", &bars)[10], Some(10.0));
+    let rocp = plot_values("plot(rocp(close))", &bars)[10].expect("rocp value");
+    let rocr = plot_values("plot(rocr(close))", &bars)[10].expect("rocr value");
+    let rocr100 = plot_values("plot(rocr100(close))", &bars)[10].expect("rocr100 value");
+    assert!((rocp - 0.1).abs() < 1e-12);
+    assert!((rocr - 1.1).abs() < 1e-12);
+    assert!((rocr100 - 110.0).abs() < 1e-12);
+}
+
+#[test]
 fn extrema_and_direction_helpers_respect_window_and_na() {
     let bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0, 3.0, 2.0, 4.0]);
     assert_eq!(plot_values("plot(highest(close, 3))", &bars)[3], Some(4.0));

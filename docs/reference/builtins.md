@@ -65,7 +65,11 @@ PalmScript currently provides these callable builtins:
 - `crossover(a, b)`
 - `crossunder(a, b)`
 - `change(series, length)`
-- `roc(series, length)`
+- `roc(series[, length=10])`
+- `mom(series[, length=10])`
+- `rocp(series[, length=10])`
+- `rocr(series[, length=10])`
+- `rocr100(series[, length=10])`
 - `highest(series, length)`
 - `lowest(series, length)`
 - `rising(series, length)`
@@ -311,16 +315,20 @@ Rules:
 - if the current or referenced sample is `na`, the result is `na`
 - the result type is `series<float>`
 
-### `roc(series, length)`
+### `roc(series[, length=10])`, `mom(series[, length=10])`, `rocp(series[, length=10])`, `rocr(series[, length=10])`, and `rocr100(series[, length=10])`
 
 Rules:
 
-- it requires exactly two arguments
 - the first argument must be `series<float>`
-- the second argument must be a positive integer literal
-- it evaluates as `((series - series[length]) / series[length]) * 100`
+- the optional `length` must be a positive integer literal
+- omitted `length` uses the TA-Lib default of `10`
+- `roc` evaluates as `((series - series[length]) / series[length]) * 100`
+- `mom` evaluates as `series - series[length]`
+- `rocp` evaluates as `(series - series[length]) / series[length]`
+- `rocr` evaluates as `series / series[length]`
+- `rocr100` evaluates as `(series / series[length]) * 100`
 - if the current or referenced sample is `na`, the result is `na`
-- if `series[length]` is `0`, the result is `na`
+- if `series[length]` is `0`, `roc`, `rocp`, `rocr`, and `rocr100` return `na`
 - the result type is `series<float>`
 
 ### `highest(series, length)` and `lowest(series, length)`

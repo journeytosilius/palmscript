@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 27] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 29] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -375,6 +375,22 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "roc length must be greater than zero",
+            )],
+        ),
+        (
+            "type_mom_requires_series_float",
+            with_interval("plot(mom(1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "mom requires series<float> as the first argument",
+            )],
+        ),
+        (
+            "type_rocp_zero_window",
+            with_interval("plot(rocp(close, 0))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "rocp length must be greater than zero",
             )],
         ),
         (

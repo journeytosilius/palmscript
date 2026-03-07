@@ -451,6 +451,10 @@ impl<'a> VmEngine<'a> {
             }
             BuiltinId::Change => self.call_change(arity, args, pc),
             BuiltinId::Roc => self.call_roc(arity, args, pc),
+            BuiltinId::Mom => self.call_mom(arity, args, pc),
+            BuiltinId::Rocp => self.call_rocp(arity, args, pc),
+            BuiltinId::Rocr => self.call_rocr(arity, args, pc),
+            BuiltinId::Rocr100 => self.call_rocr100(arity, args, pc),
             BuiltinId::Highest => self.call_highest(callsite, arity, args, pc),
             BuiltinId::Lowest => self.call_lowest(callsite, arity, args, pc),
             BuiltinId::Sum => self.call_sum(arity, args, pc),
@@ -767,9 +771,55 @@ impl<'a> VmEngine<'a> {
         args: Vec<Value>,
         pc: usize,
     ) -> Result<Value, RuntimeError> {
+        self.call_rate_of_change_family(BuiltinId::Roc, arity, args, pc)
+    }
+
+    fn call_mom(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_rate_of_change_family(BuiltinId::Mom, arity, args, pc)
+    }
+
+    fn call_rocp(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_rate_of_change_family(BuiltinId::Rocp, arity, args, pc)
+    }
+
+    fn call_rocr(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_rate_of_change_family(BuiltinId::Rocr, arity, args, pc)
+    }
+
+    fn call_rocr100(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_rate_of_change_family(BuiltinId::Rocr100, arity, args, pc)
+    }
+
+    fn call_rate_of_change_family(
+        &mut self,
+        builtin: BuiltinId,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
         if arity != 2 {
             return Err(RuntimeError::ArityMismatch {
-                builtin: "roc",
+                builtin: builtin.as_str(),
                 expected: 2,
                 found: arity,
             });
@@ -784,10 +834,24 @@ impl<'a> VmEngine<'a> {
         let current = expect_buffer_f64(buffer, 0, pc)?;
         let previous = expect_buffer_f64(buffer, window, pc)?;
         match (current, previous) {
-            (Some(current), Some(previous)) if previous != 0.0 => {
-                Ok(Value::F64(((current - previous) / previous) * 100.0))
-            }
-            (Some(_), Some(_)) | (None, _) | (_, None) => Ok(Value::NA),
+            (Some(current), Some(previous)) => match builtin {
+                BuiltinId::Mom => Ok(Value::F64(current - previous)),
+                BuiltinId::Roc if previous != 0.0 => {
+                    Ok(Value::F64(((current - previous) / previous) * 100.0))
+                }
+                BuiltinId::Rocp if previous != 0.0 => {
+                    Ok(Value::F64((current - previous) / previous))
+                }
+                BuiltinId::Rocr if previous != 0.0 => Ok(Value::F64(current / previous)),
+                BuiltinId::Rocr100 if previous != 0.0 => {
+                    Ok(Value::F64((current / previous) * 100.0))
+                }
+                BuiltinId::Roc | BuiltinId::Rocp | BuiltinId::Rocr | BuiltinId::Rocr100 => {
+                    Ok(Value::NA)
+                }
+                _ => unreachable!(),
+            },
+            (None, _) | (_, None) => Ok(Value::NA),
         }
     }
 

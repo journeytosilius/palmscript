@@ -26,6 +26,7 @@ Implemented TA-Lib-style builtins in this change:
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
 - overlap helpers: `midpoint`, `midprice`, `wma`
 - statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`, `beta`, `correl`
+- momentum helpers: `mom`, `roc`, `rocp`, `rocr`, `rocr100`
 - volume and volatility helpers: `obv`, `trange`
 
 Current `ma_type` variants:
@@ -52,6 +53,7 @@ Current TA-Lib defaults now honored in the executable surface:
 - `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, and `tsf` default to `length=14`
 - `beta` defaults to `length=5` and uses TA-Lib's return-based beta calculation
 - `correl` defaults to `length=30`
+- `mom`, `roc`, `rocp`, `rocr`, and `rocr100` default to `length=10`
 
 Oracle fixture refresh for the implemented subset:
 

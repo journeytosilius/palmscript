@@ -297,6 +297,25 @@ fn golden_beta_identical_series_matches_one_after_warmup() {
 }
 
 #[test]
+fn golden_roc_uses_talib_default_window() {
+    let compiled = compile(&with_interval("plot(roc(close))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][9]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][10]["value"],
+        serde_json::json!(10.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(9.174311926605505)
+    );
+}
+
+#[test]
 fn golden_ma_builtin_with_typed_enum_matches_weighted_window() {
     let compiled =
         compile(&with_interval("plot(ma(close, 3, ma_type.wma))")).expect("script compiles");

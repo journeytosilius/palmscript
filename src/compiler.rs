@@ -2218,7 +2218,7 @@ fn analyze_helper_builtin(
                     .fold(0, |mask, info| mask | info.update_mask),
             }
         }
-        BuiltinKind::Change | BuiltinKind::Roc => {
+        BuiltinKind::Change => {
             let series_info = arg_info[0];
             if !series_info.ty.is_series_numeric() {
                 diagnostics.push(Diagnostic::new(
@@ -2228,6 +2228,23 @@ fn analyze_helper_builtin(
                 ));
             }
             validate_positive_window_literal(callee, &args[1], diagnostics);
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::Roc => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() == 2 {
+                validate_positive_window_literal(callee, &args[1], diagnostics);
+            }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
                 update_mask: series_info.update_mask,
@@ -3027,7 +3044,11 @@ impl<'a> Compiler<'a> {
             | BuiltinId::LinearRegSlope
             | BuiltinId::Tsf
             | BuiltinId::Beta
-            | BuiltinId::Correl => {
+            | BuiltinId::Correl
+            | BuiltinId::Mom
+            | BuiltinId::Rocp
+            | BuiltinId::Rocr
+            | BuiltinId::Rocr100 => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3444,12 +3465,28 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
-            BuiltinKind::Change | BuiltinKind::Roc => {
+            BuiltinKind::Change => {
                 let required_history = literal_window(&args[1])
                     .map(|window| window + 1)
                     .unwrap_or(2);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::Roc => {
+                let required_history = args.get(1).and_then(literal_window).unwrap_or(10) + 1;
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(1) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(10.0, expr.span);
+                }
                 self.emit(
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
