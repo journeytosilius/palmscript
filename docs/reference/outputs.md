@@ -81,6 +81,27 @@ Rules:
 - they compile to trigger outputs with explicit signal-role metadata
 - runtime event emission follows the same `true`/`false`/`na` rules as ordinary triggers
 
+## Order Declarations
+
+PalmScript also exposes top-level order declarations that parameterize how the built-in backtester executes a signal role:
+
+```palmscript
+entry long = spot.close > spot.high[1]
+exit long = spot.close < ema(spot.close, 20)
+
+order entry long = limit(spot.close[1], tif.gtc, false)
+order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)
+```
+
+Rules:
+
+- order declarations are top-level only
+- there may be at most one `order` declaration per signal role
+- missing `order` declarations default to `market()`
+- numeric order fields such as `price`, `trigger_price`, and `expire_time_ms` are evaluated by the runtime as hidden internal series
+- `tif.<variant>` and `trigger_ref.<variant>` are typed enum literals checked at compile time
+- venue-specific compatibility checks run when the backtest starts, based on the execution `source`
+
 ## Legacy Trigger Compatibility
 
 Legacy backtest scripts that use trigger names are still supported temporarily:
@@ -106,6 +127,7 @@ Over a full run, the runtime accumulates:
 - `plots`
 - `exports`
 - `triggers`
+- `order_fields`
 - `trigger_events`
 - `alerts`
 

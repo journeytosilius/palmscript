@@ -530,6 +530,9 @@ fn resolve_stmt(
         StmtKind::Signal { expr, .. } => {
             resolve_expr(context, expr, scope);
         }
+        StmtKind::Order { spec, .. } => {
+            resolve_order_spec(context, spec, scope);
+        }
         StmtKind::If {
             condition,
             then_block,
@@ -716,6 +719,7 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             children: Vec::new(),
         }),
         StmtKind::Signal { .. } => {}
+        StmtKind::Order { .. } => {}
         StmtKind::LetTuple { names, expr } => {
             let detail = context.expr_info.get(&expr.id).map(render_expr_info);
             for binding in names {
@@ -868,6 +872,8 @@ fn render_type(ty: Type) -> &'static str {
         Type::F64 => "float",
         Type::Bool => "bool",
         Type::MaType => "ma_type",
+        Type::TimeInForce => "tif",
+        Type::TriggerReference => "trigger_ref",
         Type::SeriesF64 => "series<float>",
         Type::SeriesBool => "series<bool>",
         Type::Void => "void",
@@ -1012,6 +1018,15 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
             };
             lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));
         }
+        StmtKind::Order { role, spec } => {
+            let header = match role {
+                crate::ast::SignalRole::LongEntry => "order entry long",
+                crate::ast::SignalRole::LongExit => "order exit long",
+                crate::ast::SignalRole::ShortEntry => "order entry short",
+                crate::ast::SignalRole::ShortExit => "order exit short",
+            };
+            lines.push(format!("{prefix}{header} = {}", format_order_spec(spec)));
+        }
         StmtKind::Expr(expr) => {
             lines.push(format!("{prefix}{}", format_expr(expr, 0)));
         }
@@ -1057,6 +1072,123 @@ fn format_if(
         lines.push(format!("{prefix}}} else {{"));
         format_block_body(else_block, indent + 1, lines);
         lines.push(format!("{prefix}}}"));
+    }
+}
+
+fn resolve_order_spec(
+    context: &mut ResolutionContext<'_>,
+    spec: &crate::ast::OrderSpec,
+    scope: &HashMap<String, usize>,
+) {
+    match &spec.kind {
+        crate::ast::OrderSpecKind::Market => {}
+        crate::ast::OrderSpecKind::Limit {
+            price,
+            tif,
+            post_only,
+        } => {
+            resolve_expr(context, price, scope);
+            resolve_expr(context, tif, scope);
+            resolve_expr(context, post_only, scope);
+        }
+        crate::ast::OrderSpecKind::StopMarket {
+            trigger_price,
+            trigger_ref,
+        }
+        | crate::ast::OrderSpecKind::TakeProfitMarket {
+            trigger_price,
+            trigger_ref,
+        } => {
+            resolve_expr(context, trigger_price, scope);
+            resolve_expr(context, trigger_ref, scope);
+        }
+        crate::ast::OrderSpecKind::StopLimit {
+            trigger_price,
+            limit_price,
+            tif,
+            post_only,
+            trigger_ref,
+            expire_time_ms,
+        }
+        | crate::ast::OrderSpecKind::TakeProfitLimit {
+            trigger_price,
+            limit_price,
+            tif,
+            post_only,
+            trigger_ref,
+            expire_time_ms,
+        } => {
+            resolve_expr(context, trigger_price, scope);
+            resolve_expr(context, limit_price, scope);
+            resolve_expr(context, tif, scope);
+            resolve_expr(context, post_only, scope);
+            resolve_expr(context, trigger_ref, scope);
+            resolve_expr(context, expire_time_ms, scope);
+        }
+    }
+}
+
+fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
+    match &spec.kind {
+        crate::ast::OrderSpecKind::Market => "market()".to_string(),
+        crate::ast::OrderSpecKind::Limit {
+            price,
+            tif,
+            post_only,
+        } => format!(
+            "limit({}, {}, {})",
+            format_expr(price, 0),
+            format_expr(tif, 0),
+            format_expr(post_only, 0)
+        ),
+        crate::ast::OrderSpecKind::StopMarket {
+            trigger_price,
+            trigger_ref,
+        } => format!(
+            "stop_market({}, {})",
+            format_expr(trigger_price, 0),
+            format_expr(trigger_ref, 0)
+        ),
+        crate::ast::OrderSpecKind::TakeProfitMarket {
+            trigger_price,
+            trigger_ref,
+        } => format!(
+            "take_profit_market({}, {})",
+            format_expr(trigger_price, 0),
+            format_expr(trigger_ref, 0)
+        ),
+        crate::ast::OrderSpecKind::StopLimit {
+            trigger_price,
+            limit_price,
+            tif,
+            post_only,
+            trigger_ref,
+            expire_time_ms,
+        } => format!(
+            "stop_limit({}, {}, {}, {}, {}, {})",
+            format_expr(trigger_price, 0),
+            format_expr(limit_price, 0),
+            format_expr(tif, 0),
+            format_expr(post_only, 0),
+            format_expr(trigger_ref, 0),
+            format_expr(expire_time_ms, 0)
+        ),
+        crate::ast::OrderSpecKind::TakeProfitLimit {
+            trigger_price,
+            limit_price,
+            tif,
+            post_only,
+            trigger_ref,
+            expire_time_ms,
+        } => format!(
+            "take_profit_limit({}, {}, {}, {}, {}, {})",
+            format_expr(trigger_price, 0),
+            format_expr(limit_price, 0),
+            format_expr(tif, 0),
+            format_expr(post_only, 0),
+            format_expr(trigger_ref, 0),
+            format_expr(expire_time_ms, 0)
+        ),
     }
 }
 

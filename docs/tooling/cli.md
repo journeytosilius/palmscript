@@ -51,10 +51,11 @@ palmscript run backtest examples/strategies/multi_strategy_backtest.palm \
 
 Use backtest mode when:
 
-- the script emits trigger outputs that should be interpreted as trading signals
+- the script emits backtest signals through `entry` / `exit` declarations or legacy trigger names
+- the script optionally declares explicit order templates with `order entry ... = ...` or `order exit ... = ...`
 - you want PalmScript to fetch exchange-backed candles and run the built-in deterministic portfolio simulator in one command
 
-Backtest mode compiles the script, fetches all required source feeds, runs the VM, collects trigger events, and simulates fills on the selected execution source.
+Backtest mode compiles the script, fetches all required source feeds, runs the VM, collects trigger events, resolves venue-aware order templates, and simulates fills on the selected execution source.
 
 When the script declares exactly one `source`, backtest mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
 
@@ -68,6 +69,9 @@ Market mode supports:
 `json` is the default.
 
 Backtest mode supports the same output formats.
+
+- JSON output includes order lifecycle records in `orders`
+- text output includes order and trade summaries
 
 ## Execution Limits
 

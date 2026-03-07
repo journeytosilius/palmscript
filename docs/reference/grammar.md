@@ -32,6 +32,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | trigger_stmt
                          | signal_stmt
+                         | order_stmt
                          | if_stmt
                          | expr_stmt
 
@@ -43,7 +44,14 @@ export_stmt            ::= "export" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
+order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
 signal_side            ::= "long" | "short"
+order_spec             ::= "market" "(" ")"
+                         | "limit" "(" expr "," expr "," expr ")"
+                         | "stop_market" "(" expr "," expr ")"
+                         | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
+                         | "take_profit_market" "(" expr "," expr ")"
+                         | "take_profit_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -120,7 +128,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, and `exit` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, and `order` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
@@ -128,7 +136,8 @@ The grammar does not by itself make a program valid. The implementation addition
 - only identifiers may be called
 - series indexing must use a non-negative integer literal or a top-level immutable numeric binding
 - tuple-valued builtins must be bound with tuple destructuring before use
-- `ma_type.<variant>` is the first typed enum namespace and is reserved for TA-Lib moving-average selectors
+- `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` are typed enum namespaces
+- `tif.<variant>` and `trigger_ref.<variant>` are typed enum namespaces used by order declarations
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

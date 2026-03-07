@@ -92,6 +92,46 @@ pub enum SignalRole {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderSpec {
+    pub span: Span,
+    pub kind: OrderSpecKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum OrderSpecKind {
+    Market,
+    Limit {
+        price: Expr,
+        tif: Expr,
+        post_only: Expr,
+    },
+    StopMarket {
+        trigger_price: Expr,
+        trigger_ref: Expr,
+    },
+    StopLimit {
+        trigger_price: Expr,
+        limit_price: Expr,
+        tif: Expr,
+        post_only: Expr,
+        trigger_ref: Expr,
+        expire_time_ms: Expr,
+    },
+    TakeProfitMarket {
+        trigger_price: Expr,
+        trigger_ref: Expr,
+    },
+    TakeProfitLimit {
+        trigger_price: Expr,
+        limit_price: Expr,
+        tif: Expr,
+        post_only: Expr,
+        trigger_ref: Expr,
+        expire_time_ms: Expr,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
         name: String,
@@ -125,6 +165,10 @@ pub enum StmtKind {
     Signal {
         role: SignalRole,
         expr: Expr,
+    },
+    Order {
+        role: SignalRole,
+        spec: Box<OrderSpec>,
     },
     If {
         condition: Expr,

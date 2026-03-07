@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::order::{TimeInForce, TriggerReference};
 use crate::talib::MaType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -12,6 +13,8 @@ pub enum Type {
     F64,
     Bool,
     MaType,
+    TimeInForce,
+    TriggerReference,
     SeriesF64,
     SeriesBool,
     Void,
@@ -26,7 +29,12 @@ impl Type {
         match self {
             Self::SeriesF64 => Some(Self::F64),
             Self::SeriesBool => Some(Self::Bool),
-            Self::F64 | Self::Bool | Self::MaType | Self::Void => Some(self),
+            Self::F64
+            | Self::Bool
+            | Self::MaType
+            | Self::TimeInForce
+            | Self::TriggerReference
+            | Self::Void => Some(self),
         }
     }
 }
@@ -42,6 +50,8 @@ pub enum Value {
     F64(f64),
     Bool(bool),
     MaType(MaType),
+    TimeInForce(TimeInForce),
+    TriggerReference(TriggerReference),
     NA,
     Void,
     SeriesRef(usize),
@@ -55,6 +65,8 @@ impl Value {
             Self::F64(_) => "f64",
             Self::Bool(_) => "bool",
             Self::MaType(_) => "ma-type",
+            Self::TimeInForce(_) => "time-in-force",
+            Self::TriggerReference(_) => "trigger-reference",
             Self::NA => "na",
             Self::Void => "void",
             Self::SeriesRef(_) => "series-ref",
@@ -93,6 +105,7 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::{Type, Value};
+    use crate::order::{TimeInForce, TriggerReference};
     use crate::talib::MaType;
 
     #[test]
@@ -104,6 +117,11 @@ mod tests {
         assert_eq!(Type::SeriesBool.scalar(), Some(Type::Bool));
         assert_eq!(Type::Bool.scalar(), Some(Type::Bool));
         assert_eq!(Type::MaType.scalar(), Some(Type::MaType));
+        assert_eq!(Type::TimeInForce.scalar(), Some(Type::TimeInForce));
+        assert_eq!(
+            Type::TriggerReference.scalar(),
+            Some(Type::TriggerReference)
+        );
         assert_eq!(Type::Void.scalar(), Some(Type::Void));
     }
 
@@ -112,6 +130,14 @@ mod tests {
         assert_eq!(Value::F64(1.5).type_name(), "f64");
         assert_eq!(Value::Bool(true).type_name(), "bool");
         assert_eq!(Value::MaType(MaType::Ema).type_name(), "ma-type");
+        assert_eq!(
+            Value::TimeInForce(TimeInForce::Gtc).type_name(),
+            "time-in-force"
+        );
+        assert_eq!(
+            Value::TriggerReference(TriggerReference::Last).type_name(),
+            "trigger-reference"
+        );
         assert_eq!(Value::NA.type_name(), "na");
         assert_eq!(Value::Void.type_name(), "void");
         assert_eq!(Value::SeriesRef(3).type_name(), "series-ref");

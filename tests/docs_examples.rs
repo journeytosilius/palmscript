@@ -48,6 +48,7 @@ fn referenced_docs_examples_compile() {
         "examples/strategies/cross_source_spread.palm",
         "examples/strategies/exchange_backed_sources.palm",
         "examples/strategies/multi_strategy_backtest.palm",
+        "examples/strategies/venue_orders_backtest.palm",
     ];
 
     for path in examples {
@@ -189,6 +190,39 @@ fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
         .unwrap_or_else(|_| panic!("{path} should backtest"));
         assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
     }
+}
+
+#[test]
+fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
+    let path = "examples/strategies/venue_orders_backtest.palm";
+    let compiled = compile(&read_strategy(path)).expect("venue_orders_backtest should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: palmscript::Interval::Hour1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: palmscript::Interval::Hour1,
+            bars: bars(JAN_1_2024_UTC_MS, HOUR_MS, 240, 100.0),
+        }],
+    };
+
+    let outputs = run_with_sources(&compiled, runtime.clone(), VmLimits::default())
+        .expect("venue_orders_backtest should run");
+    assert!(!outputs.plots.is_empty(), "{path} should emit plots");
+
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        BacktestConfig {
+            execution_source_alias: "spot".to_string(),
+            initial_capital: 10_000.0,
+            fee_bps: 0.0,
+            slippage_bps: 0.0,
+        },
+    )
+    .expect("venue_orders_backtest should backtest");
+    assert!(!result.orders.is_empty(), "{path} should emit orders");
+    assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
 }
 
 #[test]

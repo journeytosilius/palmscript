@@ -623,3 +623,58 @@ fn compile_api_keeps_internal_compile_diagnostics_internal() {
         );
     }
 }
+
+#[test]
+fn rejects_duplicate_order_declarations_for_same_role() {
+    assert_compile_diagnostics(
+        "duplicate_order_role",
+        &with_interval(
+            "entry long = src.close > src.close[1]
+order entry long = market()
+order entry long = limit(src.close[1], tif.gtc, false)
+plot(src.close)",
+        ),
+        &[expected(
+            DiagnosticKind::Type,
+            "duplicate order declaration for `long_entry`",
+        )],
+    );
+}
+
+#[test]
+fn rejects_invalid_order_constructor_argument_types() {
+    assert_compile_diagnostics(
+        "invalid_limit_tif",
+        &with_interval(
+            "entry long = src.close > src.close[1]
+order entry long = limit(src.close[1], ma_type.ema, false)
+plot(src.close)",
+        ),
+        &[expected(
+            DiagnosticKind::Type,
+            "limit requires `tif.<variant>` as the second argument",
+        )],
+    );
+}
+
+#[test]
+fn rejects_unknown_order_enum_variants() {
+    assert_compile_diagnostics(
+        "unknown_order_enum",
+        &with_interval(
+            "entry long = src.close > src.close[1]
+order entry long = stop_market(src.close + 1, trigger_ref.foo)
+plot(src.close)",
+        ),
+        &[
+            expected(
+                DiagnosticKind::Type,
+                "unknown enum variant `trigger_ref.foo`",
+            ),
+            expected(
+                DiagnosticKind::Type,
+                "stop_market requires `trigger_ref.<variant>` as the second argument",
+            ),
+        ],
+    );
+}

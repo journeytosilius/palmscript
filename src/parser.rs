@@ -5,7 +5,8 @@
 
 use crate::ast::{
     Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl,
-    NodeId, SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
+    NodeId, OrderSpec, OrderSpecKind, SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind,
+    StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -46,7 +47,7 @@ impl<'a> Parser<'a> {
                 Some(ParsedItem::Source(decl)) => strategy_intervals.sources.push(decl),
                 Some(ParsedItem::UseInterval(decl)) => strategy_intervals.supplemental.push(decl),
                 Some(ParsedItem::Function(function)) => functions.push(function),
-                Some(ParsedItem::Stmt(stmt)) => statements.push(stmt),
+                Some(ParsedItem::Stmt(stmt)) => statements.push(*stmt),
                 None => self.synchronize(),
             }
             self.skip_separators();
@@ -99,7 +100,8 @@ impl<'a> Parser<'a> {
         if self.matches_keyword(&TokenKind::Fn) {
             return self.parse_function_decl().map(ParsedItem::Function);
         }
-        self.parse_stmt().map(ParsedItem::Stmt)
+        self.parse_stmt()
+            .map(|stmt| ParsedItem::Stmt(Box::new(stmt)))
     }
 
     fn parse_stmt(&mut self) -> Option<Stmt> {
@@ -182,6 +184,16 @@ impl<'a> Parser<'a> {
         }
         if self.matches_keyword(&TokenKind::Let) {
             return self.parse_let_stmt();
+        }
+        if self.matches_keyword(&TokenKind::Order) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "order declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_order_stmt();
         }
         if self.matches_keyword(&TokenKind::If) {
             return self.parse_if_stmt();
@@ -445,6 +457,128 @@ impl<'a> Parser<'a> {
             span: start.merge(expr.span),
             kind: StmtKind::Signal { role, expr },
         })
+    }
+
+    fn parse_order_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        let entry = if self.matches_keyword(&TokenKind::Entry) {
+            true
+        } else if self.matches_keyword(&TokenKind::Exit) {
+            false
+        } else {
+            self.push_diagnostic(
+                "expected `entry` or `exit` after `order`",
+                self.tokens[self.cursor].span,
+            );
+            return None;
+        };
+        let side = self.advance()?.clone();
+        let role = match side.kind {
+            TokenKind::Long if entry => SignalRole::LongEntry,
+            TokenKind::Long => SignalRole::LongExit,
+            TokenKind::Short if entry => SignalRole::ShortEntry,
+            TokenKind::Short => SignalRole::ShortExit,
+            _ => {
+                self.push_diagnostic(
+                    if entry {
+                        "expected `long` or `short` after `order entry`"
+                    } else {
+                        "expected `long` or `short` after `order exit`"
+                    },
+                    side.span,
+                );
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after order side",
+        )?;
+        let spec = self.parse_order_spec()?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(spec.span),
+            kind: StmtKind::Order {
+                role,
+                spec: Box::new(spec),
+            },
+        })
+    }
+
+    fn parse_order_spec(&mut self) -> Option<OrderSpec> {
+        let token = self.advance()?.clone();
+        let (callee, callee_span) = match token.kind {
+            TokenKind::Ident(name) => (name, token.span),
+            _ => {
+                self.push_diagnostic("expected order constructor name", token.span);
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after order constructor",
+        )?;
+
+        let mut args = Vec::new();
+        if !matches!(self.peek_kind(), TokenKind::RightParen) {
+            loop {
+                args.push(self.parse_expr(0)?);
+                if !matches!(self.peek_kind(), TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after order constructor arguments",
+        )?;
+        let span = callee_span.merge(right.span);
+        let kind = match (callee.as_str(), args.as_slice()) {
+            ("market", []) => OrderSpecKind::Market,
+            ("limit", [price, tif, post_only]) => OrderSpecKind::Limit {
+                price: price.clone(),
+                tif: tif.clone(),
+                post_only: post_only.clone(),
+            },
+            ("stop_market", [trigger_price, trigger_ref]) => OrderSpecKind::StopMarket {
+                trigger_price: trigger_price.clone(),
+                trigger_ref: trigger_ref.clone(),
+            },
+            (
+                "stop_limit",
+                [trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms],
+            ) => OrderSpecKind::StopLimit {
+                trigger_price: trigger_price.clone(),
+                limit_price: limit_price.clone(),
+                tif: tif.clone(),
+                post_only: post_only.clone(),
+                trigger_ref: trigger_ref.clone(),
+                expire_time_ms: expire_time_ms.clone(),
+            },
+            ("take_profit_market", [trigger_price, trigger_ref]) => {
+                OrderSpecKind::TakeProfitMarket {
+                    trigger_price: trigger_price.clone(),
+                    trigger_ref: trigger_ref.clone(),
+                }
+            }
+            (
+                "take_profit_limit",
+                [trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms],
+            ) => OrderSpecKind::TakeProfitLimit {
+                trigger_price: trigger_price.clone(),
+                limit_price: limit_price.clone(),
+                tif: tif.clone(),
+                post_only: post_only.clone(),
+                trigger_ref: trigger_ref.clone(),
+                expire_time_ms: expire_time_ms.clone(),
+            },
+            _ => {
+                self.push_diagnostic("invalid order constructor or arity", span);
+                return None;
+            }
+        };
+        Some(OrderSpec { span, kind })
     }
 
     fn parse_if_stmt(&mut self) -> Option<Stmt> {
@@ -897,5 +1031,5 @@ enum ParsedItem {
     Source(SourceDecl),
     UseInterval(SourceIntervalDecl),
     Function(FunctionDecl),
-    Stmt(Stmt),
+    Stmt(Box<Stmt>),
 }

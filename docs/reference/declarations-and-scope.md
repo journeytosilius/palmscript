@@ -120,7 +120,7 @@ Rules:
 
 - both forms are top-level only
 - duplicate names in the same scope are rejected
-- both forms are scalar-only in v1: `float`, `bool`, `ma_type`, or `na`
+- both forms are scalar-only in v1: `float`, `bool`, `ma_type`, `tif`, `trigger_ref`, or `na`
 - `input` is compile-time only in v1 and does not yet accept CLI overrides
 - `input` values must be scalar literals or enum literals
 - `const` values may reference previously declared `const` / `input` bindings and pure scalar builtins
@@ -128,12 +128,13 @@ Rules:
 
 ## Outputs
 
-`export`, `trigger`, and first-class strategy signals create top-level outputs:
+`export`, `trigger`, first-class strategy signals, and `order` declarations are top-level backtest-facing declarations:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 trigger long_entry = spot.close > spot.high[1]
 entry long = spot.close > spot.high[1]
+order entry long = limit(spot.close[1], tif.gtc, false)
 ```
 
 Rules:
@@ -142,6 +143,9 @@ Rules:
 - duplicate names in the same scope are rejected
 - `trigger` names become bindings after the declaration point
 - `entry long`, `exit long`, `entry short`, and `exit short` are first-class backtest signal declarations
+- `order entry long`, `order exit long`, `order entry short`, and `order exit short` attach an execution template to an existing backtest signal role
+- at most one `order` declaration is allowed per signal role
+- if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
 - legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 
 ## Conditional Scope

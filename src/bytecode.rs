@@ -3,6 +3,7 @@
 //! The compiler emits a [`Program`] made of typed locals, constants, and
 //! fixed-layout instructions. The VM executes this representation directly.
 
+use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
 use crate::{DeclaredMarketSource, MarketBinding, SourceIntervalRef};
@@ -90,8 +91,9 @@ pub enum OutputKind {
     Trigger,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SignalRole {
+    #[default]
     LongEntry,
     LongExit,
     ShortEntry,
@@ -119,6 +121,26 @@ pub struct OutputDecl {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderFieldDecl {
+    pub name: String,
+    pub role: SignalRole,
+    pub kind: OrderFieldKind,
+    pub slot: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderDecl {
+    pub role: SignalRole,
+    pub kind: OrderKind,
+    pub tif: Option<TimeInForce>,
+    pub post_only: bool,
+    pub trigger_ref: Option<TriggerReference>,
+    pub price_field_id: Option<u16>,
+    pub trigger_price_field_id: Option<u16>,
+    pub expire_time_field_id: Option<u16>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LocalInfo {
     pub name: Option<String>,
     pub ty: Type,
@@ -135,6 +157,8 @@ pub struct Program {
     pub constants: Vec<Constant>,
     pub locals: Vec<LocalInfo>,
     pub outputs: Vec<OutputDecl>,
+    pub order_fields: Vec<OrderFieldDecl>,
+    pub orders: Vec<OrderDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,
     pub source_intervals: Vec<SourceIntervalRef>,

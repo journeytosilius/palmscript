@@ -13,12 +13,20 @@ use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
 use crate::indicators::IndicatorState;
 use crate::interval::{Interval, MarketField, MarketSource};
-use crate::output::{OutputSample, OutputSeries, OutputValue, Outputs, PlotSeries, TriggerEvent};
+use crate::output::{
+    OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,
+    PlotSeries, TriggerEvent,
+};
 use crate::types::{SlotKind, Value};
 use crate::vm::{SeriesBuffer, Vm, VmEngine};
 
 type SlotMap = [Option<u16>; 6];
-type OutputCollections = (Vec<OutputSample>, Vec<OutputSample>, Vec<TriggerEvent>);
+type OutputCollections = (
+    Vec<OutputSample>,
+    Vec<OutputSample>,
+    Vec<OrderFieldSample>,
+    Vec<TriggerEvent>,
+);
 
 const BASE_UPDATE_MASK: u32 = 1;
 
@@ -174,6 +182,19 @@ impl Engine {
                     points: Vec::new(),
                 })
                 .collect(),
+            order_fields: compiled
+                .program
+                .order_fields
+                .iter()
+                .enumerate()
+                .map(|(id, decl)| OrderFieldSeries {
+                    id,
+                    name: decl.name.clone(),
+                    role: decl.role,
+                    kind: decl.kind,
+                    points: Vec::new(),
+                })
+                .collect(),
             trigger_events: Vec::new(),
             alerts: Vec::new(),
         };
@@ -207,9 +228,10 @@ impl Engine {
             advanced_mask: self.advanced_mask,
         };
         let mut step = Vm::new(program).execute(&mut vm_engine)?;
-        let (exports, triggers, trigger_events) = self.collect_outputs(bar)?;
+        let (exports, triggers, order_fields, trigger_events) = self.collect_outputs(bar)?;
         step.exports = exports;
         step.triggers = triggers;
+        step.order_fields = order_fields;
         step.trigger_events = trigger_events;
         for point in &step.plots {
             if let Some(plot) = self.outputs.plots.get_mut(point.plot_id) {
@@ -233,6 +255,9 @@ impl Engine {
                     trigger_index += 1;
                 }
             }
+        }
+        for (index, sample) in step.order_fields.iter().cloned().enumerate() {
+            self.outputs.order_fields[index].points.push(sample);
         }
         self.outputs
             .trigger_events
@@ -319,6 +344,7 @@ impl Engine {
     fn collect_outputs(&self, bar: Bar) -> Result<OutputCollections, RuntimeError> {
         let mut exports = Vec::new();
         let mut triggers = Vec::new();
+        let mut order_fields = Vec::new();
         let mut trigger_events = Vec::new();
 
         for (output_id, decl) in self.compiled.program.outputs.iter().enumerate() {
@@ -350,7 +376,24 @@ impl Engine {
             }
         }
 
-        Ok((exports, triggers, trigger_events))
+        for (field_id, decl) in self.compiled.program.order_fields.iter().enumerate() {
+            let value = self.current_values.get(decl.slot as usize).ok_or(
+                RuntimeError::InvalidLocalSlot {
+                    slot: decl.slot as usize,
+                },
+            )?;
+            order_fields.push(OrderFieldSample {
+                field_id,
+                name: decl.name.clone(),
+                role: decl.role,
+                kind: decl.kind,
+                bar_index: self.bar_index,
+                time: Some(bar.time),
+                value: output_value_for_order_field(value, &decl.name)?,
+            });
+        }
+
+        Ok((exports, triggers, order_fields, trigger_events))
     }
 
     fn commit_bar(&mut self, slot_map: &SlotMap, bar: Bar, mask: u32) -> Result<(), RuntimeError> {
@@ -687,6 +730,18 @@ fn output_value_for_decl(
             name: name.to_string(),
             expected: "series output",
             found: value.type_name(),
+        }),
+    }
+}
+
+fn output_value_for_order_field(value: &Value, name: &str) -> Result<OutputValue, RuntimeError> {
+    match value {
+        Value::F64(value) => Ok(OutputValue::F64(*value)),
+        Value::NA => Ok(OutputValue::NA),
+        other => Err(RuntimeError::OutputTypeMismatch {
+            name: name.to_string(),
+            expected: "series<float>",
+            found: other.type_name(),
         }),
     }
 }

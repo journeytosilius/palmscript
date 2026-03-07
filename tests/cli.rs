@@ -596,6 +596,8 @@ fn run_backtest_executes_single_source_script_with_default_execution_source() {
     assert!(output.status.success());
     let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
     assert_eq!(json["summary"]["trade_count"], Value::from(1));
+    assert!(json["orders"].is_array());
+    assert_eq!(json["orders"][0]["kind"], Value::from("Market"));
     let ending_equity = json["summary"]["ending_equity"]
         .as_f64()
         .expect("ending equity should be numeric");
@@ -645,6 +647,8 @@ fn run_backtest_supports_text_output() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Backtest Summary"))
+        .stdout(predicate::str::contains("Order Summary"))
+        .stdout(predicate::str::contains("Recent Orders"))
         .stdout(predicate::str::contains("Recent Trades"))
         .stdout(predicate::str::contains("Open Position"));
 }

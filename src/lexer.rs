@@ -201,6 +201,7 @@ impl<'a> LexerState<'a> {
             "let" => TokenKind::Let,
             "const" => TokenKind::Const,
             "input" => TokenKind::Input,
+            "order" => TokenKind::Order,
             "interval" => TokenKind::IntervalKw,
             "source" => TokenKind::Source,
             "use" => TokenKind::Use,

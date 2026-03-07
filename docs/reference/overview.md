@@ -28,9 +28,9 @@ The current PalmScript surface includes:
 - source-qualified series such as `spot.close` or `hl.1h.close`
 - supplemental intervals through `use <alias> <interval>`
 - top-level expression-bodied `fn` declarations
-- `let`, tuple destructuring, `export`, and `trigger`
+- `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, first-class `entry` / `exit`, and `order`
 - `if / else if / else`, with `else` required
-- literal-only series indexing, typed `ma_type.<variant>` enum literals, and deterministic three-valued boolean logic
+- literal-only series indexing, typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals, and deterministic three-valued boolean logic
 - a TA-Lib-style builtin surface where some names are executable today and additional reserved names are exposed through diagnostics and IDE metadata
 
 Representative checked-in examples:
@@ -44,7 +44,7 @@ Representative checked-in examples:
 
 Important implementation boundaries:
 
-- `interval`, `source`, `use`, `fn`, `export`, and `trigger` are top-level only
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, and `order` are top-level only
 - bare market identifiers such as `close` are not valid in executable scripts
 - higher source intervals require `use <alias> <interval>`
 - only identifiers are callable

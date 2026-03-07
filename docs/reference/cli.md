@@ -70,6 +70,11 @@ Requirements:
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
 
+Backtest output:
+
+- JSON includes runtime `outputs`, order lifecycle records in `orders`, fills, trades, equity, summary, and any open position
+- text output renders summary metrics plus order and trade sections
+
 ## `palmscript dump-bytecode`
 
 ```bash

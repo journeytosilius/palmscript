@@ -1,6 +1,6 @@
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval, SourceFeed,
-    SourceRuntimeConfig, VmLimits,
+    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval,
+    OrderEndReason, OrderKind, OrderStatus, SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -492,4 +492,399 @@ plot(spot.close)",
     approx_eq(open_position.market_price, 13.0);
     approx_eq(open_position.unrealized_pnl, 83.33333333333333);
     approx_eq(result.summary.unrealized_pnl, 83.33333333333326);
+}
+
+#[test]
+fn explicit_market_orders_preserve_market_fill_behavior() {
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    9.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    8.0,
+                    8.0,
+                ),
+            ],
+        }],
+    };
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market()
+order exit long = market()
+plot(spot.close)",
+    )
+    .expect("script should compile");
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.orders.len(), 2);
+    assert!(result
+        .orders
+        .iter()
+        .all(|order| order.kind == OrderKind::Market && order.status == OrderStatus::Filled));
+    approx_eq(result.fills[0].price, 12.0);
+    approx_eq(result.fills[1].price, 8.0);
+}
+
+#[test]
+fn limit_entry_fills_at_better_of_open_and_limit() {
+    let signal_time = support::JAN_1_2024_UTC_MS + support::MINUTE_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {signal_time}
+order entry long = limit(spot.close[1], tif.gtc, false)
+plot(spot.close)",
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 12.0,
+                    high: 13.0,
+                    low: 9.0,
+                    close: 12.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.orders.len(), 1);
+    assert_eq!(result.orders[0].kind, OrderKind::Limit);
+    assert_eq!(result.orders[0].status, OrderStatus::Filled);
+    approx_eq(result.orders[0].limit_price.expect("limit"), 10.0);
+    approx_eq(result.orders[0].fill_price.expect("fill"), 10.0);
+    approx_eq(result.fills[0].price, 10.0);
+}
+
+#[test]
+fn stop_market_entry_fills_at_worse_of_open_and_trigger() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+order entry long = stop_market(spot.close + 1, trigger_ref.last)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    11.0,
+                    11.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.orders[0].kind, OrderKind::StopMarket);
+    assert_eq!(result.orders[0].status, OrderStatus::Filled);
+    approx_eq(result.orders[0].trigger_price.expect("trigger"), 12.0);
+    approx_eq(result.orders[0].fill_price.expect("fill"), 12.0);
+    approx_eq(result.fills[0].price, 12.0);
+}
+
+#[test]
+fn stop_limit_waits_until_next_bar_after_trigger() {
+    let signal_time = support::JAN_1_2024_UTC_MS + support::MINUTE_MS;
+    let compiled = compile(
+        &format!(
+            "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {signal_time}
+order entry long = stop_limit(spot.close + 1, spot.close, tif.gtc, false, trigger_ref.last, spot.time + 600000)
+plot(spot.close)",
+        ),
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 13.0,
+                    high: 13.0,
+                    low: 10.0,
+                    close: 13.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 10.0,
+                    high: 10.0,
+                    low: 9.0,
+                    close: 10.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.orders[0].kind, OrderKind::StopLimit);
+    assert_eq!(result.orders[0].status, OrderStatus::Filled);
+    approx_eq(
+        result.orders[0].trigger_time.expect("trigger"),
+        (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+    );
+    assert_eq!(result.orders[0].fill_bar_index, Some(3));
+    approx_eq(result.orders[0].fill_price.expect("fill"), 10.0);
+    approx_eq(result.fills[0].price, 10.0);
+}
+
+#[test]
+fn ioc_limit_cancels_when_not_filled_on_first_bar() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+order entry long = limit(spot.close[1] - 2, tif.ioc, false)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 0);
+    assert_eq!(result.orders[0].status, OrderStatus::Cancelled);
+    assert_eq!(
+        result.orders[0].end_reason,
+        Some(OrderEndReason::IocUnfilled)
+    );
+}
+
+#[test]
+fn gtd_stop_limit_expires_before_late_touch() {
+    let signal_time = support::JAN_1_2024_UTC_MS + support::MINUTE_MS;
+    let compiled = compile(
+        &format!(
+            "interval 1m
+source spot = binance.usdm(\"BTCUSDT\")
+entry long = spot.time == {signal_time}
+order entry long = stop_limit(spot.close + 1, spot.close, tif.gtd, false, trigger_ref.last, spot.time + 120000)
+plot(spot.close)",
+        ),
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 13.0,
+                    high: 13.0,
+                    low: 10.0,
+                    close: 13.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 10.0,
+                    high: 10.0,
+                    low: 9.0,
+                    close: 10.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 0);
+    assert_eq!(result.orders[0].status, OrderStatus::Expired);
+}
+
+#[test]
+fn same_role_orders_replace_active_resting_orders() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+order entry long = limit(spot.close[1], tif.gtc, false)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    11.0,
+                    11.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.orders.len(), 2);
+    assert_eq!(result.orders[0].status, OrderStatus::Cancelled);
+    assert_eq!(result.orders[0].end_reason, Some(OrderEndReason::Replaced));
+    assert_eq!(result.orders[1].status, OrderStatus::Filled);
+    approx_eq(result.orders[1].limit_price.expect("limit"), 11.0);
+    approx_eq(result.orders[1].fill_price.expect("fill"), 11.0);
+}
+
+#[test]
+fn post_only_limit_cancels_when_order_would_cross() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+order entry long = limit(spot.close + 2, tif.gtc, true)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 0);
+    assert_eq!(result.orders[0].status, OrderStatus::Cancelled);
+    assert_eq!(
+        result.orders[0].end_reason,
+        Some(OrderEndReason::PostOnlyWouldCross)
+    );
+}
+
+#[test]
+fn venue_profiles_reject_unsupported_order_configurations() {
+    let cases = [
+        (
+            "binance spot",
+            "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.mark)\nplot(spot.close)",
+        ),
+        (
+            "binance usdm",
+            "interval 1m\nsource spot = binance.usdm(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.index)\nplot(spot.close)",
+        ),
+        (
+            "hyperliquid spot",
+            "interval 1m\nsource spot = hyperliquid.spot(\"BTC\")\nentry long = spot.close > spot.close[1]\norder entry long = limit(spot.close[1], tif.fok, false)\nplot(spot.close)",
+        ),
+        (
+            "hyperliquid perps",
+            "interval 1m\nsource spot = hyperliquid.perps(\"BTC\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.last)\nplot(spot.close)",
+        ),
+    ];
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+            ],
+        }],
+    };
+
+    for (name, source) in cases {
+        let compiled = compile(source).expect("script should compile");
+        let err = run_backtest_with_sources(
+            &compiled,
+            runtime.clone(),
+            VmLimits::default(),
+            config("spot"),
+        )
+        .expect_err("expected venue validation error");
+        assert!(
+            matches!(err, BacktestError::UnsupportedOrderForVenue { .. }),
+            "{name}"
+        );
+    }
 }

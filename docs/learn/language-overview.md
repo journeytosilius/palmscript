@@ -8,11 +8,11 @@ Common building blocks:
 - `source` declarations for exchange-backed markets
 - optional supplemental `use <alias> <interval>` declarations for higher or equal intervals
 - top-level functions
-- `let`, tuple destructuring, `export`, and `trigger`
+- `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, `entry` / `exit`, and `order`
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
 - helper builtins such as `crossover`, `highest`, `barssince`, and `valuewhen`
-- typed `ma_type.<variant>` enum literals for part of the TA-Lib-style surface
+- typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals
 
 ## Script Shape
 
@@ -36,7 +36,7 @@ Related checked-in example: [`examples/strategies/cross_source_spread.palm`](htt
 - series values evolve over time
 - higher intervals update only when those candles fully close
 - missing history or missing aligned source data appears as `na`
-- `plot`, `export`, and `trigger` emit results after each execution step
+- `plot`, `export`, `trigger`, and first-class strategy signals emit results after each execution step
 
 ## Where To Go For Exact Rules
 

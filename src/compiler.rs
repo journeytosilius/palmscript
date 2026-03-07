@@ -6,19 +6,20 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, SignalRole as AstSignalRole, Stmt,
-    StmtKind, UnaryOp,
+    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, OrderSpec, OrderSpecKind,
+    SignalRole as AstSignalRole, Stmt, StmtKind, UnaryOp,
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
-    Constant, Instruction, LocalInfo, OpCode, OutputDecl, OutputKind, Program,
-    SignalRole as CompiledSignalRole,
+    Constant, Instruction, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
+    Program, SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
     DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
 };
 use crate::lexer;
+use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
 use crate::parser;
 use crate::span::Span;
 use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunctionMetadata};
@@ -161,14 +162,24 @@ struct Analysis {
     resolved_let_slots: HashMap<NodeId, u16>,
     resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
+    resolved_order_field_slots: HashMap<NodeId, ResolvedOrderFieldSlots>,
     immutable_slots: HashMap<NodeId, u16>,
     immutable_bindings: HashMap<String, ExprInfo>,
     immutable_binding_slots: HashMap<String, u16>,
     immutable_values: HashMap<String, Value>,
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
+    order_fields: Vec<OrderFieldDecl>,
+    orders: Vec<OrderDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ResolvedOrderFieldSlots {
+    price_slot: Option<u16>,
+    trigger_price_slot: Option<u16>,
+    expire_time_slot: Option<u16>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -560,7 +571,7 @@ impl<'a> Analyzer<'a> {
                 variant_span,
                 ..
             } => match resolve_enum_variant(namespace, variant) {
-                Some(_) => ExprInfo::scalar(Type::MaType),
+                Some(value) => ExprInfo::scalar(scalar_type_for_value(&value)),
                 None => {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
@@ -989,6 +1000,9 @@ impl<'a> Analyzer<'a> {
             StmtKind::Signal { role, expr } => {
                 self.analyze_signal_stmt(stmt, *role, expr);
             }
+            StmtKind::Order { role, spec } => {
+                self.analyze_order_stmt(stmt, *role, spec);
+            }
             StmtKind::If {
                 condition,
                 then_block,
@@ -1092,6 +1106,294 @@ impl<'a> Analyzer<'a> {
         });
     }
 
+    fn analyze_order_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, spec: &OrderSpec) {
+        let role = compiled_signal_role(role);
+        if self.analysis.orders.iter().any(|decl| decl.role == role) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "duplicate order declaration for `{}`",
+                    role.canonical_name()
+                ),
+                stmt.span,
+            ));
+            return;
+        }
+
+        let mut resolved = ResolvedOrderFieldSlots::default();
+        let mut order = OrderDecl {
+            role,
+            kind: OrderKind::Market,
+            tif: None,
+            post_only: false,
+            trigger_ref: None,
+            price_field_id: None,
+            trigger_price_field_id: None,
+            expire_time_field_id: None,
+        };
+
+        match &spec.kind {
+            OrderSpecKind::Market => {}
+            OrderSpecKind::Limit {
+                price,
+                tif,
+                post_only,
+            } => {
+                order.kind = OrderKind::Limit;
+                if let Some((field_id, slot)) =
+                    self.analyze_order_numeric_field(role, OrderFieldKind::Price, price)
+                {
+                    order.price_field_id = Some(field_id);
+                    resolved.price_slot = Some(slot);
+                }
+                self.diagnose_unknown_enum_literal(tif);
+                order.tif = literal_time_in_force(tif, &self.analysis.immutable_values);
+                if order.tif.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "limit requires `tif.<variant>` as the second argument",
+                        tif.span,
+                    ));
+                }
+                match literal_bool(post_only, &self.analysis.immutable_values) {
+                    Some(value) => order.post_only = value,
+                    None => self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "limit requires a bool literal or immutable bool binding as the third argument",
+                        post_only.span,
+                    )),
+                }
+            }
+            OrderSpecKind::StopMarket {
+                trigger_price,
+                trigger_ref,
+            } => {
+                order.kind = OrderKind::StopMarket;
+                if let Some((field_id, slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::TriggerPrice,
+                    trigger_price,
+                ) {
+                    order.trigger_price_field_id = Some(field_id);
+                    resolved.trigger_price_slot = Some(slot);
+                }
+                self.diagnose_unknown_enum_literal(trigger_ref);
+                order.trigger_ref =
+                    literal_trigger_reference(trigger_ref, &self.analysis.immutable_values);
+                if order.trigger_ref.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "stop_market requires `trigger_ref.<variant>` as the second argument",
+                        trigger_ref.span,
+                    ));
+                }
+            }
+            OrderSpecKind::StopLimit {
+                trigger_price,
+                limit_price,
+                tif,
+                post_only,
+                trigger_ref,
+                expire_time_ms,
+            } => {
+                order.kind = OrderKind::StopLimit;
+                if let Some((field_id, slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::TriggerPrice,
+                    trigger_price,
+                ) {
+                    order.trigger_price_field_id = Some(field_id);
+                    resolved.trigger_price_slot = Some(slot);
+                }
+                if let Some((field_id, slot)) =
+                    self.analyze_order_numeric_field(role, OrderFieldKind::Price, limit_price)
+                {
+                    order.price_field_id = Some(field_id);
+                    resolved.price_slot = Some(slot);
+                }
+                if let Some((field_id, slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::ExpireTime,
+                    expire_time_ms,
+                ) {
+                    order.expire_time_field_id = Some(field_id);
+                    resolved.expire_time_slot = Some(slot);
+                }
+                self.diagnose_unknown_enum_literal(tif);
+                order.tif = literal_time_in_force(tif, &self.analysis.immutable_values);
+                if order.tif.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "stop_limit requires `tif.<variant>` as the third argument",
+                        tif.span,
+                    ));
+                }
+                match literal_bool(post_only, &self.analysis.immutable_values) {
+                    Some(value) => order.post_only = value,
+                    None => self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "stop_limit requires a bool literal or immutable bool binding as the fourth argument",
+                        post_only.span,
+                    )),
+                }
+                self.diagnose_unknown_enum_literal(trigger_ref);
+                order.trigger_ref =
+                    literal_trigger_reference(trigger_ref, &self.analysis.immutable_values);
+                if order.trigger_ref.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "stop_limit requires `trigger_ref.<variant>` as the fifth argument",
+                        trigger_ref.span,
+                    ));
+                }
+            }
+            OrderSpecKind::TakeProfitMarket {
+                trigger_price,
+                trigger_ref,
+            } => {
+                order.kind = OrderKind::TakeProfitMarket;
+                if let Some((field_id, slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::TriggerPrice,
+                    trigger_price,
+                ) {
+                    order.trigger_price_field_id = Some(field_id);
+                    resolved.trigger_price_slot = Some(slot);
+                }
+                self.diagnose_unknown_enum_literal(trigger_ref);
+                order.trigger_ref =
+                    literal_trigger_reference(trigger_ref, &self.analysis.immutable_values);
+                if order.trigger_ref.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "take_profit_market requires `trigger_ref.<variant>` as the second argument",
+                        trigger_ref.span,
+                    ));
+                }
+            }
+            OrderSpecKind::TakeProfitLimit {
+                trigger_price,
+                limit_price,
+                tif,
+                post_only,
+                trigger_ref,
+                expire_time_ms,
+            } => {
+                order.kind = OrderKind::TakeProfitLimit;
+                if let Some((field_id, slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::TriggerPrice,
+                    trigger_price,
+                ) {
+                    order.trigger_price_field_id = Some(field_id);
+                    resolved.trigger_price_slot = Some(slot);
+                }
+                if let Some((field_id, slot)) =
+                    self.analyze_order_numeric_field(role, OrderFieldKind::Price, limit_price)
+                {
+                    order.price_field_id = Some(field_id);
+                    resolved.price_slot = Some(slot);
+                }
+                if let Some((field_id, slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::ExpireTime,
+                    expire_time_ms,
+                ) {
+                    order.expire_time_field_id = Some(field_id);
+                    resolved.expire_time_slot = Some(slot);
+                }
+                self.diagnose_unknown_enum_literal(tif);
+                order.tif = literal_time_in_force(tif, &self.analysis.immutable_values);
+                if order.tif.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "take_profit_limit requires `tif.<variant>` as the third argument",
+                        tif.span,
+                    ));
+                }
+                match literal_bool(post_only, &self.analysis.immutable_values) {
+                    Some(value) => order.post_only = value,
+                    None => self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "take_profit_limit requires a bool literal or immutable bool binding as the fourth argument",
+                        post_only.span,
+                    )),
+                }
+                self.diagnose_unknown_enum_literal(trigger_ref);
+                order.trigger_ref =
+                    literal_trigger_reference(trigger_ref, &self.analysis.immutable_values);
+                if order.trigger_ref.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "take_profit_limit requires `trigger_ref.<variant>` as the fifth argument",
+                        trigger_ref.span,
+                    ));
+                }
+            }
+        }
+
+        self.analysis
+            .resolved_order_field_slots
+            .insert(stmt.id, resolved);
+        self.analysis.orders.push(order);
+    }
+
+    fn diagnose_unknown_enum_literal(&mut self, expr: &Expr) {
+        if let ExprKind::EnumVariant {
+            namespace,
+            variant,
+            variant_span,
+            ..
+        } = &expr.kind
+        {
+            if resolve_enum_variant(namespace, variant).is_none() {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("unknown enum variant `{}.{}`", namespace, variant),
+                    *variant_span,
+                ));
+            }
+        }
+    }
+
+    fn analyze_order_numeric_field(
+        &mut self,
+        role: CompiledSignalRole,
+        kind: OrderFieldKind,
+        expr: &Expr,
+    ) -> Option<(u16, u16)> {
+        let info = self.analyze_expr(expr);
+        if !info.ty.is_numeric_like() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "order field `{}` requires numeric, series<float>, or na",
+                    kind.as_str()
+                ),
+                expr.span,
+            ));
+            return None;
+        }
+        let hidden_name = format!("__order.{}.{}", role.canonical_name(), kind.as_str());
+        let slot = self.define_symbol(
+            hidden_name.clone(),
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: info.update_mask,
+            },
+            true,
+            None,
+        );
+        let field_id = self.analysis.order_fields.len() as u16;
+        self.analysis.order_fields.push(OrderFieldDecl {
+            name: hidden_name,
+            role,
+            kind,
+            slot,
+        });
+        Some((field_id, slot))
+    }
+
     fn analyze_block(&mut self, block: &Block) {
         for stmt in &block.statements {
             self.analyze_stmt(stmt);
@@ -1120,12 +1422,12 @@ impl<'a> Analyzer<'a> {
                 variant_span,
                 ..
             } => match resolve_enum_variant(namespace, variant) {
-                Some(ma_type) => {
+                Some(value) => {
+                    let ty = scalar_type_for_value(&value);
                     self.analysis
                         .expr_info
-                        .insert(expr.id, ExprInfo::scalar(Type::MaType));
-                    let _ = ma_type;
-                    ExprInfo::scalar(Type::MaType)
+                        .insert(expr.id, ExprInfo::scalar(ty));
+                    ExprInfo::scalar(ty)
                 }
                 None => {
                     self.diagnostics.push(Diagnostic::new(
@@ -1551,7 +1853,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 variant_span,
                 ..
             } => match resolve_enum_variant(namespace, variant) {
-                Some(_) => ExprInfo::scalar(Type::MaType),
+                Some(value) => ExprInfo::scalar(scalar_type_for_value(&value)),
                 None => {
                     self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
@@ -1802,6 +2104,7 @@ fn collect_source_series_stmt(
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
+        StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::If {
             condition,
             then_block,
@@ -1814,6 +2117,36 @@ fn collect_source_series_stmt(
             for stmt in &else_block.statements {
                 collect_source_series_stmt(stmt, refs);
             }
+        }
+    }
+}
+
+fn collect_order_spec_series_refs(
+    spec: &OrderSpec,
+    refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
+) {
+    match &spec.kind {
+        OrderSpecKind::Market => {}
+        OrderSpecKind::Limit { price, .. } => collect_source_series_refs(price, refs),
+        OrderSpecKind::StopMarket { trigger_price, .. }
+        | OrderSpecKind::TakeProfitMarket { trigger_price, .. } => {
+            collect_source_series_refs(trigger_price, refs);
+        }
+        OrderSpecKind::StopLimit {
+            trigger_price,
+            limit_price,
+            expire_time_ms,
+            ..
+        }
+        | OrderSpecKind::TakeProfitLimit {
+            trigger_price,
+            limit_price,
+            expire_time_ms,
+            ..
+        } => {
+            collect_source_series_refs(trigger_price, refs);
+            collect_source_series_refs(limit_price, refs);
+            collect_source_series_refs(expire_time_ms, refs);
         }
     }
 }
@@ -1887,6 +2220,7 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
+        StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::If {
             condition,
             then_block,
@@ -1904,6 +2238,35 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
                     .iter()
                     .find_map(|stmt| stmt_source_ref_span(stmt, source, target))
             }),
+    }
+}
+
+fn order_spec_source_ref_span(
+    spec: &OrderSpec,
+    source: &str,
+    target: Option<Interval>,
+) -> Option<Span> {
+    match &spec.kind {
+        OrderSpecKind::Market => None,
+        OrderSpecKind::Limit { price, .. } => expr_source_ref_span(price, source, target),
+        OrderSpecKind::StopMarket { trigger_price, .. }
+        | OrderSpecKind::TakeProfitMarket { trigger_price, .. } => {
+            expr_source_ref_span(trigger_price, source, target)
+        }
+        OrderSpecKind::StopLimit {
+            trigger_price,
+            limit_price,
+            expire_time_ms,
+            ..
+        }
+        | OrderSpecKind::TakeProfitLimit {
+            trigger_price,
+            limit_price,
+            expire_time_ms,
+            ..
+        } => expr_source_ref_span(trigger_price, source, target)
+            .or_else(|| expr_source_ref_span(limit_price, source, target))
+            .or_else(|| expr_source_ref_span(expire_time_ms, source, target)),
     }
 }
 
@@ -2170,6 +2533,13 @@ fn infer_conditional(
         (InferredType::Concrete(Type::MaType), InferredType::Concrete(Type::MaType)) => {
             InferredType::Concrete(Type::MaType)
         }
+        (InferredType::Concrete(Type::TimeInForce), InferredType::Concrete(Type::TimeInForce)) => {
+            InferredType::Concrete(Type::TimeInForce)
+        }
+        (
+            InferredType::Concrete(Type::TriggerReference),
+            InferredType::Concrete(Type::TriggerReference),
+        ) => InferredType::Concrete(Type::TriggerReference),
         (InferredType::Tuple2(left), InferredType::Tuple2(right)) if left == right => {
             InferredType::Tuple2(left)
         }
@@ -3616,6 +3986,8 @@ fn eq_values_const(left: &Value, right: &Value) -> Option<bool> {
         (Value::F64(left), Value::F64(right)) => Some(left == right),
         (Value::Bool(left), Value::Bool(right)) => Some(left == right),
         (Value::MaType(left), Value::MaType(right)) => Some(left == right),
+        (Value::TimeInForce(left), Value::TimeInForce(right)) => Some(left == right),
+        (Value::TriggerReference(left), Value::TriggerReference(right)) => Some(left == right),
         (Value::NA, Value::NA) => Some(true),
         _ => None,
     }
@@ -3746,6 +4118,55 @@ fn literal_ma_type(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Op
     }
 }
 
+fn literal_bool(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Option<bool> {
+    match &expr.kind {
+        ExprKind::Bool(value) => Some(*value),
+        ExprKind::Ident(name) => match immutable_values.get(name) {
+            Some(Value::Bool(value)) => Some(*value),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn literal_time_in_force(
+    expr: &Expr,
+    immutable_values: &HashMap<String, Value>,
+) -> Option<TimeInForce> {
+    match &expr.kind {
+        ExprKind::Ident(name) => match immutable_values.get(name) {
+            Some(Value::TimeInForce(value)) => Some(*value),
+            _ => None,
+        },
+        ExprKind::EnumVariant {
+            namespace, variant, ..
+        } => match resolve_enum_variant(namespace, variant) {
+            Some(Value::TimeInForce(value)) => Some(value),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn literal_trigger_reference(
+    expr: &Expr,
+    immutable_values: &HashMap<String, Value>,
+) -> Option<TriggerReference> {
+    match &expr.kind {
+        ExprKind::Ident(name) => match immutable_values.get(name) {
+            Some(Value::TriggerReference(value)) => Some(*value),
+            _ => None,
+        },
+        ExprKind::EnumVariant {
+            namespace, variant, ..
+        } => match resolve_enum_variant(namespace, variant) {
+            Some(Value::TriggerReference(value)) => Some(value),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn ma_input_history_hint(
     ma_type_expr: Option<&Expr>,
     window: usize,
@@ -3760,7 +4181,21 @@ fn ma_input_history_hint(
 fn resolve_enum_variant(namespace: &str, variant: &str) -> Option<Value> {
     match namespace {
         "ma_type" => MaType::from_variant(variant).map(Value::MaType),
+        "tif" => TimeInForce::from_variant(variant).map(Value::TimeInForce),
+        "trigger_ref" => TriggerReference::from_variant(variant).map(Value::TriggerReference),
         _ => None,
+    }
+}
+
+fn scalar_type_for_value(value: &Value) -> Type {
+    match value {
+        Value::F64(_) => Type::F64,
+        Value::Bool(_) => Type::Bool,
+        Value::MaType(_) => Type::MaType,
+        Value::TimeInForce(_) => Type::TimeInForce,
+        Value::TriggerReference(_) => Type::TriggerReference,
+        Value::NA => Type::F64,
+        Value::Void | Value::SeriesRef(_) | Value::Tuple2(_) | Value::Tuple3(_) => Type::F64,
     }
 }
 
@@ -3802,6 +4237,8 @@ fn output_series_type(
             InferredType::Concrete(Type::Bool | Type::SeriesBool) => Type::SeriesBool,
             InferredType::Concrete(Type::Void)
             | InferredType::Concrete(Type::MaType)
+            | InferredType::Concrete(Type::TimeInForce)
+            | InferredType::Concrete(Type::TriggerReference)
             | InferredType::Tuple2(_)
             | InferredType::Tuple3(_) => {
                 diagnostics.push(Diagnostic::new(
@@ -3854,6 +4291,8 @@ impl<'a> Compiler<'a> {
         self.analysis = Analyzer::new(self.ast).analyze(self.ast)?;
         self.program.locals = self.analysis.locals.clone();
         self.program.outputs = self.analysis.outputs.clone();
+        self.program.order_fields = self.analysis.order_fields.clone();
+        self.program.orders = self.analysis.orders.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
         self.program.source_intervals = self.analysis.source_intervals.clone();
@@ -3965,6 +4404,70 @@ impl<'a> Compiler<'a> {
                         .with_a(slot)
                         .with_span(stmt.span),
                 );
+            }
+            StmtKind::Order { spec, .. } => {
+                let resolved = self.analysis.resolved_order_field_slots[&stmt.id];
+                match &spec.kind {
+                    OrderSpecKind::Market => {}
+                    OrderSpecKind::Limit { price, .. } => {
+                        if let Some(slot) = resolved.price_slot {
+                            self.emit_expr(price, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                    }
+                    OrderSpecKind::StopMarket { trigger_price, .. }
+                    | OrderSpecKind::TakeProfitMarket { trigger_price, .. } => {
+                        if let Some(slot) = resolved.trigger_price_slot {
+                            self.emit_expr(trigger_price, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                    }
+                    OrderSpecKind::StopLimit {
+                        trigger_price,
+                        limit_price,
+                        expire_time_ms,
+                        ..
+                    }
+                    | OrderSpecKind::TakeProfitLimit {
+                        trigger_price,
+                        limit_price,
+                        expire_time_ms,
+                        ..
+                    } => {
+                        if let Some(slot) = resolved.trigger_price_slot {
+                            self.emit_expr(trigger_price, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                        if let Some(slot) = resolved.price_slot {
+                            self.emit_expr(limit_price, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                        if let Some(slot) = resolved.expire_time_slot {
+                            self.emit_expr(expire_time_ms, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                    }
+                }
             }
             StmtKind::If {
                 condition,

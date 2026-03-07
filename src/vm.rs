@@ -204,6 +204,7 @@ impl<'a> Vm<'a> {
             plots,
             exports: Vec::new(),
             triggers: Vec::new(),
+            order_fields: Vec::new(),
             trigger_events: Vec::new(),
             alerts,
         })

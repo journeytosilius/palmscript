@@ -151,6 +151,26 @@ fn parses_zero_argument_functions() {
 }
 
 #[test]
+fn parses_order_declarations_with_enum_literals() {
+    compile(&with_interval(
+        "entry long = src.close > src.close[1]
+exit long = src.close < src.close[1]
+order entry long = limit(src.close[1], tif.gtc, false)
+order exit long = stop_market(src.close[1], trigger_ref.last)
+plot(src.close)",
+    ))
+    .expect("order declarations should compile");
+}
+
+#[test]
+fn rejects_order_declarations_inside_blocks() {
+    let message = compile_err(&with_interval(
+        "if true { order entry long = market() } else { plot(0) }",
+    ));
+    assert!(message.contains("order declarations are only allowed at the top level"));
+}
+
+#[test]
 fn rejects_function_declarations_inside_blocks() {
     let message = compile_err(&with_interval(
         "if true { fn helper() = close > open } else { plot(0) }",

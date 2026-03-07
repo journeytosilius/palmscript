@@ -11,7 +11,7 @@ The language now includes indicator, signal-helper, null-handling, event-memory,
 The repository currently ships:
 
 - the Rust library crate
-- a deterministic backtester on top of runtime trigger outputs
+- a deterministic venue-aware backtester on top of runtime trigger outputs and order metadata
 - the `palmscript` CLI
 - the `palmscript-lsp` language server
 - the first-party VS Code extension
@@ -25,11 +25,11 @@ PalmScript currently implements:
 - one or more named exchange-backed `source` declarations per executable script
 - source-qualified series such as `bn.close` or `hl.1h.close`
 - source-scoped `use <alias> <interval>` declarations for supplemental intervals
-- top-level expression-bodied `fn` declarations, `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, and first-class `entry` / `exit` signals
-- deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>` enum literals
+- top-level expression-bodied `fn` declarations, `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, first-class `entry` / `exit` signals, and `order` declarations
+- deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals
 - an expanding executable TA-Lib-style builtin surface, with remaining reserved catalog names exposed through diagnostics and IDE metadata
 - exchange-backed execution through `palmscript run market`
-- signal-to-portfolio backtesting through `palmscript run backtest` and `run_backtest_with_sources`
+- venue-aware signal-to-portfolio backtesting through `palmscript run backtest` and `run_backtest_with_sources`
 
 Checked-in strategy examples live under [`examples/strategies/`](examples/strategies/).
 
@@ -59,6 +59,7 @@ target/debug/palmscript run market examples/strategies/sma_cross.palm --from 170
 target/debug/palmscript run market examples/strategies/macd_tuple.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run backtest examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
+target/debug/palmscript run backtest examples/strategies/venue_orders_backtest.palm --from 1704067200000 --to 1704931200000 --format text
 mkdocs build --strict
 docker build -f Dockerfile.docs -t palmscript-docs .
 ```

@@ -13,6 +13,7 @@ pub enum TokenKind {
     Let,
     Const,
     Input,
+    Order,
     IntervalKw,
     Source,
     Use,

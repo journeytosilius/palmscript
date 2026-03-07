@@ -16,6 +16,7 @@ pub mod ide;
 mod indicators;
 pub mod interval;
 pub mod lexer;
+mod order;
 pub mod output;
 pub mod parser;
 pub mod runtime;
@@ -27,7 +28,8 @@ pub mod vm;
 
 pub use backtest::{
     run_backtest_with_sources, BacktestConfig, BacktestError, BacktestResult, BacktestSummary,
-    EquityPoint, Fill, FillAction, PositionSide, PositionSnapshot, Trade,
+    EquityPoint, Fill, FillAction, OrderEndReason, OrderRecord, OrderStatus, PositionSide,
+    PositionSnapshot, Trade,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, CompiledProgram};
@@ -41,9 +43,10 @@ pub use interval::{
     DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
     SourceTemplate, INTERVAL_SPECS,
 };
+pub use order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
 pub use output::{
-    Alert, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,
-    TriggerEvent,
+    Alert, OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,
+    PlotPoint, PlotSeries, StepOutput, TriggerEvent,
 };
 pub use runtime::{run_with_sources, Bar, Engine, SourceFeed, SourceRuntimeConfig, VmLimits};
 pub use span::{Position, Span};

@@ -9,6 +9,8 @@ The implementation distinguishes these concrete types:
 - `float`
 - `bool`
 - `ma_type`
+- `tif`
+- `trigger_ref`
 - `series<float>`
 - `series<bool>`
 - `void`
@@ -22,6 +24,8 @@ PalmScript values have the following runtime forms:
 - numeric values are `f64`
 - boolean values are `true` or `false`
 - `ma_type.<variant>` values are typed enum literals
+- `tif.<variant>` values are typed enum literals
+- `trigger_ref.<variant>` values are typed enum literals
 - `na` is the missing-value sentinel
 - `void` is not a user-writable literal
 
@@ -36,8 +40,15 @@ Current typed enum surface:
 - `ma_type.kama`
 - `ma_type.mama`
 - `ma_type.t3`
+- `tif.gtc`
+- `tif.ioc`
+- `tif.fok`
+- `tif.gtd`
+- `trigger_ref.last`
+- `trigger_ref.mark`
+- `trigger_ref.index`
 
-All current `ma_type` variants are executable through the TA-Lib-style moving-average builtins; see [TA-Lib Surface](ta-lib.md).
+All current `ma_type` variants are executable through the TA-Lib-style moving-average builtins; see [TA-Lib Surface](ta-lib.md). `tif` and `trigger_ref` values currently exist to parameterize `order ... = ...` declarations for the backtester.
 
 ## Series Types
 

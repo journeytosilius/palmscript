@@ -5,6 +5,7 @@
 //! execution.
 
 use crate::bytecode::OutputKind;
+use crate::{OrderFieldKind, SignalRole};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -62,11 +63,33 @@ pub struct TriggerEvent {
     pub time: Option<f64>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderFieldSample {
+    #[serde(skip)]
+    pub field_id: usize,
+    pub name: String,
+    pub role: SignalRole,
+    pub kind: OrderFieldKind,
+    pub bar_index: usize,
+    pub time: Option<f64>,
+    pub value: OutputValue,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OrderFieldSeries {
+    pub id: usize,
+    pub name: String,
+    pub role: SignalRole,
+    pub kind: OrderFieldKind,
+    pub points: Vec<OrderFieldSample>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct StepOutput {
     pub plots: Vec<PlotPoint>,
     pub exports: Vec<OutputSample>,
     pub triggers: Vec<OutputSample>,
+    pub order_fields: Vec<OrderFieldSample>,
     pub trigger_events: Vec<TriggerEvent>,
     pub alerts: Vec<Alert>,
 }
@@ -76,6 +99,7 @@ pub struct Outputs {
     pub plots: Vec<PlotSeries>,
     pub exports: Vec<OutputSeries>,
     pub triggers: Vec<OutputSeries>,
+    pub order_fields: Vec<OrderFieldSeries>,
     pub trigger_events: Vec<TriggerEvent>,
     pub alerts: Vec<Alert>,
 }
@@ -83,15 +107,18 @@ pub struct Outputs {
 #[cfg(test)]
 mod tests {
     use super::{
-        OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,
+        OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,
+        PlotPoint, PlotSeries, StepOutput,
     };
-    use crate::bytecode::OutputKind;
+    use crate::bytecode::{OutputKind, SignalRole};
+    use crate::OrderFieldKind;
 
     #[test]
     fn default_outputs_and_step_outputs_are_empty() {
         assert_eq!(StepOutput::default().plots.len(), 0);
         assert_eq!(StepOutput::default().exports.len(), 0);
         assert_eq!(Outputs::default().plots.len(), 0);
+        assert_eq!(Outputs::default().order_fields.len(), 0);
         assert_eq!(Outputs::default().alerts.len(), 0);
     }
 
@@ -120,7 +147,23 @@ mod tests {
                 value: Some(11.0),
             }],
         };
+        let order_field = OrderFieldSeries {
+            id: 3,
+            name: "__order.long_entry.price".to_string(),
+            role: SignalRole::LongEntry,
+            kind: OrderFieldKind::Price,
+            points: vec![OrderFieldSample {
+                field_id: 3,
+                name: "__order.long_entry.price".to_string(),
+                role: SignalRole::LongEntry,
+                kind: OrderFieldKind::Price,
+                bar_index: 5,
+                time: Some(10.0),
+                value: OutputValue::F64(11.0),
+            }],
+        };
         assert_eq!(series.points[0], sample);
         assert_eq!(plot.points[0].value, Some(11.0));
+        assert_eq!(order_field.points[0].value, OutputValue::F64(11.0));
     }
 }

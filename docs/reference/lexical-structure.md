@@ -11,8 +11,13 @@ The following tokens are reserved keywords:
 - `interval`
 - `source`
 - `use`
+- `const`
+- `input`
 - `export`
 - `trigger`
+- `entry`
+- `exit`
+- `order`
 - `if`
 - `else`
 - `and`

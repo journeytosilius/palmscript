@@ -2,7 +2,8 @@ use std::fmt::Write;
 
 use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::{
-    BacktestResult, CompiledProgram, OutputKind, OutputValue, Outputs, PositionSide, Value,
+    BacktestResult, CompiledProgram, OrderStatus, OutputKind, OutputValue, Outputs, PositionSide,
+    SignalRole, Value,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -116,6 +117,32 @@ pub fn render_bytecode_text(compiled: &CompiledProgram) -> String {
 pub fn render_backtest_text(result: &BacktestResult) -> String {
     let mut out = String::new();
     let summary = &result.summary;
+    let placed_count = result.orders.len();
+    let open_count = result
+        .orders
+        .iter()
+        .filter(|order| matches!(order.status, OrderStatus::Open))
+        .count();
+    let filled_count = result
+        .orders
+        .iter()
+        .filter(|order| matches!(order.status, OrderStatus::Filled))
+        .count();
+    let cancelled_count = result
+        .orders
+        .iter()
+        .filter(|order| matches!(order.status, OrderStatus::Cancelled))
+        .count();
+    let rejected_count = result
+        .orders
+        .iter()
+        .filter(|order| matches!(order.status, OrderStatus::Rejected))
+        .count();
+    let expired_count = result
+        .orders
+        .iter()
+        .filter(|order| matches!(order.status, OrderStatus::Expired))
+        .count();
 
     out.push_str("Backtest Summary\n");
     let _ = writeln!(out, "starting_equity={:.2}", summary.starting_equity);
@@ -129,6 +156,34 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     let _ = writeln!(out, "win_rate_pct={:.2}", summary.win_rate * 100.0);
     let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
     let _ = writeln!(out, "max_gross_exposure={:.2}", summary.max_gross_exposure);
+
+    out.push_str("Order Summary\n");
+    let _ = writeln!(out, "placed_count={placed_count}");
+    let _ = writeln!(out, "open_count={open_count}");
+    let _ = writeln!(out, "filled_count={filled_count}");
+    let _ = writeln!(out, "cancelled_count={cancelled_count}");
+    let _ = writeln!(out, "rejected_count={rejected_count}");
+    let _ = writeln!(out, "expired_count={expired_count}");
+
+    out.push_str("Recent Orders\n");
+    let recent_orders = result.orders.iter().rev().take(5).collect::<Vec<_>>();
+    for order in recent_orders.iter().rev() {
+        let _ = writeln!(
+            out,
+            "id={} role={} kind={} status={} signal_time={} placed_time={} fill_time={} fill_price={} end_reason={}",
+            order.id,
+            fmt_signal_role(order.role),
+            fmt_order_kind(order.kind),
+            fmt_order_status(order.status),
+            order.signal_time,
+            order.placed_time,
+            fmt_opt_f64(order.fill_time),
+            fmt_opt_f64(order.fill_price),
+            order.end_reason
+                .map(|reason| format!("{reason:?}"))
+                .unwrap_or_else(|| "na".to_string())
+        );
+    }
 
     out.push_str("Recent Trades\n");
     let recent_trades = result.trades.iter().rev().take(5).collect::<Vec<_>>();
@@ -203,6 +258,8 @@ fn fmt_value(value: &Value) -> String {
         Value::F64(value) => value.to_string(),
         Value::Bool(value) => value.to_string(),
         Value::MaType(value) => format!("ma_type.{}", value.as_str()),
+        Value::TimeInForce(value) => format!("tif.{}", value.as_str()),
+        Value::TriggerReference(value) => format!("trigger_ref.{}", value.as_str()),
         Value::NA => "na".to_string(),
         Value::Void => "void".to_string(),
         Value::SeriesRef(slot) => format!("series-ref({slot})"),
@@ -238,6 +295,36 @@ fn fmt_position_side(side: PositionSide) -> &'static str {
     }
 }
 
+fn fmt_signal_role(role: SignalRole) -> &'static str {
+    match role {
+        SignalRole::LongEntry => "long_entry",
+        SignalRole::LongExit => "long_exit",
+        SignalRole::ShortEntry => "short_entry",
+        SignalRole::ShortExit => "short_exit",
+    }
+}
+
+fn fmt_order_kind(kind: palmscript::OrderKind) -> &'static str {
+    match kind {
+        palmscript::OrderKind::Market => "market",
+        palmscript::OrderKind::Limit => "limit",
+        palmscript::OrderKind::StopMarket => "stop_market",
+        palmscript::OrderKind::StopLimit => "stop_limit",
+        palmscript::OrderKind::TakeProfitMarket => "take_profit_market",
+        palmscript::OrderKind::TakeProfitLimit => "take_profit_limit",
+    }
+}
+
+fn fmt_order_status(status: OrderStatus) -> &'static str {
+    match status {
+        OrderStatus::Open => "open",
+        OrderStatus::Filled => "filled",
+        OrderStatus::Cancelled => "cancelled",
+        OrderStatus::Rejected => "rejected",
+        OrderStatus::Expired => "expired",
+    }
+}
+
 #[allow(dead_code)]
 fn _output_kind(_kind: OutputKind) {}
 
@@ -248,9 +335,9 @@ mod tests {
     use palmscript::span::{Position, Span};
     use palmscript::types::Type;
     use palmscript::{
-        BacktestResult, BacktestSummary, CompiledProgram, EquityPoint, Fill, FillAction,
-        OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, PositionSide,
-        Trade,
+        BacktestResult, BacktestSummary, CompiledProgram, EquityPoint, Fill, FillAction, OrderKind,
+        OrderRecord, OrderStatus, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint,
+        PlotSeries, PositionSide, SignalRole, Trade,
     };
 
     #[test]
@@ -290,6 +377,7 @@ mod tests {
                     value: OutputValue::NA,
                 }],
             }],
+            order_fields: vec![],
             trigger_events: vec![palmscript::TriggerEvent {
                 output_id: 1,
                 name: "entry".to_string(),
@@ -346,6 +434,28 @@ mod tests {
     fn render_backtest_text_includes_summary_and_recent_trades() {
         let result = BacktestResult {
             outputs: Outputs::default(),
+            orders: vec![OrderRecord {
+                id: 0,
+                role: SignalRole::LongEntry,
+                kind: OrderKind::Market,
+                action: FillAction::Buy,
+                tif: None,
+                post_only: false,
+                trigger_ref: None,
+                signal_time: 10.0,
+                placed_bar_index: 1,
+                placed_time: 20.0,
+                trigger_time: None,
+                fill_bar_index: Some(1),
+                fill_time: Some(20.0),
+                raw_price: Some(100.0),
+                fill_price: Some(100.0),
+                limit_price: None,
+                trigger_price: None,
+                expire_time: None,
+                status: OrderStatus::Filled,
+                end_reason: None,
+            }],
             fills: vec![],
             trades: vec![Trade {
                 side: PositionSide::Long,
@@ -401,6 +511,10 @@ mod tests {
         let rendered = render_backtest_text(&result);
         assert!(rendered.contains("Backtest Summary"));
         assert!(rendered.contains("starting_equity=1000.00"));
+        assert!(rendered.contains("Order Summary"));
+        assert!(rendered.contains("placed_count=1"));
+        assert!(rendered.contains("Recent Orders"));
+        assert!(rendered.contains("role=long_entry"));
         assert!(rendered.contains("Recent Trades"));
         assert!(rendered.contains("side=long"));
         assert!(rendered.contains("Open Position"));

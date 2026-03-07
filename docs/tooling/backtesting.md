@@ -3,10 +3,9 @@
 PalmScript exposes a deterministic backtester on top of the existing
 source-aware runtime.
 
-The backtester does not change PalmScript syntax or VM semantics. It runs a
-compiled script, consumes runtime trigger events plus compiled signal-role
-metadata, and simulates fills, trades, and equity for one configured execution
-source.
+The backtester runs a compiled script, consumes runtime trigger events plus
+compiled signal-role and order metadata, and simulates fills, orders, trades,
+and equity for one configured execution source.
 
 ## CLI
 
@@ -28,6 +27,15 @@ Additional checked-in strategy example:
 palmscript run backtest examples/strategies/adaptive_trend_backtest.palm \
   --from 1741305600000 \
   --to 1772841600000
+```
+
+Explicit-order example:
+
+```bash
+palmscript run backtest examples/strategies/venue_orders_backtest.palm \
+  --from 1704067200000 \
+  --to 1704931200000 \
+  --format text
 ```
 
 On Binance spot `BTCUSDT`, that window corresponds to `2025-03-07T00:00:00Z`
@@ -88,6 +96,7 @@ println!("ending equity = {}", result.summary.ending_equity);
 The result includes:
 
 - raw runtime `outputs`
+- order lifecycle records in `orders`
 - per-fill records in `fills`
 - closed round trips in `trades`
 - per-bar account marks in `equity_curve`
@@ -103,6 +112,13 @@ Preferred v1 surface:
 - `entry short = ...`
 - `exit short = ...`
 
+Optional execution templates:
+
+- `order entry long = market()`
+- `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
+- `order entry short = limit(spot.close[1], tif.gtc, false)`
+- `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
+
 Legacy compatibility bridge:
 
 - if no first-class signal declarations are present, the backtester falls back to trigger names `long_entry`, `long_exit`, `short_entry`, and `short_exit`
@@ -111,25 +127,54 @@ Legacy compatibility bridge:
 
 ## Execution Model
 
-V1 uses intentionally simple deterministic execution rules:
+The backtester stays intentionally simple and deterministic:
 
-- fills occur only on the next execution-source base bar with `bar.time >
-  signal_time`
-- buy-side fills use `open * (1 + slippage_bps / 10_000)`
-- sell-side fills use `open * (1 - slippage_bps / 10_000)`
-- fees are charged per fill using `fee_bps`
+- the execution venue profile is inferred from the execution `source` template, for example `binance.spot`, `binance.usdm`, `hyperliquid.spot`, or `hyperliquid.perps`
+- signals produced on bar `t` become active starting on the first execution-source base bar with `bar.time > signal_time`
 - only one net position is supported: `flat`, `long`, or `short`
+- the portfolio model remains all-in with no explicit quantity expressions
 - same-side re-entry is ignored
 - opposite entry reverses on the same eligible open by closing first and then
   opening the new side
 - open positions are marked to market on the execution-source close and are not
   force-closed at the end of the run
 
+Supported order constructors:
+
+- `market()`
+- `limit(price, tif, post_only)`
+- `stop_market(trigger_price, trigger_ref)`
+- `stop_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms)`
+- `take_profit_market(trigger_price, trigger_ref)`
+- `take_profit_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms)`
+
+Enum namespaces:
+
+- `tif.gtc`, `tif.ioc`, `tif.fok`, `tif.gtd`
+- `trigger_ref.last`, `trigger_ref.mark`, `trigger_ref.index`
+
+Deterministic fill rules:
+
+- `market()`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees are charged per fill using `fee_bps`
+- `limit(...)`: fills on the first eligible bar whose range crosses the limit; the fill price is the better of `open` and `limit`
+- `stop_market(...)`: triggers on the first eligible bar whose range crosses the stop; the fill price is the worse of `open` and `trigger_price`
+- `take_profit_market(...)`: triggers on the first eligible bar whose range crosses the trigger; the fill price is the better of `open` and `trigger_price`
+- `stop_limit(...)` and `take_profit_limit(...)`: trigger on crossing; if the opening price already satisfies the resulting limit, they fill immediately, otherwise they become resting limit orders starting from the next bar
+- `tif.ioc` and `tif.fok`: evaluate only on the first eligible bar and cancel if they do not fully fill
+- `tif.gtd`: expires deterministically before evaluating any execution bar at or beyond `expire_time_ms`
+
+Venue profile notes:
+
+- Binance Spot supports the order constructors above, but only `trigger_ref.last` on trigger orders and no `tif.gtd`
+- Binance USD-M supports `trigger_ref.last` and `trigger_ref.mark`
+- Hyperliquid Spot and Hyperliquid Perps currently support `tif.gtc` and `tif.ioc`, and trigger orders use `trigger_ref.mark`
+- venue-incompatible orders are rejected before simulation starts
+
 ## Current Scope
 
 Not included in V1:
 
-- stop or limit orders
 - partial fills
+- order book or queue-position modeling
 - leverage beyond the implicit 1x gross-notional model
 - funding, borrow fees, or liquidation logic
