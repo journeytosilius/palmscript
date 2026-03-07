@@ -79,8 +79,9 @@ Tuple-return example:
 
 ```palm
 interval 1m
+source spot = binance.spot("BTCUSDT")
 
-let (line, signal, hist) = macd(close, 12, 26, 9)
+let (line, signal, hist) = macd(spot.close, 12, 26, 9)
 plot(line)
 plot(signal)
 plot(hist)

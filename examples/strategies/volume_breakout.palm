@@ -1,11 +1,12 @@
 interval 1m
+source spot = binance.spot("BTCUSDT")
 
 // Single-interval breakout example with explicit trigger output.
-let breakout = close > high[1]
-let rising_volume = volume > volume[1]
+let breakout = spot.close > spot.high[1]
+let rising_volume = spot.volume > spot.volume[1]
 
 export momentum = breakout and rising_volume
-trigger long_entry = momentum and close > open
+trigger long_entry = momentum and spot.close > spot.open
 
 if long_entry {
     plot(1)

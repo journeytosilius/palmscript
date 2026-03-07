@@ -4,14 +4,15 @@ This strategy runs on one-minute bars, computes two moving averages, exports a t
 
 ```palmscript
 interval 1m
+source spot = binance.spot("BTCUSDT")
 
-let fast = ema(close, 5)
-let slow = sma(close, 10)
+let fast = ema(spot.close, 5)
+let slow = sma(spot.close, 10)
 
 export trend = fast > slow
 
 if trend {
-    plot(close)
+    plot(spot.close)
 } else {
     plot(na)
 }
@@ -22,7 +23,8 @@ Related checked-in example: [`examples/strategies/sma_cross.palm`](https://githu
 ## What This Introduces
 
 - `interval 1m` sets the base execution clock
-- `close` is a base market series in a source-less script
+- `source spot = ...` binds one exchange-backed market
+- `spot.close` is a source-qualified base series
 - `let` binds reusable expressions
 - `export` emits a named output series
 - `plot` emits chart-style numeric output
@@ -31,24 +33,26 @@ Related checked-in example: [`examples/strategies/sma_cross.palm`](https://githu
 ## Run It
 
 ```bash
-target/debug/palmscript run csv examples/strategies/sma_cross.palm \
-  --bars examples/data/minute_bars.csv
+target/debug/palmscript run market examples/strategies/sma_cross.palm \
+  --from 1704067200000 \
+  --to 1704153600000
 ```
 
 ## Extend It With Higher-Timeframe Context
 
 ```palmscript
 interval 1d
-use 1w
+source spot = binance.spot("BTCUSDT")
+use spot 1w
 
-let weekly_basis = ema(1w.close, 8)
-export bullish = close > weekly_basis
-plot(close)
+let weekly_basis = ema(spot.1w.close, 8)
+export bullish = spot.close > weekly_basis
+plot(spot.close)
 ```
 
 Related checked-in example: [`examples/strategies/weekly_bias.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/weekly_bias.palm)
 
-For the exact rules behind `1w.close`, indexing, and no-lookahead behavior, see:
+For the exact rules behind `spot.1w.close`, indexing, and no-lookahead behavior, see:
 
 - [Series and Indexing](../reference/series-and-indexing.md)
 - [Intervals and Sources](../reference/intervals-and-sources.md)

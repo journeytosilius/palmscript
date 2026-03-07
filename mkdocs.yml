@@ -58,7 +58,6 @@ nav:
       - First Strategy: learn/first-strategy.md
       - Language Overview: learn/language-overview.md
       - Cookbook:
-          - CSV Strategies: learn/cookbook/csv-strategies.md
           - Multi-Interval Strategy: learn/cookbook/multi-interval.md
           - Exchange-Backed Sources: learn/cookbook/exchange-backed-sources.md
           - Cross-Source Spread: learn/cookbook/cross-source-spread.md
@@ -80,7 +79,6 @@ nav:
       - Glossary: reference/glossary.md
   - Tooling:
       - CLI: tooling/cli.md
-      - CSV Mode: tooling/csv-mode.md
       - Market Mode: tooling/market-mode.md
       - Language Server: tooling/language-server.md
       - VS Code Extension: tooling/vscode.md

@@ -1,11 +1,12 @@
 interval 1d
-use 1w
+source spot = binance.spot("BTCUSDT")
+use spot 1w
 
 // Multi-interval example using weekly context on a daily execution feed.
-let weekly_basis = ema(1w.close, 2)
+let weekly_basis = ema(spot.1w.close, 2)
 
-export above_weekly_basis = close > weekly_basis
-trigger continuation = above_weekly_basis and close > close[1]
+export above_weekly_basis = spot.close > weekly_basis
+trigger continuation = above_weekly_basis and spot.close > spot.close[1]
 
 if continuation {
     plot(1)

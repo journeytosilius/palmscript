@@ -49,7 +49,7 @@ Market mode:
 - reads declared `source` directives from the script
 - determines the required `(source, interval)` feeds from the compiled program
 - fetches each required feed directly from the venue
-- converts venue responses into the canonical bar schema `time,open,high,low,close,volume`
+- normalizes venue responses into the canonical typed bar fields `time`, `open`, `high`, `low`, `close`, and `volume`
 - runs the VM over the resulting source-aware runtime configuration
 
 ## Venue Guardrails

@@ -21,13 +21,13 @@ The repository currently ships:
 PalmScript currently implements:
 
 - exactly one top-level base `interval <...>` directive per script
-- source-less scripts that use bare OHLCV series such as `close`
-- source-aware scripts that use named `source` declarations and source-qualified series such as `bn.close` or `hl.1h.close`
-- legacy `use <interval>` declarations for source-less supplemental intervals
-- source-scoped `use <alias> <interval>` declarations for source-aware supplemental intervals
+- one or more named exchange-backed `source` declarations per executable script
+- source-qualified series such as `bn.close` or `hl.1h.close`
+- source-scoped `use <alias> <interval>` declarations for supplemental intervals
 - top-level expression-bodied `fn` declarations, `let`, tuple destructuring, `export`, and `trigger`
 - deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>` enum literals
 - a partially executable TA-Lib-style builtin surface, with additional reserved catalog names exposed through diagnostics and IDE metadata
+- exchange-backed execution through `palmscript run market`
 
 Checked-in strategy examples live under [`examples/strategies/`](examples/strategies/).
 
@@ -51,8 +51,8 @@ Start here:
 ```bash
 cargo build --bin palmscript --bin palmscript-lsp
 target/debug/palmscript check examples/strategies/sma_cross.palm
-target/debug/palmscript run csv examples/strategies/sma_cross.palm --bars examples/data/minute_bars.csv
-target/debug/palmscript run csv examples/strategies/macd_tuple.palm --bars examples/data/minute_bars.csv
+target/debug/palmscript run market examples/strategies/sma_cross.palm --from 1704067200000 --to 1704153600000
+target/debug/palmscript run market examples/strategies/macd_tuple.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
 mkdocs build --strict
 docker build -f Dockerfile.docs -t palmscript-docs .

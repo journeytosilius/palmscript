@@ -19,7 +19,7 @@ Update documentation whenever a change affects:
 - language syntax or semantics
 - runtime behavior
 - CLI commands or flags
-- CSV mode or market mode behavior
+- market mode behavior
 - editor tooling behavior
 - released artifacts or workflows
 - examples or checked-in fixtures used in docs
@@ -53,7 +53,6 @@ The current documentation layout replaces the older structure with this mapping:
 | --- | --- |
 | `getting-started/*` | `learn/*` |
 | `language/*` | split between `learn/*` and `reference/*` |
-| `runtime/csv-mode.md` | `tooling/csv-mode.md` |
 | `runtime/market-mode.md` | `tooling/market-mode.md` |
 | `runtime/*` internals pages | `internals/*` |
 | `examples/*` | `learn/cookbook/*` or `internals/rust-examples.md` |

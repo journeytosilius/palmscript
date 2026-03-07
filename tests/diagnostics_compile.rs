@@ -6,7 +6,7 @@ mod support;
 use support::{assert_compile_diagnostics, compile_diagnostics, ExpectedDiagnostic};
 
 fn with_interval(source: &str) -> String {
-    format!("interval 1m\n{source}")
+    support::with_single_source_interval(source)
 }
 
 fn with_sources(source: &str) -> String {
@@ -217,10 +217,7 @@ fn compile_diagnostic_catalog_matches_contract() {
         (
             "type_market_data_builtins_are_not_callable",
             with_interval("plot(close())"),
-            vec![expected(
-                DiagnosticKind::Type,
-                "market data builtins are identifiers, not callable functions",
-            )],
+            vec![expected(DiagnosticKind::Parse, "only identifiers can be called in v0.1")],
         ),
         (
             "type_plot_wrong_arity",
@@ -300,7 +297,7 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             with_sources("plot(close)"),
             vec![expected(
                 DiagnosticKind::Type,
-                "source-aware scripts require source-qualified market series; found `close`",
+                "scripts require source-qualified market series; found `close`",
             )],
         ),
         (

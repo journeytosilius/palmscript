@@ -51,37 +51,6 @@ impl CompileError {
     }
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum DataPrepError {
-    #[error("CSV mode could not infer an input interval from bar timestamps")]
-    CannotInferInputInterval,
-    #[error("compiled strategy is missing a base interval declaration")]
-    MissingBaseIntervalDeclaration,
-    #[error("raw input interval {raw:?} is too coarse for required interval {required:?}")]
-    RawIntervalTooCoarse { raw: Interval, required: Interval },
-    #[error("cannot roll raw input interval {raw:?} into target interval {target:?}")]
-    UnsupportedRollupPath { raw: Interval, target: Interval },
-    #[error("input data does not contain enough complete bars for interval {interval:?}")]
-    InsufficientDataForInterval { interval: Interval },
-    #[error("incomplete rollup bucket for {target:?} at open time {bucket_open_time}: expected {expected} {raw:?} bar(s), found {found}")]
-    IncompleteRollupBucket {
-        raw: Interval,
-        target: Interval,
-        bucket_open_time: i64,
-        expected: usize,
-        found: usize,
-    },
-    #[error("input bars are not strictly increasing: previous time {previous_time}, current time {current_time}")]
-    UnsortedInputBars {
-        previous_time: i64,
-        current_time: i64,
-    },
-    #[error("input bars contain a duplicate timestamp at {time}")]
-    DuplicateInputBarTime { time: i64 },
-    #[error("input bar time {time} is invalid")]
-    InvalidInputBarTime { time: i64 },
-}
-
 #[derive(Debug, Error, PartialEq)]
 pub enum RuntimeError {
     #[error("instruction budget exhausted at bar {bar_index}, pc {pc}")]
@@ -120,14 +89,6 @@ pub enum RuntimeError {
         expected: &'static str,
         found: &'static str,
     },
-    #[error("script requires multi-interval runtime configuration")]
-    MissingIntervalConfig,
-    #[error("missing interval feed for {interval:?}")]
-    MissingIntervalFeed { interval: Interval },
-    #[error("duplicate interval feed for {interval:?}")]
-    DuplicateIntervalFeed { interval: Interval },
-    #[error("unexpected interval feed for {interval:?}")]
-    UnexpectedIntervalFeed { interval: Interval },
     #[error("missing base feed for source {source_id}")]
     MissingSourceBaseFeed { source_id: u16 },
     #[error("duplicate base feed for source {source_id}")]
@@ -164,10 +125,9 @@ pub enum RuntimeError {
 
 #[cfg(test)]
 mod tests {
-    use super::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
+    use super::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
     use crate::bytecode::OpCode;
     use crate::span::{Position, Span};
-    use crate::Interval;
 
     #[test]
     fn diagnostic_and_compile_error_preserve_message_and_count() {
@@ -179,24 +139,6 @@ mod tests {
         let error = CompileError::new(vec![diagnostic.clone()]);
         assert_eq!(error.diagnostics, vec![diagnostic]);
         assert_eq!(error.to_string(), "compile failed with 1 diagnostic(s)");
-    }
-
-    #[test]
-    fn data_prep_error_messages_are_specific() {
-        let coarse = DataPrepError::RawIntervalTooCoarse {
-            raw: Interval::Day1,
-            required: Interval::Min1,
-        };
-        let incomplete = DataPrepError::IncompleteRollupBucket {
-            raw: Interval::Min1,
-            target: Interval::Day1,
-            bucket_open_time: 1704067200000,
-            expected: 1440,
-            found: 8,
-        };
-        assert!(coarse.to_string().contains("too coarse"));
-        assert!(incomplete.to_string().contains("expected 1440"));
-        assert!(incomplete.to_string().contains("found 8"));
     }
 
     #[test]

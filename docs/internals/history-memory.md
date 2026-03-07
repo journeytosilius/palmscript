@@ -7,7 +7,7 @@ PalmScript is designed for deterministic bounded-memory execution.
 The compiler computes required history from:
 
 - explicit indexing such as `x[3]`
-- indicator windows such as `ema(close, 14)`
+- indicator windows such as `ema(spot.close, 14)`
 - output/materialization needs
 
 The runtime enforces `VmLimits`, including `max_history_capacity`. If a compiled program requires more history than the configured limit allows, execution fails deterministically instead of silently truncating data.

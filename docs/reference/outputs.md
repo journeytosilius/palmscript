@@ -28,7 +28,7 @@ Rules:
 `export` publishes a named output series:
 
 ```palmscript
-export trend = ema(close, 20) > ema(close, 50)
+export trend = ema(spot.close, 20) > ema(spot.close, 50)
 ```
 
 Rules:
@@ -48,7 +48,7 @@ Type normalization:
 `trigger` publishes a named boolean output series:
 
 ```palmscript
-trigger long_entry = close > high[1]
+trigger long_entry = spot.close > spot.high[1]
 ```
 
 Rules:

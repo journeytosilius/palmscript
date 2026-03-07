@@ -984,7 +984,10 @@ mod tests {
 
     #[test]
     fn rejects_market_fetch_for_scripts_without_sources() {
-        let compiled = compile("interval 1m\nplot(close)").expect("compile");
+        let mut compiled =
+            compile("interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nplot(a.close)")
+                .expect("compile");
+        compiled.program.declared_sources.clear();
         let err = fetch_source_runtime_config(
             &compiled,
             1704067200000,

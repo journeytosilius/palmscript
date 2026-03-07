@@ -13,7 +13,7 @@ At each step:
 3. the bytecode program executes
 4. `plot`, `export`, and `trigger` outputs are collected for the step
 
-CSV-backed and source-backed execution construct the step inputs differently, but expression evaluation is the same once the step begins.
+Different market-mode feeds may construct the step inputs differently, but expression evaluation is the same once the step begins.
 
 ## Expression Categories
 

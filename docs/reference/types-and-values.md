@@ -57,7 +57,7 @@ Some builtins may also return fixed-size tuples of series values. In the current
 Example:
 
 ```palm
-let (line, signal, hist) = macd(close, 12, 26, 9)
+let (line, signal, hist) = macd(spot.close, 12, 26, 9)
 plot(hist)
 ```
 
@@ -103,7 +103,7 @@ Examples:
 - `export x = na` is valid
 - `trigger t = na` is valid
 - `if na { ... } else { ... }` is valid
-- `ma(close, 20, ma_type.ema)` is valid
+- `ma(spot.close, 20, ma_type.ema)` is valid
 
 ## Boolean Logic
 

@@ -14,23 +14,6 @@ Arguments:
 
 - `<script.palm>`: path to the strategy source file
 
-## `palmscript run csv`
-
-```bash
-palmscript run csv <script.palm> --bars <bars.csv> \
-  [--format json|text] \
-  [--max-instructions-per-bar <N>] \
-  [--max-history-capacity <N>]
-```
-
-Arguments and flags:
-
-- `<script.palm>`: path to the strategy source file
-- `--bars <bars.csv>`: CSV file with canonical `time,open,high,low,close,volume` columns
-- `--format json|text`: output rendering format, default `json`
-- `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
-- `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
-
 ## `palmscript run market`
 
 ```bash

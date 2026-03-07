@@ -1,21 +1,18 @@
+#[path = "support/mod.rs"]
+mod support;
+
 use palmscript::{
-    compile, run, run_multi_interval, Bar, Interval, IntervalFeed, MultiIntervalConfig, VmLimits,
+    compile, run_with_sources, Bar, CompiledProgram, Interval, Outputs, RuntimeError, SourceFeed,
+    SourceRuntimeConfig, VmLimits,
 };
 use serde_json::json;
 
 fn with_interval(source: &str) -> String {
-    format!("interval 1m\n{source}")
+    support::with_single_source_interval(source)
 }
 
 fn with_intervals(base: &str, supplemental: &[&str], source: &str) -> String {
-    let mut script = format!("interval {base}\n");
-    for interval in supplemental {
-        script.push_str("use ");
-        script.push_str(interval);
-        script.push('\n');
-    }
-    script.push_str(source);
-    script
+    support::with_single_source_intervals(base, supplemental, source)
 }
 
 fn fixture_bars() -> Vec<Bar> {
@@ -28,7 +25,7 @@ fn fixture_bars() -> Vec<Bar> {
                 low: close - 1.0,
                 close,
                 volume: 1_000.0 + index as f64,
-                time: 1_700_000_000_000.0 + index as f64 * 60_000.0,
+                time: JAN_1_2024_UTC_MS as f64 + index as f64 * 60_000.0,
             }
         })
         .collect()
@@ -55,6 +52,68 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
             time: (start_ms + spacing_ms * index as i64) as f64,
         })
         .collect()
+}
+
+#[derive(Clone, Debug)]
+struct IntervalFeed {
+    interval: Interval,
+    bars: Vec<Bar>,
+}
+
+#[derive(Clone, Debug)]
+struct MultiIntervalConfig {
+    base_interval: Interval,
+    supplemental: Vec<IntervalFeed>,
+}
+
+fn run(
+    compiled: &CompiledProgram,
+    bars: &[Bar],
+    limits: VmLimits,
+) -> Result<Outputs, RuntimeError> {
+    let base_interval = compiled
+        .program
+        .base_interval
+        .expect("compiled strategy should declare a base interval");
+    run_with_sources(
+        compiled,
+        SourceRuntimeConfig {
+            base_interval,
+            feeds: vec![SourceFeed {
+                source_id: 0,
+                interval: base_interval,
+                bars: bars.to_vec(),
+            }],
+        },
+        limits,
+    )
+}
+
+fn run_multi_interval(
+    compiled: &CompiledProgram,
+    base_bars: &[Bar],
+    config: MultiIntervalConfig,
+    limits: VmLimits,
+) -> Result<Outputs, RuntimeError> {
+    let mut feeds = Vec::with_capacity(1 + config.supplemental.len());
+    feeds.push(SourceFeed {
+        source_id: 0,
+        interval: config.base_interval,
+        bars: base_bars.to_vec(),
+    });
+    feeds.extend(config.supplemental.into_iter().map(|feed| SourceFeed {
+        source_id: 0,
+        interval: feed.interval,
+        bars: feed.bars,
+    }));
+    run_with_sources(
+        compiled,
+        SourceRuntimeConfig {
+            base_interval: config.base_interval,
+            feeds,
+        },
+        limits,
+    )
 }
 
 #[test]

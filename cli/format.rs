@@ -82,24 +82,11 @@ pub fn render_bytecode_text(compiled: &CompiledProgram) -> String {
     let program = &compiled.program;
     let _ = writeln!(
         out,
-        "Strategy Intervals\n  base={}\n  declared={}",
+        "Strategy Intervals\n  base={}",
         program
             .base_interval
             .map(|interval| interval.as_str())
-            .unwrap_or("none"),
-        if program.declared_intervals.is_empty() {
-            "[]".to_string()
-        } else {
-            format!(
-                "[{}]",
-                program
-                    .declared_intervals
-                    .iter()
-                    .map(|interval| interval.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        }
+            .unwrap_or("none")
     );
     let _ = writeln!(out, "Constants");
     for (index, constant) in program.constants.iter().enumerate() {
@@ -277,7 +264,6 @@ mod tests {
                 slot: 1,
             }],
             base_interval: Some(palmscript::Interval::Min1),
-            declared_intervals: vec![palmscript::Interval::Hour1],
             instructions: vec![palmscript::bytecode::Instruction::new(
                 palmscript::bytecode::OpCode::LoadConst,
             )
@@ -291,7 +277,6 @@ mod tests {
         let rendered = render_bytecode_text(&compiled);
         assert!(rendered.contains("Strategy Intervals"));
         assert!(rendered.contains("base=1m"));
-        assert!(rendered.contains("declared=[1h]"));
         assert!(rendered.contains("Constants"));
         assert!(rendered.contains("Locals"));
         assert!(rendered.contains("Outputs"));

@@ -1,5 +1,8 @@
 use palmscript::compile;
 
+#[path = "support/mod.rs"]
+mod support;
+
 fn compile_err(source: &str) -> String {
     let err = compile(source).expect_err("expected compile error");
     err.diagnostics
@@ -10,18 +13,11 @@ fn compile_err(source: &str) -> String {
 }
 
 fn with_interval(source: &str) -> String {
-    format!("interval 1m\n{source}")
+    support::with_single_source_interval(source)
 }
 
 fn with_intervals(source: &str, supplemental: &[&str]) -> String {
-    let mut script = String::from("interval 1m\n");
-    for interval in supplemental {
-        script.push_str("use ");
-        script.push_str(interval);
-        script.push('\n');
-    }
-    script.push_str(source);
-    script
+    support::with_single_source_intervals("1m", supplemental, source)
 }
 
 #[test]
@@ -179,7 +175,9 @@ fn rejects_function_body_captures() {
     let message = compile_err(&with_interval(
         "let basis = close\nfn helper() = basis\nplot(1)",
     ));
-    assert!(message.contains("function bodies may only reference parameters or predefined series"));
+    assert!(
+        message.contains("function bodies may only reference parameters or declared source series")
+    );
 }
 
 #[test]
@@ -245,13 +243,13 @@ fn parses_tuple_destructuring_from_builtin_calls() {
 #[test]
 fn rejects_bare_interval_literals() {
     let message = compile_err(&with_interval("plot(1w)"));
-    assert!(message.contains("expected `.` after interval literal"));
+    assert!(message.contains("global interval-qualified series are not supported"));
 }
 
 #[test]
 fn rejects_invalid_qualified_market_fields() {
     let message = compile_err(&with_intervals("plot(1w.foo)", &["1w"]));
-    assert!(message.contains("expected market field after `.`"));
+    assert!(message.contains("global interval-qualified series are not supported"));
 }
 
 #[test]
@@ -321,50 +319,58 @@ fn rejects_unknown_identifiers() {
 
 #[test]
 fn rejects_missing_interval_directive() {
-    let message = compile_err("plot(close)");
+    let message = compile_err("plot(1)");
     assert!(message.contains("strategy must declare exactly one `interval <...>` directive"));
 }
 
 #[test]
 fn parses_interval_and_use_directives() {
-    compile("interval 1m\nuse 1w\nuse 1M\nplot(1w.close)")
-        .expect("interval directives should compile");
+    compile(&support::with_single_source_intervals(
+        "1m",
+        &["1w", "1M"],
+        "plot(1w.close)",
+    ))
+    .expect("interval directives should compile");
 }
 
 #[test]
 fn rejects_duplicate_interval_directives() {
-    let message = compile_err("interval 1m\ninterval 5m\nplot(close)");
+    let message = compile_err("interval 1m\ninterval 5m\nplot(1)");
     assert!(message.contains("strategy must declare exactly one `interval <...>` directive"));
 }
 
 #[test]
 fn rejects_duplicate_use_directives() {
-    let message = compile_err("interval 1m\nuse 1w\nuse 1w\nplot(1w.close)");
-    assert!(message.contains("duplicate `use 1w` declaration"));
+    let message = compile_err(
+        "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nuse src 1w\nuse src 1w\nplot(src.1w.close)",
+    );
+    assert!(message.contains("duplicate `use src 1w` declaration"));
 }
 
 #[test]
-fn rejects_use_of_base_interval() {
-    let message = compile_err("interval 1m\nuse 1m\nplot(close)");
-    assert!(message.contains("duplicates the base interval"));
+fn allows_use_of_base_interval_for_named_sources() {
+    compile("interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nuse src 1m\nplot(src.close)")
+        .expect("source-scoped base interval use should compile");
 }
 
 #[test]
 fn rejects_undeclared_qualified_intervals() {
-    let message = compile_err("interval 1m\nplot(1w.close)");
-    assert!(message.contains("interval `1w` must be declared with `use 1w`"));
+    let message =
+        compile_err("interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nplot(src.1w.close)");
+    assert!(message.contains("source interval `1w` for `src` must be declared with `use src 1w`"));
 }
 
 #[test]
 fn rejects_bare_interval_directives() {
-    let message = compile_err("interval\nplot(close)");
+    let message = compile_err("interval\nplot(1)");
     assert!(message.contains("expected interval literal after `interval`"));
 }
 
 #[test]
 fn rejects_bare_use_directives() {
-    let message = compile_err("interval 1m\nuse\nplot(close)");
-    assert!(message.contains("expected interval literal after `use`"));
+    let message =
+        compile_err("interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nuse\nplot(src.close)");
+    assert!(message.contains("expected source alias after `use`"));
 }
 
 #[test]
@@ -375,6 +381,6 @@ fn rejects_interval_directives_inside_blocks() {
 
 #[test]
 fn rejects_use_directives_inside_blocks() {
-    let message = compile_err(&with_interval("if true { use 1w } else { plot(0) }"));
+    let message = compile_err(&with_interval("if true { use src 1w } else { plot(0) }"));
     assert!(message.contains("interval directives are only allowed at the top level"));
 }

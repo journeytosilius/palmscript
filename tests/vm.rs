@@ -1,25 +1,84 @@
 use palmscript::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
 use palmscript::compiler::CompiledProgram;
 use palmscript::diagnostic::RuntimeError;
-use palmscript::runtime::{
-    run, run_multi_interval, Bar, IntervalFeed, MultiIntervalConfig, VmLimits,
-};
+#[path = "support/mod.rs"]
+mod support;
+
+use palmscript::runtime::{Bar, VmLimits};
 use palmscript::types::Value;
-use palmscript::{Interval, MarketBinding, MarketField, MarketSource, Type};
+use palmscript::{
+    run_with_sources, Interval, MarketBinding, MarketField, MarketSource, Outputs, SourceFeed,
+    SourceRuntimeConfig, SourceTemplate, Type,
+};
 
 fn with_interval(source: &str) -> String {
-    format!("interval 1m\n{source}")
+    support::with_single_source_interval(source)
 }
 
 fn with_intervals(base: &str, supplemental: &[&str], source: &str) -> String {
-    let mut script = format!("interval {base}\n");
-    for interval in supplemental {
-        script.push_str("use ");
-        script.push_str(interval);
-        script.push('\n');
-    }
-    script.push_str(source);
-    script
+    support::with_single_source_intervals(base, supplemental, source)
+}
+
+#[derive(Clone, Debug)]
+struct IntervalFeed {
+    interval: Interval,
+    bars: Vec<Bar>,
+}
+
+#[derive(Clone, Debug)]
+struct MultiIntervalConfig {
+    base_interval: Interval,
+    supplemental: Vec<IntervalFeed>,
+}
+
+fn run(
+    compiled: &CompiledProgram,
+    bars: &[Bar],
+    limits: VmLimits,
+) -> Result<Outputs, RuntimeError> {
+    let base_interval = compiled
+        .program
+        .base_interval
+        .expect("compiled strategy should declare a base interval");
+    run_with_sources(
+        compiled,
+        SourceRuntimeConfig {
+            base_interval,
+            feeds: vec![SourceFeed {
+                source_id: 0,
+                interval: base_interval,
+                bars: bars.to_vec(),
+            }],
+        },
+        limits,
+    )
+}
+
+fn run_multi_interval(
+    compiled: &CompiledProgram,
+    base_bars: &[Bar],
+    config: MultiIntervalConfig,
+    limits: VmLimits,
+) -> Result<Outputs, RuntimeError> {
+    let mut feeds = Vec::with_capacity(1 + config.supplemental.len());
+    feeds.push(SourceFeed {
+        source_id: 0,
+        interval: config.base_interval,
+        bars: base_bars.to_vec(),
+    });
+    feeds.extend(config.supplemental.into_iter().map(|feed| SourceFeed {
+        source_id: 0,
+        interval: feed.interval,
+        bars: feed.bars,
+    }));
+    run_with_sources(
+        compiled,
+        SourceRuntimeConfig {
+            base_interval: config.base_interval,
+            feeds,
+        },
+        limits,
+    )
 }
 
 fn empty_locals() -> Vec<LocalInfo> {
@@ -30,7 +89,10 @@ fn empty_locals() -> Vec<LocalInfo> {
             false,
             1,
             Some(MarketBinding {
-                source: MarketSource::Base,
+                source: MarketSource::Named {
+                    source_id: 0,
+                    interval: None,
+                },
                 field: MarketField::Open,
             }),
         ),
@@ -40,7 +102,10 @@ fn empty_locals() -> Vec<LocalInfo> {
             false,
             1,
             Some(MarketBinding {
-                source: MarketSource::Base,
+                source: MarketSource::Named {
+                    source_id: 0,
+                    interval: None,
+                },
                 field: MarketField::High,
             }),
         ),
@@ -50,7 +115,10 @@ fn empty_locals() -> Vec<LocalInfo> {
             false,
             1,
             Some(MarketBinding {
-                source: MarketSource::Base,
+                source: MarketSource::Named {
+                    source_id: 0,
+                    interval: None,
+                },
                 field: MarketField::Low,
             }),
         ),
@@ -60,7 +128,10 @@ fn empty_locals() -> Vec<LocalInfo> {
             false,
             1,
             Some(MarketBinding {
-                source: MarketSource::Base,
+                source: MarketSource::Named {
+                    source_id: 0,
+                    interval: None,
+                },
                 field: MarketField::Close,
             }),
         ),
@@ -70,7 +141,10 @@ fn empty_locals() -> Vec<LocalInfo> {
             false,
             1,
             Some(MarketBinding {
-                source: MarketSource::Base,
+                source: MarketSource::Named {
+                    source_id: 0,
+                    interval: None,
+                },
                 field: MarketField::Volume,
             }),
         ),
@@ -80,11 +154,23 @@ fn empty_locals() -> Vec<LocalInfo> {
             false,
             1,
             Some(MarketBinding {
-                source: MarketSource::Base,
+                source: MarketSource::Named {
+                    source_id: 0,
+                    interval: None,
+                },
                 field: MarketField::Time,
             }),
         ),
     ]
+}
+
+fn default_declared_sources() -> Vec<palmscript::DeclaredMarketSource> {
+    vec![palmscript::DeclaredMarketSource {
+        id: 0,
+        alias: support::DEFAULT_SOURCE_ALIAS.to_string(),
+        template: SourceTemplate::BinanceSpot,
+        symbol: "BTCUSDT".to_string(),
+    }]
 }
 
 fn bars() -> Vec<Bar> {
@@ -94,7 +180,7 @@ fn bars() -> Vec<Bar> {
         low: 0.5,
         close: 1.5,
         volume: 10.0,
-        time: 1_700_000_000_000.0,
+        time: JAN_1_2024_UTC_MS as f64,
     }]
 }
 
@@ -133,9 +219,8 @@ fn tiny_program_push_add_plot_executes() {
         ],
         locals: empty_locals(),
         outputs: vec![],
-        base_interval: None,
-        declared_intervals: vec![],
-        declared_sources: vec![],
+        base_interval: Some(Interval::Min1),
+        declared_sources: default_declared_sources(),
         source_intervals: vec![],
         history_capacity: 2,
         plot_count: 1,
@@ -158,9 +243,8 @@ fn stack_underflow_is_reported() {
         constants: vec![],
         locals: empty_locals(),
         outputs: vec![],
-        base_interval: None,
-        declared_intervals: vec![],
-        declared_sources: vec![],
+        base_interval: Some(Interval::Min1),
+        declared_sources: default_declared_sources(),
         source_intervals: vec![],
         history_capacity: 2,
         plot_count: 0,
@@ -183,9 +267,8 @@ fn invalid_jump_is_reported() {
         constants: vec![],
         locals: empty_locals(),
         outputs: vec![],
-        base_interval: None,
-        declared_intervals: vec![],
-        declared_sources: vec![],
+        base_interval: Some(Interval::Min1),
+        declared_sources: default_declared_sources(),
         source_intervals: vec![],
         history_capacity: 2,
         plot_count: 0,
@@ -202,17 +285,7 @@ fn invalid_jump_is_reported() {
 fn instruction_budget_exhaustion_is_reported() {
     let compiled =
         palmscript::compile(&with_interval("plot(sma(close, 5))")).expect("script should compile");
-    let fixture = vec![
-        Bar {
-            open: 1.0,
-            high: 1.0,
-            low: 1.0,
-            close: 1.0,
-            volume: 1.0,
-            time: 1.0,
-        };
-        6
-    ];
+    let fixture = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0; 6]);
     let err = run(
         &compiled,
         &fixture,
@@ -298,7 +371,7 @@ fn fixture_bars() -> Vec<Bar> {
                 low: close - 1.0,
                 close,
                 volume: 1_000.0 + index as f64,
-                time: 1_700_000_000_000.0 + index as f64 * 60_000.0,
+                time: JAN_1_2024_UTC_MS as f64 + index as f64 * 60_000.0,
             }
         })
         .collect()
@@ -374,34 +447,27 @@ fn user_function_with_na_result_preserves_null_plot() {
 }
 
 #[test]
-fn qualified_series_requires_multi_interval_config() {
+fn referenced_source_intervals_require_matching_runtime_feeds() {
     let compiled = palmscript::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
         .expect("script should compile");
-    let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("config required");
-    assert!(matches!(err, RuntimeError::MissingIntervalConfig));
+    let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("feed required");
+    assert!(matches!(
+        err,
+        RuntimeError::MissingSourceIntervalFeed {
+            source_id: 0,
+            interval: Interval::Hour1
+        }
+    ));
 }
 
 #[test]
 fn lower_interval_references_are_rejected() {
-    let compiled = palmscript::compile(&with_intervals("1h", &["1m"], "plot(1m.close)"))
-        .expect("script should compile");
-    let err = run_multi_interval(
-        &compiled,
-        &bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[1.0, 2.0]),
-        MultiIntervalConfig {
-            base_interval: Interval::Hour1,
-            supplemental: Vec::new(),
-        },
-        VmLimits::default(),
-    )
-    .expect_err("lower interval should reject");
-    assert!(matches!(
-        err,
-        RuntimeError::LowerIntervalReference {
-            base: Interval::Hour1,
-            referenced: Interval::Min1
-        }
-    ));
+    let err = palmscript::compile(&with_intervals("1h", &["1m"], "plot(1m.close)"))
+        .expect_err("lower interval should reject");
+    assert!(err
+        .diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.message.contains("lower interval reference `1m`")));
 }
 
 #[test]

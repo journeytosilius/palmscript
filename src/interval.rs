@@ -66,8 +66,6 @@ pub struct SourceIntervalRef {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MarketSource {
-    Base,
-    Qualified(Interval),
     Named {
         source_id: u16,
         interval: Option<Interval>,

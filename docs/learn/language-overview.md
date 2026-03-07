@@ -5,8 +5,8 @@ PalmScript strategies are top-level source files made of declarations and statem
 Common building blocks:
 
 - `interval <...>` for the base execution clock
-- optional `source` declarations for exchange-backed markets
-- optional supplemental `use` declarations for higher or equal intervals
+- `source` declarations for exchange-backed markets
+- optional supplemental `use <alias> <interval>` declarations for higher or equal intervals
 - top-level functions
 - `let`, tuple destructuring, `export`, and `trigger`
 - `if / else if / else`
@@ -14,23 +14,9 @@ Common building blocks:
 - helper builtins such as `crossover`, `highest`, `barssince`, and `valuewhen`
 - typed `ma_type.<variant>` enum literals for part of the TA-Lib-style surface
 
-## Two Script Styles
+## Script Shape
 
-### Source-Less Scripts
-
-These run against one raw market feed, usually through CSV mode:
-
-```palmscript
-interval 1m
-let basis = ema(close, 20)
-plot(close - basis)
-```
-
-Related checked-in example: [`examples/strategies/sma_cross.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/sma_cross.palm)
-
-### Source-Aware Scripts
-
-These name exchange-backed markets explicitly:
+Executable PalmScript scripts name exchange-backed markets explicitly:
 
 ```palmscript
 interval 1m
@@ -45,7 +31,8 @@ Related checked-in example: [`examples/strategies/cross_source_spread.palm`](htt
 ## Mental Model
 
 - the script always has exactly one base interval
-- source-less and source-aware scripts use different market-series forms
+- every executable script declares at least one `source`
+- market series are always source-qualified
 - series values evolve over time
 - higher intervals update only when those candles fully close
 - missing history or missing aligned source data appears as `na`

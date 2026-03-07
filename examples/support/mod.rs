@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use palmscript::{Bar, IntervalFeed, Outputs};
+use palmscript::{Bar, Interval, Outputs, SourceFeed, SourceRuntimeConfig};
 
 pub const SECOND_MS: i64 = 1_000;
 pub const MINUTE_MS: i64 = 60 * SECOND_MS;
@@ -46,7 +46,29 @@ pub fn flat_bars(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar> {
         .collect()
 }
 
-pub fn monthly_feed(closes: &[f64]) -> IntervalFeed {
+pub fn source_feed(source_id: u16, interval: Interval, bars: Vec<Bar>) -> SourceFeed {
+    SourceFeed {
+        source_id,
+        interval,
+        bars,
+    }
+}
+
+pub fn source_runtime_config(
+    base_interval: Interval,
+    base_bars: Vec<Bar>,
+    supplemental: Vec<SourceFeed>,
+) -> SourceRuntimeConfig {
+    let mut feeds = Vec::with_capacity(1 + supplemental.len());
+    feeds.push(source_feed(0, base_interval, base_bars));
+    feeds.extend(supplemental);
+    SourceRuntimeConfig {
+        base_interval,
+        feeds,
+    }
+}
+
+pub fn monthly_feed(source_id: u16, closes: &[f64]) -> SourceFeed {
     let mut bars = Vec::with_capacity(closes.len());
     let month_starts = [JAN_1_2024_UTC_MS, FEB_1_2024_UTC_MS, MAR_1_2024_UTC_MS];
     for (open_time, close) in month_starts.into_iter().zip(closes.iter().copied()) {
@@ -59,38 +81,39 @@ pub fn monthly_feed(closes: &[f64]) -> IntervalFeed {
             time: open_time as f64,
         });
     }
-    IntervalFeed {
-        interval: palmscript::Interval::Month1,
-        bars,
-    }
+    source_feed(source_id, palmscript::Interval::Month1, bars)
 }
 
-pub fn weekly_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
-    IntervalFeed {
-        interval: palmscript::Interval::Week1,
-        bars: flat_bars(start_ms, WEEK_MS, closes),
-    }
+pub fn weekly_feed(source_id: u16, start_ms: i64, closes: &[f64]) -> SourceFeed {
+    source_feed(
+        source_id,
+        palmscript::Interval::Week1,
+        flat_bars(start_ms, WEEK_MS, closes),
+    )
 }
 
-pub fn daily_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
-    IntervalFeed {
-        interval: palmscript::Interval::Day1,
-        bars: flat_bars(start_ms, DAY_MS, closes),
-    }
+pub fn daily_feed(source_id: u16, start_ms: i64, closes: &[f64]) -> SourceFeed {
+    source_feed(
+        source_id,
+        palmscript::Interval::Day1,
+        flat_bars(start_ms, DAY_MS, closes),
+    )
 }
 
-pub fn hourly_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
-    IntervalFeed {
-        interval: palmscript::Interval::Hour1,
-        bars: flat_bars(start_ms, HOUR_MS, closes),
-    }
+pub fn hourly_feed(source_id: u16, start_ms: i64, closes: &[f64]) -> SourceFeed {
+    source_feed(
+        source_id,
+        palmscript::Interval::Hour1,
+        flat_bars(start_ms, HOUR_MS, closes),
+    )
 }
 
-pub fn minute_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
-    IntervalFeed {
-        interval: palmscript::Interval::Min1,
-        bars: flat_bars(start_ms, MINUTE_MS, closes),
-    }
+pub fn minute_feed(source_id: u16, start_ms: i64, closes: &[f64]) -> SourceFeed {
+    source_feed(
+        source_id,
+        palmscript::Interval::Min1,
+        flat_bars(start_ms, MINUTE_MS, closes),
+    )
 }
 
 pub fn print_step_values(label: &str, outputs: &Outputs) {

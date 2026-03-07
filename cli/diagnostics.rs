@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use palmscript::{CompileError, DataPrepError, RuntimeError};
+use palmscript::{CompileError, RuntimeError};
 
 pub fn format_compile_error(path: &Path, err: &CompileError) -> String {
     let mut rendered = Vec::with_capacity(err.diagnostics.len() + 1);
@@ -22,10 +22,6 @@ pub fn format_runtime_error(err: &RuntimeError) -> String {
     format!("runtime error: {err}")
 }
 
-pub fn format_data_prep_error(err: &DataPrepError) -> String {
-    format!("CSV mode error: {err}")
-}
-
 fn diagnostic_kind_label(kind: palmscript::DiagnosticKind) -> &'static str {
     match kind {
         palmscript::DiagnosticKind::Lex => "lex",
@@ -37,10 +33,10 @@ fn diagnostic_kind_label(kind: palmscript::DiagnosticKind) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_compile_error, format_data_prep_error, format_runtime_error};
+    use super::{format_compile_error, format_runtime_error};
     use palmscript::bytecode::OpCode;
     use palmscript::span::{Position, Span};
-    use palmscript::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
+    use palmscript::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
     use std::path::Path;
 
     #[test]
@@ -56,13 +52,11 @@ mod tests {
     }
 
     #[test]
-    fn runtime_and_data_prep_formatters_prefix_messages() {
+    fn runtime_formatter_prefixes_messages() {
         let runtime = format_runtime_error(&RuntimeError::StackUnderflow {
             pc: 2,
             opcode: OpCode::Add,
         });
-        let data = format_data_prep_error(&DataPrepError::CannotInferInputInterval);
         assert!(runtime.starts_with("runtime error:"));
-        assert!(data.starts_with("CSV mode error:"));
     }
 }

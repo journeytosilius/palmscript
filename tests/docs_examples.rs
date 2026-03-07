@@ -1,10 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use palmscript::{
-    compile, prepare_csv_inputs_for_program, run_multi_interval, run_with_sources, Bar, SourceFeed,
-    SourceRuntimeConfig, VmLimits,
-};
+use palmscript::{compile, run_with_sources, Bar, SourceFeed, SourceRuntimeConfig, VmLimits};
 
 const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
 const MINUTE_MS: i64 = 60_000;
@@ -54,7 +51,7 @@ fn referenced_docs_examples_compile() {
 }
 
 #[test]
-fn csv_docs_examples_prepare_and_run() {
+fn single_source_docs_examples_run_with_local_feeds() {
     let minute_examples = [
         "examples/strategies/sma_cross.palm",
         "examples/strategies/volume_breakout.palm",
@@ -67,12 +64,16 @@ fn csv_docs_examples_prepare_and_run() {
     for path in minute_examples {
         let compiled =
             compile(&read_strategy(path)).unwrap_or_else(|_| panic!("{path} should compile"));
-        let prepared = prepare_csv_inputs_for_program(&compiled, minute_bars.clone())
-            .unwrap_or_else(|_| panic!("{path} should prepare"));
-        let outputs = run_multi_interval(
+        let outputs = run_with_sources(
             &compiled,
-            &prepared.base_bars,
-            prepared.config,
+            SourceRuntimeConfig {
+                base_interval: palmscript::Interval::Min1,
+                feeds: vec![SourceFeed {
+                    source_id: 0,
+                    interval: palmscript::Interval::Min1,
+                    bars: minute_bars.clone(),
+                }],
+            },
             VmLimits::default(),
         )
         .unwrap_or_else(|_| panic!("{path} should run"));
@@ -86,16 +87,27 @@ fn csv_docs_examples_prepare_and_run() {
 }
 
 #[test]
-fn supplemental_interval_docs_example_prepare_and_run() {
+fn supplemental_interval_docs_example_runs_with_local_feeds() {
     let path = "examples/strategies/weekly_bias.palm";
     let compiled = compile(&read_strategy(path)).expect("weekly_bias should compile");
     let daily_bars = bars(JAN_1_2024_UTC_MS, DAY_MS, 21, 100.0);
-    let prepared =
-        prepare_csv_inputs_for_program(&compiled, daily_bars).expect("weekly_bias should prepare");
-    let outputs = run_multi_interval(
+    let outputs = run_with_sources(
         &compiled,
-        &prepared.base_bars,
-        prepared.config,
+        SourceRuntimeConfig {
+            base_interval: palmscript::Interval::Day1,
+            feeds: vec![
+                SourceFeed {
+                    source_id: 0,
+                    interval: palmscript::Interval::Day1,
+                    bars: daily_bars,
+                },
+                SourceFeed {
+                    source_id: 0,
+                    interval: palmscript::Interval::Week1,
+                    bars: bars(JAN_1_2024_UTC_MS, 7 * DAY_MS, 3, 90.0),
+                },
+            ],
+        },
         VmLimits::default(),
     )
     .expect("weekly_bias should run");

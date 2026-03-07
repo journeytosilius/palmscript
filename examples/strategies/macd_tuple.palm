@@ -1,7 +1,8 @@
 interval 1m
+source spot = binance.spot("BTCUSDT")
 
-let basis = ma(close, 20, ma_type.ema)
-let (line, signal, hist) = macd(close, 12, 26, 9)
+let basis = ma(spot.close, 20, ma_type.ema)
+let (line, signal, hist) = macd(spot.close, 12, 26, 9)
 
 plot(basis)
 plot(line)

@@ -82,7 +82,7 @@ Only single-line comments are supported:
 
 ```palmscript
 // trend regime
-let fast = ema(close, 5)
+let fast = ema(spot.close, 5)
 ```
 
 ## Statement separators

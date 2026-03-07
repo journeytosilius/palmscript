@@ -25,10 +25,9 @@ This site is the canonical documentation source for the repository.
 PalmScript currently implements:
 
 - a mandatory base `interval <...>` declaration
-- source-less scripts with bare OHLCV series such as `close`
-- source-aware scripts with named exchange-backed `source` declarations
-- legacy global `use <interval>` declarations for source-less supplemental intervals
-- source-scoped `use <alias> <interval>` declarations for source-aware supplemental intervals
+- one or more named exchange-backed `source` declarations per executable script
+- source-qualified market series such as `spot.close` and `hl.1h.close`
+- source-scoped `use <alias> <interval>` declarations for supplemental intervals
 - numeric, boolean, string-in-source-declaration, and `na` literals
 - top-level expression-bodied `fn` declarations
 - `let`, tuple destructuring, `export`, and `trigger`
@@ -36,7 +35,7 @@ PalmScript currently implements:
 - arithmetic, comparisons, unary operators, `and`, and `or`
 - series indexing with literal offsets
 - builtins: indicators, signal helpers, event-memory helpers, `plot`, and a partially executable TA-Lib-style catalog
-- CSV-backed and exchange-backed execution modes
+- exchange-backed execution through market mode
 - a CLI, language server, and first-party VS Code extension
 
 ## Reading Strategy

@@ -132,10 +132,6 @@ pub enum ExprKind {
         variant: String,
         variant_span: Span,
     },
-    QualifiedSeries {
-        interval: Interval,
-        field: MarketField,
-    },
     SourceSeries {
         source: String,
         source_span: Span,

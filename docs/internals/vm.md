@@ -19,7 +19,7 @@ The VM works with:
 - bounded history buffers
 - sparse updates for slower interval-derived series
 
-Indicator state is version-aware so slower source series such as `1w.close` are not accidentally double-counted on faster base clocks.
+Indicator state is version-aware so slower source series such as `spot.1w.close` are not accidentally double-counted on faster base clocks.
 
 ## Runtime Outputs
 

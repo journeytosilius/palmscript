@@ -21,15 +21,6 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunc
 use crate::types::{SlotKind, Type, Value};
 
 const BASE_UPDATE_MASK: u32 = 1;
-const PREDEFINED_SERIES: [(&str, MarketField); 6] = [
-    ("open", MarketField::Open),
-    ("high", MarketField::High),
-    ("low", MarketField::Low),
-    ("close", MarketField::Close),
-    ("volume", MarketField::Volume),
-    ("time", MarketField::Time),
-];
-
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CompiledProgram {
     pub program: Program,
@@ -159,7 +150,6 @@ struct FunctionSpecialization {
 #[derive(Default)]
 struct Analysis {
     base_interval: Option<Interval>,
-    declared_intervals: Vec<Interval>,
     declared_sources: Vec<DeclaredMarketSource>,
     source_intervals: Vec<SourceIntervalRef>,
     expr_info: HashMap<NodeId, ExprInfo>,
@@ -169,7 +159,6 @@ struct Analysis {
     resolved_output_slots: HashMap<NodeId, u16>,
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
-    qualified_slots: HashMap<(Interval, MarketField), u16>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
 }
@@ -211,22 +200,9 @@ impl<'a> Analyzer<'a> {
             active_specializations: HashSet::new(),
         };
 
-        if ast.strategy_intervals.sources.is_empty() {
-            for (name, field) in PREDEFINED_SERIES {
-                analyzer.define_symbol(
-                    name.to_string(),
-                    ExprInfo::series(BASE_UPDATE_MASK),
-                    true,
-                    Some(MarketBinding {
-                        source: MarketSource::Base,
-                        field,
-                    }),
-                );
-            }
-        }
         analyzer.validate_strategy_intervals(ast);
         analyzer.collect_functions(ast);
-        analyzer.collect_qualified_series(ast);
+        analyzer.collect_source_series(ast);
         analyzer.validate_function_bodies();
         analyzer.validate_function_cycles();
         analyzer
@@ -268,50 +244,11 @@ impl<'a> Analyzer<'a> {
         };
 
         if ast.strategy_intervals.sources.is_empty() {
-            let mut supplemental = BTreeSet::new();
-            for decl in &ast.strategy_intervals.supplemental {
-                if decl.interval == base_interval {
-                    self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!(
-                            "`use {}` duplicates the base interval",
-                            decl.interval.as_str()
-                        ),
-                        decl.span,
-                    ));
-                    continue;
-                }
-                if !supplemental.insert(decl.interval) {
-                    self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!("duplicate `use {}` declaration", decl.interval.as_str()),
-                        decl.span,
-                    ));
-                }
-            }
-            self.analysis.declared_intervals = supplemental.iter().copied().collect();
-
-            let mut refs = BTreeSet::new();
-            for function in &ast.functions {
-                collect_qualified_series_refs(&function.body, &mut refs);
-            }
-            for stmt in &ast.statements {
-                collect_qualified_series_stmt(stmt, &mut refs);
-            }
-            for (interval, _field) in refs {
-                if interval != base_interval && !supplemental.contains(&interval) {
-                    let span = interval_ref_span(ast, interval).unwrap_or_default();
-                    self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!(
-                            "interval `{}` must be declared with `use {}`",
-                            interval.as_str(),
-                            interval.as_str()
-                        ),
-                        span,
-                    ));
-                }
-            }
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "strategy must declare at least one `source <alias> = <exchange>.<market>(\"...\")` directive",
+                Span::default(),
+            ));
             return;
         }
 
@@ -478,35 +415,7 @@ impl<'a> Analyzer<'a> {
         }
     }
 
-    fn collect_qualified_series(&mut self, ast: &Ast) {
-        if ast.strategy_intervals.sources.is_empty() {
-            let mut refs = BTreeSet::new();
-            for function in &ast.functions {
-                collect_qualified_series_refs(&function.body, &mut refs);
-            }
-            for stmt in &ast.statements {
-                collect_qualified_series_stmt(stmt, &mut refs);
-            }
-
-            for (interval, field) in refs {
-                let slot = self.analysis.locals.len() as u16;
-                self.analysis.locals.push(LocalInfo::series(
-                    None,
-                    Type::SeriesF64,
-                    true,
-                    interval.mask(),
-                    Some(MarketBinding {
-                        source: MarketSource::Qualified(interval),
-                        field,
-                    }),
-                ));
-                self.analysis
-                    .qualified_slots
-                    .insert((interval, field), slot);
-            }
-            return;
-        }
-
+    fn collect_source_series(&mut self, ast: &Ast) {
         let alias_to_id: HashMap<&str, u16> = self
             .analysis
             .declared_sources
@@ -574,22 +483,14 @@ impl<'a> Analyzer<'a> {
                 if !params.contains(name.as_str()) && !self.is_function_visible_name(name) {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
-                        if self.analysis.declared_sources.is_empty() {
-                            format!(
-                                "function bodies may only reference parameters or predefined series; found `{name}`"
-                            )
-                        } else {
-                            format!(
-                                "function bodies may only reference parameters or declared source series; found `{name}`"
-                            )
-                        },
+                        format!(
+                            "function bodies may only reference parameters or declared source series; found `{name}`"
+                        ),
                         expr.span,
                     ));
                 }
             }
-            ExprKind::QualifiedSeries { .. }
-            | ExprKind::SourceSeries { .. }
-            | ExprKind::EnumVariant { .. } => {}
+            ExprKind::SourceSeries { .. } | ExprKind::EnumVariant { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
             ExprKind::Binary { left, right, .. } => {
                 self.validate_function_expr(left, params);
@@ -916,12 +817,11 @@ impl<'a> Analyzer<'a> {
             },
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
-                    if !self.analysis.declared_sources.is_empty() && is_predefined_series_name(name)
-                    {
+                    if is_predefined_series_name(name) {
                         self.diagnostics.push(Diagnostic::new(
                             DiagnosticKind::Type,
                             format!(
-                                "source-aware scripts require source-qualified market series; found `{name}`"
+                                "scripts require source-qualified market series; found `{name}`"
                             ),
                             expr.span,
                         ));
@@ -936,7 +836,6 @@ impl<'a> Analyzer<'a> {
                 };
                 symbol.info
             }
-            ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
             ExprKind::SourceSeries { interval, .. } => {
                 ExprInfo::series(interval.map_or(BASE_UPDATE_MASK, Interval::mask))
             }
@@ -1214,8 +1113,8 @@ impl<'a> Analyzer<'a> {
             .find_map(|scope| scope.get(name).copied())
     }
 
-    fn is_function_visible_name(&self, name: &str) -> bool {
-        self.analysis.declared_sources.is_empty() && is_predefined_series_name(name)
+    fn is_function_visible_name(&self, _name: &str) -> bool {
+        false
     }
 }
 
@@ -1235,16 +1134,6 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
         arg_shapes: Vec<FunctionArgShape>,
     ) -> Self {
         let mut root = HashMap::new();
-        if parent.analysis.declared_sources.is_empty() {
-            for (name, _) in PREDEFINED_SERIES {
-                root.insert(
-                    name.to_string(),
-                    AnalyzerSymbol {
-                        info: ExprInfo::series(BASE_UPDATE_MASK),
-                    },
-                );
-            }
-        }
 
         let mut param_bindings = Vec::with_capacity(function.params.len());
         for (param, arg_shape) in function.params.iter().zip(arg_shapes) {
@@ -1320,21 +1209,14 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 None => {
                     self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
-                        if self.parent.analysis.declared_sources.is_empty() {
-                            format!(
-                                "function bodies may only reference parameters or predefined series; found `{name}`"
-                            )
-                        } else {
-                            format!(
-                                "function bodies may only reference parameters or declared source series; found `{name}`"
-                            )
-                        },
+                        format!(
+                            "function bodies may only reference parameters or declared source series; found `{name}`"
+                        ),
                         expr.span,
                     ));
                     ExprInfo::scalar(Type::F64)
                 }
             },
-            ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
             ExprKind::SourceSeries { interval, .. } => {
                 ExprInfo::series(interval.map_or(BASE_UPDATE_MASK, Interval::mask))
             }
@@ -1522,29 +1404,6 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
     }
 }
 
-fn collect_qualified_series_stmt(stmt: &Stmt, refs: &mut BTreeSet<(Interval, MarketField)>) {
-    match &stmt.kind {
-        StmtKind::Let { expr, .. }
-        | StmtKind::LetTuple { expr, .. }
-        | StmtKind::Export { expr, .. }
-        | StmtKind::Trigger { expr, .. }
-        | StmtKind::Expr(expr) => collect_qualified_series_refs(expr, refs),
-        StmtKind::If {
-            condition,
-            then_block,
-            else_block,
-        } => {
-            collect_qualified_series_refs(condition, refs);
-            for stmt in &then_block.statements {
-                collect_qualified_series_stmt(stmt, refs);
-            }
-            for stmt in &else_block.statements {
-                collect_qualified_series_stmt(stmt, refs);
-            }
-        }
-    }
-}
-
 fn collect_source_series_stmt(
     stmt: &Stmt,
     refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
@@ -1568,35 +1427,6 @@ fn collect_source_series_stmt(
                 collect_source_series_stmt(stmt, refs);
             }
         }
-    }
-}
-
-fn collect_qualified_series_refs(expr: &Expr, refs: &mut BTreeSet<(Interval, MarketField)>) {
-    match &expr.kind {
-        ExprKind::QualifiedSeries { interval, field } => {
-            refs.insert((*interval, *field));
-        }
-        ExprKind::Unary { expr, .. } => collect_qualified_series_refs(expr, refs),
-        ExprKind::Binary { left, right, .. } => {
-            collect_qualified_series_refs(left, refs);
-            collect_qualified_series_refs(right, refs);
-        }
-        ExprKind::Call { args, .. } => {
-            for arg in args {
-                collect_qualified_series_refs(arg, refs);
-            }
-        }
-        ExprKind::Index { target, index } => {
-            collect_qualified_series_refs(target, refs);
-            collect_qualified_series_refs(index, refs);
-        }
-        ExprKind::Number(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Na
-        | ExprKind::String(_)
-        | ExprKind::Ident(_)
-        | ExprKind::EnumVariant { .. }
-        | ExprKind::SourceSeries { .. } => {}
     }
 }
 
@@ -1632,76 +1462,7 @@ fn collect_source_series_refs(
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
-        | ExprKind::EnumVariant { .. }
-        | ExprKind::QualifiedSeries { .. } => {}
-    }
-}
-
-fn interval_ref_span(ast: &Ast, target: Interval) -> Option<Span> {
-    for function in &ast.functions {
-        if let Some(span) = expr_interval_ref_span(&function.body, target) {
-            return Some(span);
-        }
-    }
-    for stmt in &ast.statements {
-        if let Some(span) = stmt_interval_ref_span(stmt, target) {
-            return Some(span);
-        }
-    }
-    None
-}
-
-fn stmt_interval_ref_span(stmt: &Stmt, target: Interval) -> Option<Span> {
-    match &stmt.kind {
-        StmtKind::Let { expr, .. }
-        | StmtKind::LetTuple { expr, .. }
-        | StmtKind::Export { expr, .. }
-        | StmtKind::Trigger { expr, .. }
-        | StmtKind::Expr(expr) => expr_interval_ref_span(expr, target),
-        StmtKind::If {
-            condition,
-            then_block,
-            else_block,
-        } => expr_interval_ref_span(condition, target)
-            .or_else(|| {
-                then_block
-                    .statements
-                    .iter()
-                    .find_map(|stmt| stmt_interval_ref_span(stmt, target))
-            })
-            .or_else(|| {
-                else_block
-                    .statements
-                    .iter()
-                    .find_map(|stmt| stmt_interval_ref_span(stmt, target))
-            }),
-    }
-}
-
-fn expr_interval_ref_span(expr: &Expr, target: Interval) -> Option<Span> {
-    match &expr.kind {
-        ExprKind::QualifiedSeries { interval, .. } if *interval == target => Some(expr.span),
-        ExprKind::Unary { expr, .. } => expr_interval_ref_span(expr, target),
-        ExprKind::Binary { left, right, .. } => {
-            expr_interval_ref_span(left, target).or_else(|| expr_interval_ref_span(right, target))
-        }
-        ExprKind::Call { args, .. } => args
-            .iter()
-            .find_map(|arg| expr_interval_ref_span(arg, target)),
-        ExprKind::Index {
-            target: inner,
-            index,
-        } => {
-            expr_interval_ref_span(inner, target).or_else(|| expr_interval_ref_span(index, target))
-        }
-        ExprKind::Number(_)
-        | ExprKind::Bool(_)
-        | ExprKind::Na
-        | ExprKind::String(_)
-        | ExprKind::Ident(_)
-        | ExprKind::EnumVariant { .. }
-        | ExprKind::SourceSeries { .. } => None,
-        ExprKind::QualifiedSeries { .. } => None,
+        | ExprKind::EnumVariant { .. } => {}
     }
 }
 
@@ -1770,7 +1531,6 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         | ExprKind::String(_)
         | ExprKind::Ident(_)
         | ExprKind::EnumVariant { .. }
-        | ExprKind::QualifiedSeries { .. }
         | ExprKind::SourceSeries { .. } => None,
     }
 }
@@ -1815,7 +1575,6 @@ fn collect_called_user_functions<'a>(
         | ExprKind::String(_)
         | ExprKind::Ident(_)
         | ExprKind::EnumVariant { .. }
-        | ExprKind::QualifiedSeries { .. }
         | ExprKind::SourceSeries { .. } => {}
     }
 }
@@ -2735,9 +2494,7 @@ fn output_series_type(
 }
 
 fn is_predefined_series_name(name: &str) -> bool {
-    PREDEFINED_SERIES
-        .iter()
-        .any(|(predefined, _)| *predefined == name)
+    matches!(name, "open" | "high" | "low" | "close" | "volume" | "time")
 }
 
 struct Compiler<'a> {
@@ -2775,7 +2532,6 @@ impl<'a> Compiler<'a> {
         self.program.locals = self.analysis.locals.clone();
         self.program.outputs = self.analysis.outputs.clone();
         self.program.base_interval = self.analysis.base_interval;
-        self.program.declared_intervals = self.analysis.declared_intervals.clone();
         self.program.declared_sources = self.analysis.declared_sources.clone();
         self.program.source_intervals = self.analysis.source_intervals.clone();
         self.rebuild_scopes();
@@ -2971,14 +2727,6 @@ impl<'a> Compiler<'a> {
                     expr.span,
                 )),
             },
-            ExprKind::QualifiedSeries { interval, field } => {
-                let slot = self.qualified_slot(*interval, *field);
-                self.emit(
-                    Instruction::new(OpCode::LoadLocal)
-                        .with_a(slot)
-                        .with_span(expr.span),
-                );
-            }
             ExprKind::SourceSeries {
                 source,
                 interval,
@@ -3851,15 +3599,6 @@ impl<'a> Compiler<'a> {
                     self.emit_materialized_series_ref(expr, required_history, expr_info, user_calls)
                 }
             },
-            ExprKind::QualifiedSeries { interval, field } => {
-                let slot = self.qualified_slot(*interval, *field);
-                self.bump_slot_history(slot, required_history);
-                self.emit(
-                    Instruction::new(OpCode::LoadSeries)
-                        .with_a(slot)
-                        .with_span(expr.span),
-                );
-            }
             ExprKind::SourceSeries {
                 source,
                 interval,
@@ -3960,10 +3699,6 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn qualified_slot(&self, interval: Interval, field: MarketField) -> u16 {
-        self.analysis.qualified_slots[&(interval, field)]
-    }
-
     fn source_slot(&self, source: &str, interval: Option<Interval>, field: MarketField) -> u16 {
         let source_id = self
             .analysis
@@ -3982,19 +3717,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn rebuild_scopes(&mut self) {
-        let mut root = HashMap::new();
-        if self.analysis.declared_sources.is_empty() {
-            for (slot, (name, _field)) in PREDEFINED_SERIES.into_iter().enumerate() {
-                root.insert(
-                    name.to_string(),
-                    CompilerSymbol {
-                        slot: slot as u16,
-                        ty: Type::SeriesF64,
-                    },
-                );
-            }
-        }
-        self.scopes = vec![root];
+        self.scopes = vec![HashMap::new()];
     }
 
     fn lookup_symbol(&self, name: &str) -> Option<CompilerSymbol> {

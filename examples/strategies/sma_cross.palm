@@ -1,8 +1,9 @@
 interval 1m
+source spot = binance.spot("BTCUSDT")
 
 // Single-interval example with exported state and a trigger.
-let fast = ema(close, 3)
-let slow = sma(close, 5)
+let fast = ema(spot.close, 3)
+let slow = sma(spot.close, 5)
 
 export bullish = fast > slow
 trigger cross_up = bullish and fast[1] <= slow[1]

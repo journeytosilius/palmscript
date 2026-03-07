@@ -27,30 +27,12 @@ Examples:
 These diagnostics surface through:
 
 - `palmscript check`
-- `palmscript run csv`
 - `palmscript run market`
 - `palmscript dump-bytecode`
 - `palmscript-lsp`
 - the VS Code extension
 
-## 2. CSV Data-Preparation Errors
-
-After successful compilation, CSV mode may fail while preparing raw bars into the required feeds.
-
-Owned by: CSV input loading and roll-up preparation.
-
-Examples:
-
-- input interval cannot be inferred
-- input bars are unsorted or duplicated
-- raw interval is too coarse for the declared interval
-- roll-up path is unsupported
-- a required bucket is incomplete
-- there is not enough data to form one full required candle
-
-These are pre-runtime operational failures, not compile diagnostics.
-
-## 3. Market Fetch Errors
+## 2. Market Fetch Errors
 
 After successful compilation, market mode may fail while constructing venue-backed feeds.
 
@@ -65,7 +47,7 @@ Examples:
 - a required feed returns no data in the requested window
 - a Hyperliquid spot symbol cannot be resolved
 
-## 4. Runtime Errors
+## 3. Runtime Errors
 
 Runtime errors occur after feed preparation begins or during VM execution.
 
@@ -88,7 +70,6 @@ Examples:
 The owning layer for a failure is part of the contract:
 
 - syntax and semantic validity belong to compilation
-- CSV ingestion and roll-up validity belong to CSV preparation
 - exchange/network/response validity belong to market fetch
 - prepared-feed consistency and bytecode execution belong to runtime
 

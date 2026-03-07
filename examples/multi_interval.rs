@@ -1,10 +1,10 @@
 #[path = "support/mod.rs"]
 mod support;
 
-use palmscript::{compile, run_multi_interval, Interval, MultiIntervalConfig, VmLimits};
+use palmscript::{compile, run_with_sources, Interval, VmLimits};
 
 fn main() {
-    let source = "interval 1d\nuse 1w\nlet weekly_basis = ema(1w.close, 2)\nif close > weekly_basis { plot(1) } else { plot(0) }";
+    let source = "interval 1d\nsource spot = binance.spot(\"BTCUSDT\")\nuse spot 1w\nlet weekly_basis = ema(spot.1w.close, 2)\nif spot.close > weekly_basis { plot(1) } else { plot(0) }";
     let compiled = compile(source).expect("script compiles");
     let base_bars = support::flat_bars(
         support::JAN_1_2024_UTC_MS,
@@ -14,15 +14,20 @@ fn main() {
             112.0, 113.0, 114.0, 115.0, 116.0, 117.0, 118.0, 119.0, 120.0,
         ],
     );
-    let config = MultiIntervalConfig {
-        base_interval: Interval::Day1,
-        supplemental: vec![support::weekly_feed(
-            support::JAN_1_2024_UTC_MS,
-            &[90.0, 95.0, 105.0],
-        )],
-    };
-    let outputs =
-        run_multi_interval(&compiled, &base_bars, config, VmLimits::default()).expect("runs");
+    let outputs = run_with_sources(
+        &compiled,
+        support::source_runtime_config(
+            Interval::Day1,
+            base_bars,
+            vec![support::weekly_feed(
+                0,
+                support::JAN_1_2024_UTC_MS,
+                &[90.0, 95.0, 105.0],
+            )],
+        ),
+        VmLimits::default(),
+    )
+    .expect("runs");
 
     println!("script:\n{source}");
     support::print_step_values("weekly basis gating daily execution:", &outputs);

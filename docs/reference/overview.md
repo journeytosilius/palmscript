@@ -24,9 +24,9 @@ This section defines the language that exists today. It is not a design document
 The current PalmScript surface includes:
 
 - exactly one top-level base `interval <...>` directive per script
-- source-less scripts that use bare market series such as `close`
-- source-aware scripts that declare `source` aliases and use source-qualified series such as `spot.close` or `hl.1h.close`
-- supplemental intervals through `use <interval>` in source-less scripts and `use <alias> <interval>` in source-aware scripts
+- one or more named `source` aliases per executable script
+- source-qualified series such as `spot.close` or `hl.1h.close`
+- supplemental intervals through `use <alias> <interval>`
 - top-level expression-bodied `fn` declarations
 - `let`, tuple destructuring, `export`, and `trigger`
 - `if / else if / else`, with `else` required
@@ -45,7 +45,7 @@ Representative checked-in examples:
 Important implementation boundaries:
 
 - `interval`, `source`, `use`, `fn`, `export`, and `trigger` are top-level only
-- once a script declares any `source`, bare market identifiers such as `close` are no longer valid
+- bare market identifiers such as `close` are not valid in executable scripts
 - higher source intervals require `use <alias> <interval>`
 - only identifiers are callable
 - string literals are only valid inside `source` declarations

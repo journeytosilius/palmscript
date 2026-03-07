@@ -1,4 +1,10 @@
-use palmscript::{compile, run, Bar, OutputValue, VmLimits, TALIB_UPSTREAM_COMMIT};
+#[path = "support/mod.rs"]
+mod support;
+
+use palmscript::{
+    compile, run_with_sources, Bar, OutputValue, SourceFeed, SourceRuntimeConfig, VmLimits,
+    TALIB_UPSTREAM_COMMIT,
+};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -37,10 +43,27 @@ fn committed_talib_oracle_matches_runtime_outputs() {
             .datasets
             .get(&case.dataset)
             .unwrap_or_else(|| panic!("missing dataset {} for {}", case.dataset, case.name));
-        let compiled =
-            compile(&case.script).unwrap_or_else(|err| panic!("{:?}: {}", case.name, err));
-        let outputs = run(&compiled, &dataset.bars, VmLimits::default())
-            .unwrap_or_else(|err| panic!("{} failed to run: {err}", case.name));
+        let script = support::upgrade_legacy_script(&case.script, support::DEFAULT_SOURCE_ALIAS);
+        let compiled = compile(&script).unwrap_or_else(|err| panic!("{:?}: {}", case.name, err));
+        let outputs = run_with_sources(
+            &compiled,
+            SourceRuntimeConfig {
+                base_interval: compiled
+                    .program
+                    .base_interval
+                    .expect("fixture scripts should declare a base interval"),
+                feeds: vec![SourceFeed {
+                    source_id: 0,
+                    interval: compiled
+                        .program
+                        .base_interval
+                        .expect("fixture scripts should declare a base interval"),
+                    bars: dataset.bars.clone(),
+                }],
+            },
+            VmLimits::default(),
+        )
+        .unwrap_or_else(|err| panic!("{} failed to run: {err}", case.name));
 
         let actual_exports = outputs
             .exports

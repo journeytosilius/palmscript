@@ -294,29 +294,11 @@ impl<'a> Parser<'a> {
 
     fn parse_use_interval_decl(&mut self) -> Option<SourceIntervalDecl> {
         let start = self.previous().span;
-        let (source, source_span, token) = match self.peek_kind() {
-            TokenKind::Interval(_) => (
-                String::new(),
-                start,
-                self.expect_kind(
-                    |kind| matches!(kind, TokenKind::Interval(_)),
-                    "expected interval literal after `use`",
-                )?,
-            ),
-            _ => {
-                if !matches!(self.peek_kind(), TokenKind::Ident(_)) {
-                    self.error_expected_interval_after_use();
-                    return None;
-                }
-                let (source, source_span) =
-                    self.expect_ident("expected source alias after `use`")?;
-                let token = self.expect_kind(
-                    |kind| matches!(kind, TokenKind::Interval(_)),
-                    "expected interval literal after source alias",
-                )?;
-                (source, source_span, token)
-            }
-        };
+        let (source, source_span) = self.expect_ident("expected source alias after `use`")?;
+        let token = self.expect_kind(
+            |kind| matches!(kind, TokenKind::Interval(_)),
+            "expected interval literal after source alias",
+        )?;
         let TokenKind::Interval(interval) = token.kind else {
             unreachable!();
         };
@@ -488,7 +470,13 @@ impl<'a> Parser<'a> {
                 span: token.span,
                 kind: ExprKind::Ident(name),
             }),
-            TokenKind::Interval(interval) => self.parse_qualified_series(interval, token.span),
+            TokenKind::Interval(_) => {
+                self.push_diagnostic(
+                    "global interval-qualified series are not supported; use `<alias>.<interval>.<field>`",
+                    token.span,
+                );
+                None
+            }
             TokenKind::Minus => {
                 let expr = self.parse_expr(50)?;
                 let span = token.span.merge(expr.span);
@@ -559,29 +547,6 @@ impl<'a> Parser<'a> {
                 callee_span,
                 args,
             },
-        })
-    }
-
-    fn parse_qualified_series(&mut self, interval: crate::Interval, start: Span) -> Option<Expr> {
-        self.expect_kind(
-            |kind| matches!(kind, TokenKind::Dot),
-            "expected `.` after interval literal",
-        )?;
-        let token = self.expect_kind(
-            |kind| matches!(kind, TokenKind::Ident(_)),
-            "expected market field after `.`",
-        )?;
-        let TokenKind::Ident(name) = token.kind else {
-            unreachable!();
-        };
-        let Some(field) = MarketField::parse(&name) else {
-            self.push_diagnostic("expected market field after `.`", token.span);
-            return None;
-        };
-        Some(Expr {
-            id: self.alloc_id(),
-            span: start.merge(token.span),
-            kind: ExprKind::QualifiedSeries { interval, field },
         })
     }
 
@@ -778,18 +743,6 @@ impl<'a> Parser<'a> {
 
     fn is_eof(&self) -> bool {
         matches!(self.peek_kind(), TokenKind::Eof)
-    }
-
-    fn error_expected_interval_after_use(&mut self) {
-        let span = self.peek_span();
-        self.push_diagnostic("expected interval literal after `use`", span);
-    }
-
-    fn peek_span(&self) -> Span {
-        self.tokens
-            .get(self.cursor)
-            .map(|token| token.span)
-            .unwrap_or_default()
     }
 
     fn push_diagnostic(&mut self, message: &'static str, span: Span) {

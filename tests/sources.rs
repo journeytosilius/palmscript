@@ -17,7 +17,7 @@ fn source_aware_scripts_require_qualified_market_series() {
         .expect_err("bare series should reject");
     assert!(err.diagnostics.iter().any(|diagnostic| diagnostic
         .message
-        .contains("source-aware scripts require source-qualified market series")));
+        .contains("scripts require source-qualified market series; found `close`")));
 }
 
 #[test]

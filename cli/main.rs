@@ -1,6 +1,5 @@
 mod args;
 mod commands;
-mod data;
 mod diagnostics;
 mod format;
 

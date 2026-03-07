@@ -68,7 +68,8 @@ fn market_fetch_error_catalog_matches_contract() {
 
     let source_compiled =
         compiled("interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nplot(a.close)");
-    let missing_sources_compiled = compiled("interval 1m\nplot(close)");
+    let mut missing_sources_compiled = source_compiled.clone();
+    missing_sources_compiled.program.declared_sources.clear();
     let unsupported_interval_compiled =
         compiled("interval 1s\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.close)");
     let recent_history_limit_compiled =

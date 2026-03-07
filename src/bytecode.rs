@@ -5,7 +5,7 @@
 
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
-use crate::{DeclaredMarketSource, MarketBinding, MarketSource, SourceIntervalRef};
+use crate::{DeclaredMarketSource, MarketBinding, SourceIntervalRef};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,7 +116,6 @@ pub struct Program {
     pub locals: Vec<LocalInfo>,
     pub outputs: Vec<OutputDecl>,
     pub base_interval: Option<crate::Interval>,
-    pub declared_intervals: Vec<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,
     pub source_intervals: Vec<SourceIntervalRef>,
     pub history_capacity: usize,
@@ -153,16 +152,6 @@ impl LocalInfo {
             market_binding,
         }
     }
-
-    pub const fn is_base_market(&self) -> bool {
-        matches!(
-            self.market_binding,
-            Some(MarketBinding {
-                source: MarketSource::Base,
-                ..
-            })
-        )
-    }
 }
 
 #[cfg(test)]
@@ -198,7 +187,10 @@ mod tests {
         assert_eq!(scalar.market_binding, None);
 
         let binding = MarketBinding {
-            source: MarketSource::Base,
+            source: MarketSource::Named {
+                source_id: 0,
+                interval: None,
+            },
             field: MarketField::Close,
         };
         let series = LocalInfo::series(
@@ -212,22 +204,6 @@ mod tests {
         assert_eq!(series.history_capacity, 2);
         assert_eq!(series.update_mask, 7);
         assert_eq!(series.market_binding, Some(binding));
-        assert!(series.is_base_market());
-    }
-
-    #[test]
-    fn local_info_non_base_market_is_not_reported_as_base() {
-        let local = LocalInfo::series(
-            None,
-            Type::SeriesF64,
-            false,
-            1,
-            Some(MarketBinding {
-                source: MarketSource::Qualified(crate::Interval::Week1),
-                field: MarketField::Close,
-            }),
-        );
-        assert!(!local.is_base_market());
     }
 
     #[test]

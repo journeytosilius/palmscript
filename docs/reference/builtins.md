@@ -1,13 +1,13 @@
 # Builtins
 
-This page defines the builtin functions and predefined market names implemented by PalmScript.
+This page defines the builtin functions implemented by PalmScript.
 
 ## Executable Builtins vs Reserved Names
 
 PalmScript exposes three related surfaces:
 
 - executable builtins documented on this page
-- predefined market series identifiers such as `close`
+- canonical market fields exposed through source-qualified series such as `spot.close`
 - a broader reserved TA-Lib catalog described in [TA-Lib Surface](ta-lib.md)
 
 Not every reserved TA-Lib name is executable today. Reserved-but-not-yet-executable names produce deterministic compile diagnostics instead of being treated as unknown identifiers.
@@ -95,16 +95,7 @@ PalmScript currently provides these callable builtins:
 - `barssince(condition)`
 - `valuewhen(condition, source, occurrence)`
 
-PalmScript also reserves these predefined market names:
-
-- `open`
-- `high`
-- `low`
-- `close`
-- `volume`
-- `time`
-
-The predefined market names are identifiers, not callable functions. `close()` is rejected.
+Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `hl.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
 
 ## Tuple-Valued Builtins
 
@@ -542,8 +533,8 @@ Builtin results follow the update clocks of their inputs.
 
 Examples:
 
-- `ema(close, 20)` advances on the base clock
-- `highest(1w.close, 5)` advances on the weekly clock
+- `ema(spot.close, 20)` advances on the base clock
+- `highest(spot.1w.close, 5)` advances on the weekly clock
 - `crossover(hl.close, bn.close)` advances when either referenced source series advances
-- `barssince(close > close[1])` advances on the clock of that condition series
+- `barssince(spot.close > spot.close[1])` advances on the clock of that condition series
 - `valuewhen(trigger_series, hl.1h.close, 0)` advances on the clock of `trigger_series`

@@ -39,18 +39,6 @@ const KEYWORD_COMPLETIONS: [(&str, &str); 12] = [
 const LITERAL_COMPLETIONS: [(&str, &str); 2] =
     [("true", "Boolean literal"), ("false", "Boolean literal")];
 
-const PREDEFINED_SERIES: [(&str, &str); 6] = [
-    ("open", "series<float> for the base-interval open"),
-    ("high", "series<float> for the base-interval high"),
-    ("low", "series<float> for the base-interval low"),
-    ("close", "series<float> for the base-interval close"),
-    ("volume", "series<float> for the base-interval volume"),
-    (
-        "time",
-        "series<float> for the base-interval candle open time",
-    ),
-];
-
 const MARKET_FIELDS: [(&str, &str); 6] = [
     ("open", "Open price"),
     ("high", "High price"),
@@ -227,10 +215,6 @@ impl SemanticDocument {
                 }
             }
             CompletionContext::General => {
-                let has_sources = self
-                    .definitions
-                    .iter()
-                    .any(|definition| matches!(definition.kind, SymbolKind::Source));
                 for (label, detail) in KEYWORD_COMPLETIONS {
                     items.insert(
                         label.to_string(),
@@ -253,18 +237,6 @@ impl SemanticDocument {
                 }
                 for builtin in builtin_completions() {
                     items.insert(builtin.label.clone(), builtin);
-                }
-                if !has_sources {
-                    for (label, detail) in PREDEFINED_SERIES {
-                        items.insert(
-                            label.to_string(),
-                            CompletionEntry {
-                                label: label.to_string(),
-                                kind: CompletionKind::Series,
-                                detail: Some(detail.to_string()),
-                            },
-                        );
-                    }
                 }
                 for spec in INTERVAL_SPECS {
                     items
@@ -561,28 +533,7 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                     definition_index: Some(index),
                     hover,
                 });
-            } else if let Some((_label, detail)) =
-                PREDEFINED_SERIES.iter().find(|(label, _)| *label == name)
-            {
-                context.references.push(Reference {
-                    span: expr.span,
-                    definition_index: None,
-                    hover: format!("`{name}`\n\n{detail}"),
-                });
             }
-        }
-        ExprKind::QualifiedSeries { interval, field } => {
-            context.references.push(Reference {
-                span: expr.span,
-                definition_index: None,
-                hover: format!(
-                    "`{}.{}`\n\nseries<float> from the last fully closed {} candle {}.",
-                    interval.as_str(),
-                    render_market_field(*field),
-                    interval.as_str(),
-                    field_doc_suffix(*field)
-                ),
-            });
         }
         ExprKind::SourceSeries {
             source,
@@ -868,17 +819,6 @@ fn span_contains(span: Span, offset: usize) -> bool {
     span.start.offset <= offset && offset < span.end.offset.max(span.start.offset + 1)
 }
 
-fn field_doc_suffix(field: MarketField) -> &'static str {
-    match field {
-        MarketField::Open => "open value",
-        MarketField::High => "high value",
-        MarketField::Low => "low value",
-        MarketField::Close => "close value",
-        MarketField::Volume => "volume value",
-        MarketField::Time => "open timestamp",
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CompletionContext {
     General,
@@ -1102,9 +1042,6 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
         ExprKind::EnumVariant {
             namespace, variant, ..
         } => format!("{namespace}.{variant}"),
-        ExprKind::QualifiedSeries { interval, field } => {
-            format!("{}.{}", interval.as_str(), render_market_field(*field))
-        }
         ExprKind::SourceSeries {
             source,
             interval,
@@ -1203,13 +1140,13 @@ mod tests {
     use crate::talib::metadata_by_name as talib_metadata_by_name;
 
     fn with_interval(source: &str) -> String {
-        format!("interval 1m\n{source}")
+        format!("interval 1m\nsource src = binance.spot(\"BTCUSDT\")\n{source}")
     }
 
     #[test]
     fn semantic_document_contains_symbols_and_definitions() {
         let source = with_interval(
-            "fn cross_signal(a, b) = a > b\nlet basis = ema(close, 5)\nexport trend = cross_signal(close, basis)\nif trend { plot(1) } else { plot(0) }",
+            "fn cross_signal(a, b) = a > b\nlet basis = ema(src.close, 5)\nexport trend = cross_signal(src.close, basis)\nif trend { plot(1) } else { plot(0) }",
         );
         let document = analyze_document(&source).expect("semantic");
         assert!(document
@@ -1220,15 +1157,16 @@ mod tests {
         let definition = document.definition_at(basis_offset).expect("definition");
         assert_eq!(definition.name, "basis");
         let hover = document
-            .hover_at(source.find("cross_signal(close").expect("call"))
+            .hover_at(source.find("cross_signal(src.close").expect("call"))
             .expect("hover");
         assert!(hover.contents.contains("fn cross_signal"));
     }
 
     #[test]
     fn completions_include_keywords_builtins_and_fields() {
-        let source = with_interval("plot(1w.)");
-        let document = analyze_document(&source.replace("1w.", "close")).expect("semantic");
+        let source =
+            "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nuse src 1w\nplot(src.1w.close)";
+        let document = analyze_document(source).expect("semantic");
         let general = document.completions_at(0);
         assert!(general.iter().any(|entry| entry.label == "interval"));
         assert!(general
@@ -1243,13 +1181,13 @@ mod tests {
         assert!(general
             .iter()
             .any(|entry| entry.label == "cdlhammer" && entry.kind == CompletionKind::Builtin));
-        let fields = document.completions_at(source.find('.').expect("dot") + 1);
+        let fields = document.completions_at(source.find("close").expect("field"));
         assert!(fields.iter().any(|entry| entry.label == "close"));
     }
 
     #[test]
     fn builtin_hover_uses_registry_metadata() {
-        let source = with_interval("if crossover(close, 100) { plot(1) } else { plot(0) }");
+        let source = with_interval("if crossover(src.close, 100) { plot(1) } else { plot(0) }");
         let document = analyze_document(&source).expect("semantic");
         let hover = document
             .hover_at(source.find("crossover(").expect("call"))
@@ -1267,7 +1205,7 @@ mod tests {
 
     #[test]
     fn formatter_is_idempotent() {
-        let source = "interval 1m\nfn cross_signal(a,b)=a>b\nif close>open{plot(1)}else{plot(0)}";
+        let source = "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nfn cross_signal(a,b)=a>b\nif src.close>src.open{plot(1)}else{plot(0)}";
         let formatted = format_document(source).expect("formatted");
         let reformatted = format_document(&formatted).expect("reformatted");
         assert_eq!(formatted, reformatted);

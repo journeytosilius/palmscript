@@ -4,31 +4,7 @@ Series values represent time-indexed samples with bounded history.
 
 ## Market Series Forms
 
-PalmScript exposes market series through three syntactic forms.
-
-### Base series in source-less scripts
-
-In a script with no `source` declarations, these identifiers refer to the current sample on the base interval:
-
-- `open`
-- `high`
-- `low`
-- `close`
-- `volume`
-- `time`
-
-### Qualified interval series in source-less scripts
-
-Source-less scripts may reference a declared interval with:
-
-```palmscript
-1w.close
-4h.volume
-```
-
-### Source-qualified series in source-aware scripts
-
-Source-aware scripts use:
+PalmScript exposes market series through source-qualified forms only:
 
 ```palmscript
 bn.close
@@ -39,7 +15,7 @@ Rules:
 
 - `<alias>.<field>` refers to that source on the script base interval
 - `<alias>.<interval>.<field>` refers to that source on the named interval
-- bare market identifiers such as `close` are rejected in source-aware scripts as soon as the script declares any `source`
+- bare market identifiers such as `close` are rejected
 - higher source interval references require a matching `use <alias> <interval>` declaration
 
 ## Current-Sample Semantics
@@ -71,8 +47,7 @@ Every series advances on its own update clock.
 
 Examples:
 
-- `close[1]` follows the base interval
-- `1w.close[1]` follows the weekly clock
+- `bn.close[1]` follows the base interval
 - `hl.1h.close[1]` follows source `hl` on the one-hour clock
 
 Derived series inherit the update clocks of their inputs. A slower series is not re-counted on faster clocks when it has not advanced.
@@ -82,7 +57,7 @@ Derived series inherit the update clocks of their inputs. A slower series is not
 Series may produce `na` for the current sample when:
 
 - there is insufficient history
-- the source feed is missing on a source-aware base-clock step from the union of declared-source base timestamps
+- the source feed is missing on a base-clock step from the union of declared-source base timestamps
 - the series is a higher-interval feed that has not yet closed once
 - an indicator is still warming up
 
@@ -93,5 +68,5 @@ Series may produce `na` for the current sample when:
 Rules:
 
 - base `time` exposes the base-interval candle open time
-- rolled or fetched higher-interval `time` exposes that higher-interval candle open time
+- higher-interval `time` exposes that higher-interval candle open time
 - source-qualified `time` follows the same source and interval selection rules as the price and volume fields

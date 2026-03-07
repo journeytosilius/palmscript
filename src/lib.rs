@@ -9,7 +9,6 @@ pub mod ast;
 pub mod builtins;
 pub mod bytecode;
 pub mod compiler;
-pub mod data_prep;
 pub mod diagnostic;
 pub mod exchange;
 pub mod ide;
@@ -27,8 +26,7 @@ pub mod vm;
 
 pub use bytecode::{OutputDecl, OutputKind};
 pub use compiler::{compile, CompiledProgram};
-pub use data_prep::{infer_input_interval, prepare_csv_inputs_for_program, PreparedInputs};
-pub use diagnostic::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
+pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
 pub use ide::{
     analyze_document, format_document, CompletionEntry, CompletionKind, DefinitionTarget,
@@ -42,10 +40,7 @@ pub use output::{
     Alert, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,
     TriggerEvent,
 };
-pub use runtime::{
-    run, run_multi_interval, run_with_sources, Bar, Engine, IntervalFeed, MultiIntervalConfig,
-    SourceFeed, SourceRuntimeConfig, VmLimits,
-};
+pub use runtime::{run_with_sources, Bar, Engine, SourceFeed, SourceRuntimeConfig, VmLimits};
 pub use span::{Position, Span};
 pub use talib::{MaType, TalibFlag, TalibFunctionMetadata, TalibGroup, TALIB_UPSTREAM_COMMIT};
 pub use token::{Token, TokenKind};

@@ -12,22 +12,14 @@ cargo build --bin palmscript --bin palmscript-lsp
 target/debug/palmscript check examples/strategies/sma_cross.palm
 ```
 
-## 3. Run A CSV-Backed Strategy
+## 3. Run A Market-Backed Strategy
 
 ```bash
-target/debug/palmscript run csv examples/strategies/sma_cross.palm \
-  --bars examples/data/minute_bars.csv
+target/debug/palmscript run market examples/strategies/sma_cross.palm \
+  --from 1704067200000 \
+  --to 1704153600000
 ```
-
-CSV mode treats the file as a raw OHLCV feed with the schema:
-
-```text
-time,open,high,low,close,volume
-```
-
-See [CSV Mode](../tooling/csv-mode.md) for the full operational contract.
-
-## 4. Run An Exchange-Backed Strategy
+## 4. Run Another Exchange-Backed Strategy
 
 Checked-in example: [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
 

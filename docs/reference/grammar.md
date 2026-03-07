@@ -110,8 +110,9 @@ Operators within one precedence level associate left-to-right.
 The grammar does not by itself make a program valid. The implementation additionally requires:
 
 - a script must declare exactly one base `interval`
+- a script must declare at least one `source`
 - `interval`, `source`, `use`, `fn`, `export`, and `trigger` must appear only at the top level
-- once a script declares any `source`, bare market identifiers such as `close` are rejected and market series must be source-qualified
+- bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
 - string literals are accepted lexically but are semantically valid only inside `source` declarations

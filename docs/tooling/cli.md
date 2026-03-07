@@ -9,7 +9,7 @@ Use this page for workflows and examples. Use [CLI Command Reference](../referen
 Typical development flow:
 
 1. validate a strategy with `palmscript check`
-2. run it in `csv` mode or `market` mode
+2. run it in `market` mode
 3. inspect outputs in `json` or `text`
 4. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
 
@@ -20,23 +20,6 @@ palmscript check examples/strategies/sma_cross.palm
 ```
 
 This compiles the script and reports source diagnostics without executing it.
-
-## Run In CSV Mode
-
-```bash
-palmscript run csv examples/strategies/sma_cross.palm \
-  --bars examples/data/minute_bars.csv
-```
-
-Use CSV mode when:
-
-- the strategy is source-less
-- you already have canonical OHLCV bars in a file
-- you want strict roll-up behavior from one raw feed into the declared base interval and any supplemental `use <interval>` feeds
-
-CSV mode compiles the script, loads the raw file, infers the raw interval, prepares required feeds, runs the VM, and prints outputs.
-
-See [CSV Mode](csv-mode.md) for the file contract and roll-up rules.
 
 ## Run In Market Mode
 
@@ -49,7 +32,7 @@ palmscript run market strategy.palm \
 Use market mode when:
 
 - the script declares one or more `source` directives
-- you want PalmScript to fetch exchange candles directly
+- you want PalmScript to fetch each required base or supplemental feed directly from supported exchanges
 
 Market mode compiles the script, resolves the required source-qualified feeds, validates venue-specific guardrails, fetches candles for each required `(source, interval)`, constructs the source-aware runtime inputs, runs the VM on the union of base timestamps, and prints outputs.
 
@@ -57,7 +40,7 @@ See [Market Mode](market-mode.md) for supported templates and fetch behavior.
 
 ## Output Formats
 
-Both run modes support:
+Market mode supports:
 
 - `--format json`
 - `--format text`
@@ -66,7 +49,7 @@ Both run modes support:
 
 ## Execution Limits
 
-Both run modes support:
+Market mode supports:
 
 - `--max-instructions-per-bar`
 - `--max-history-capacity`

@@ -2,16 +2,15 @@ use std::fs;
 use std::path::Path;
 
 use palmscript::{
-    compile, fetch_source_runtime_config, prepare_csv_inputs_for_program, run_multi_interval,
-    run_with_sources, CompiledProgram, ExchangeEndpoints, RuntimeError, VmLimits,
+    compile, fetch_source_runtime_config, run_with_sources, CompiledProgram, ExchangeEndpoints,
+    RuntimeError, VmLimits,
 };
 
 use crate::args::{
-    BytecodeFormat, CheckArgs, Cli, Command, CsvRunArgs, DumpBytecodeArgs, MarketRunArgs,
-    OutputFormat, RunCommand,
+    BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs, MarketRunArgs, OutputFormat,
+    RunCommand,
 };
-use crate::data::load_bars_csv;
-use crate::diagnostics::{format_compile_error, format_data_prep_error, format_runtime_error};
+use crate::diagnostics::{format_compile_error, format_runtime_error};
 use crate::format::{render_bytecode_text, render_outputs_text};
 
 pub fn run(cli: Cli) -> Result<(), String> {
@@ -24,36 +23,8 @@ pub fn run(cli: Cli) -> Result<(), String> {
 
 fn run_mode(mode: RunCommand) -> Result<(), String> {
     match mode {
-        RunCommand::Csv(args) => run_csv(args),
         RunCommand::Market(args) => run_market(args),
     }
-}
-
-fn run_csv(args: CsvRunArgs) -> Result<(), String> {
-    let source = load_source(&args.script)?;
-    let compiled = compile(&source).map_err(|err| format_compile_error(&args.script, &err))?;
-    let raw_bars = load_bars_csv(&args.bars)?;
-    let prepared = prepare_csv_inputs_for_program(&compiled, raw_bars)
-        .map_err(|err| format_data_prep_error(&err))?;
-    let outputs = run_multi_interval(
-        &compiled,
-        &prepared.base_bars,
-        prepared.config,
-        VmLimits {
-            max_instructions_per_bar: args.max_instructions_per_bar,
-            max_history_capacity: args.max_history_capacity,
-        },
-    )
-    .map_err(|err| format_runtime_error(&err))?;
-
-    match args.format {
-        OutputFormat::Json => println!(
-            "{}",
-            serde_json::to_string_pretty(&outputs).map_err(|err| err.to_string())?
-        ),
-        OutputFormat::Text => print!("{}", render_outputs_text(&outputs)),
-    }
-    Ok(())
 }
 
 fn run_market(args: MarketRunArgs) -> Result<(), String> {
