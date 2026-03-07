@@ -3,7 +3,8 @@ source spot = binance.spot("BTCUSDT")
 use spot 1d
 use spot 1w
 
-// Multi-timeframe trend strategy with adaptive 4h bias and momentum/breakout triggers.
+// Multi-timeframe trend strategy with adaptive 4h bias, pullback limit entries,
+// and protective stop exits.
 input fast_len = 13
 input slow_len = 89
 input daily_fast_len = 30
@@ -13,9 +14,9 @@ input weekly_slow_len = 13
 input rsi_len = 14
 input breakout_len = 20
 input kama_len = 30
+input stop_len = 5
 const long_rsi_threshold = 55
 const short_rsi_threshold = 45
-const neutral_rsi = 50
 const macd_fast_len = 12
 const macd_slow_len = 26
 const macd_signal_len = 9
@@ -31,17 +32,31 @@ let kama_4h = kama(spot.close, kama_len)
 let (macd_line, macd_signal, macd_hist) = macd(spot.close, macd_fast_len, macd_slow_len, macd_signal_len)
 let breakout_high = highest(spot.high, breakout_len)[1]
 let breakout_low = lowest(spot.low, breakout_len)[1]
+let long_stop = lowest(spot.low, stop_len)[1]
+let short_stop = highest(spot.high, stop_len)[1]
 
-export trend_long = above(fast, slow) and above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow) and above(spot.close, kama_4h)
-export trend_short = below(fast, slow) and below(daily_fast, daily_slow) and below(weekly_fast, weekly_slow) and below(spot.close, kama_4h)
-export breakout_long = above(spot.close, breakout_high)
-export breakout_short = below(spot.close, breakout_low)
+let trend_long = above(fast, slow) and above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow) and above(spot.close, kama_4h)
+let trend_short = below(fast, slow) and below(daily_fast, daily_slow) and below(weekly_fast, weekly_slow) and below(spot.close, kama_4h)
+let breakout_long = above(spot.close, breakout_high)
+let breakout_short = below(spot.close, breakout_low)
+
+export trend_long_state = trend_long
+export trend_short_state = trend_short
+export breakout_long_state = breakout_long
+export breakout_short_state = breakout_short
 export adaptive_bias = spot.close - kama_4h
+export long_stop_level = long_stop
+export short_stop_level = short_stop
 
 entry long = trend_long and (crossover(rsi_4h, long_rsi_threshold) or crossover(macd_hist, 0) or breakout_long)
-exit long = crossunder(fast, slow) or crossunder(rsi_4h, neutral_rsi) or crossunder(spot.close, kama_4h) or breakout_short
 entry short = trend_short and (crossunder(rsi_4h, short_rsi_threshold) or crossunder(macd_hist, 0) or breakout_short)
-exit short = crossover(fast, slow) or crossover(rsi_4h, neutral_rsi) or crossover(spot.close, kama_4h) or breakout_long
+exit long = true
+exit short = true
+
+order entry long = limit(fast, tif.gtc, false)
+order exit long = stop_market(long_stop, trigger_ref.last)
+order entry short = limit(fast, tif.gtc, false)
+order exit short = stop_market(short_stop, trigger_ref.last)
 
 plot(fast - slow)
 plot(macd_line - macd_signal)

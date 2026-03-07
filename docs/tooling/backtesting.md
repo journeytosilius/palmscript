@@ -43,10 +43,10 @@ through `2026-03-07T00:00:00Z`. With default backtest settings
 (`initial_capital=10000`, `fee_bps=5`, `slippage_bps=2`), the checked-in
 strategy produced:
 
-- `ending_equity = 12057.12`
-- `total_return = 20.57%`
-- `trade_count = 41`
-- `max_drawdown = 1959.38`
+- `ending_equity = 10803.97`
+- `total_return = 8.04%`
+- `trade_count = 43`
+- `max_drawdown = 1389.91`
 
 Those numbers are an example snapshot, not a promise of future performance.
 
