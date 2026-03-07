@@ -20,6 +20,11 @@ Implemented TA-Lib-style builtins in this change:
 
 - `ma(series, length, ma_type)`
 - `macd(series, fast_length, slow_length, signal_length)`
+- unary math transforms: `acos`, `asin`, `atan`, `ceil`, `cos`, `cosh`, `exp`, `floor`, `ln`, `log10`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`
+- math operators: `add`, `div`, `mult`, `sub`, `max`, `min`, `sum`
+- price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
+- overlap helpers: `midpoint`, `midprice`
+- volume and volatility helpers: `obv`, `trange`
 
 Current `ma_type` variants:
 
@@ -34,6 +39,11 @@ Current `ma_type` variants:
 - `ma_type.t3`
 
 Only `sma`, `ema`, and `wma` are currently executable through `ma(...)`. The remaining variants are reserved in the typed surface so later TA-Lib batches can extend behavior without changing syntax.
+
+Current TA-Lib defaults now honored in the executable surface:
+
+- `max`, `min`, and `sum` default to a window of `30`
+- `midpoint` and `midprice` default to a window of `14`
 
 Tuple-return example:
 

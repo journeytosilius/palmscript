@@ -11,6 +11,36 @@ PalmScript currently provides these callable builtins:
 - `rsi(series, length)`
 - `ma(series, length, ma_type)`
 - `macd(series, fast_length, slow_length, signal_length)`
+- `acos(real)`
+- `asin(real)`
+- `atan(real)`
+- `ceil(real)`
+- `cos(real)`
+- `cosh(real)`
+- `exp(real)`
+- `floor(real)`
+- `ln(real)`
+- `log10(real)`
+- `sin(real)`
+- `sinh(real)`
+- `sqrt(real)`
+- `tan(real)`
+- `tanh(real)`
+- `add(a, b)`
+- `div(a, b)`
+- `mult(a, b)`
+- `sub(a, b)`
+- `avgprice(open, high, low, close)`
+- `medprice(high, low)`
+- `typprice(high, low, close)`
+- `wclprice(high, low, close)`
+- `max(series[, length=30])`
+- `min(series[, length=30])`
+- `sum(series[, length=30])`
+- `midpoint(series[, length=14])`
+- `midprice(high, low[, length=14])`
+- `obv(series, volume)`
+- `trange(high, low, close)`
 - `plot(value)`
 - `above(a, b)`
 - `below(a, b)`
@@ -102,6 +132,53 @@ Rules:
 - the remaining arguments must be positive integer literals
 - the result type is a 3-tuple of series values in TA-Lib order: `(macd_line, signal, histogram)`
 - the result must be destructured before it can be used in `plot`, `export`, conditions, or further expressions
+
+### TA-Lib math transforms
+
+These builtins are currently executable:
+
+- `acos(real)`
+- `asin(real)`
+- `atan(real)`
+- `ceil(real)`
+- `cos(real)`
+- `cosh(real)`
+- `exp(real)`
+- `floor(real)`
+- `ln(real)`
+- `log10(real)`
+- `sin(real)`
+- `sinh(real)`
+- `sqrt(real)`
+- `tan(real)`
+- `tanh(real)`
+
+Rules:
+
+- each requires exactly one numeric or `series<float>` argument
+- if the input is a series, the result type is `series<float>`
+- if the input is scalar, the result type is `float`
+- if the input is `na`, the result is `na`
+
+### TA-Lib arithmetic and price transforms
+
+These builtins are currently executable:
+
+- `add(a, b)`
+- `div(a, b)`
+- `mult(a, b)`
+- `sub(a, b)`
+- `avgprice(open, high, low, close)`
+- `medprice(high, low)`
+- `typprice(high, low, close)`
+- `wclprice(high, low, close)`
+
+Rules:
+
+- all arguments must be numeric, `series<float>`, or `na`
+- if any argument is a series, the result type is `series<float>`
+- otherwise the result type is `float`
+- if any required input is `na`, the result is `na`
 
 ## Relational Helpers
 
@@ -196,6 +273,31 @@ Rules:
 - if any sample in the required window is `na`, the result is `na`
 - the result type is `series<float>`
 
+### `max(series[, length=30])`, `min(series[, length=30])`, and `sum(series[, length=30])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- the optional trailing window defaults to `30`
+- if provided, the window must be an integer literal greater than or equal to `2`
+- the window includes the current sample
+- if insufficient history exists, the result is `na`
+- if any sample in the required window is `na`, the result is `na`
+- the result type is `series<float>`
+
+### `midpoint(series[, length=14])` and `midprice(high, low[, length=14])`
+
+Rules:
+
+- `midpoint` requires `series<float>` as the first argument
+- `midprice` requires `series<float>` for both `high` and `low`
+- the optional trailing window defaults to `14`
+- if provided, the window must be an integer literal greater than or equal to `2`
+- the window includes the current sample
+- if insufficient history exists, the result is `na`
+- if any required sample in the window is `na`, the result is `na`
+- the result type is `series<float>`
+
 ### `rising(series, length)` and `falling(series, length)`
 
 Rules:
@@ -207,6 +309,26 @@ Rules:
 - if insufficient history exists, the result is `na`
 - if any required sample is `na`, the result is `na`
 - the result type is `series<bool>`
+
+### `obv(series, volume)`
+
+Rules:
+
+- both arguments must be `series<float>`
+- the first output sample seeds from the current `volume`
+- later samples add or subtract the current `volume` based on whether `series` rose or fell from the prior bar
+- if the current price or volume sample is `na`, the result is `na`
+- the result type is `series<float>`
+
+### `trange(high, low, close)`
+
+Rules:
+
+- all arguments must be `series<float>`
+- the first output sample is `na`
+- later samples use TA-Lib true range semantics based on current `high`, current `low`, and prior `close`
+- if any required sample is `na`, the result is `na`
+- the result type is `series<float>`
 
 ## Event Memory Helpers
 

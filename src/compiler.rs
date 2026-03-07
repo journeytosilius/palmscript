@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, Stmt, StmtKind, UnaryOp,
 };
-use crate::builtins::{BuiltinId, BuiltinKind};
+use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{Constant, Instruction, LocalInfo, OpCode, OutputDecl, OutputKind, Program};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -615,14 +615,13 @@ impl<'a> Analyzer<'a> {
                         ));
                     }
                     Some(builtin) => {
-                        if let Some(arity) = builtin.arity() {
-                            if args.len() != arity {
-                                self.diagnostics.push(Diagnostic::new(
-                                    DiagnosticKind::Type,
-                                    expected_arity_message(callee, arity),
-                                    expr.span,
-                                ));
-                            }
+                        let arity = builtin.arity();
+                        if !arity.accepts(args.len()) {
+                            self.diagnostics.push(Diagnostic::new(
+                                DiagnosticKind::Type,
+                                expected_arity_message(callee, arity),
+                                expr.span,
+                            ));
                         }
                     }
                     None if talib_metadata_by_name(callee).is_some() => {
@@ -1952,21 +1951,22 @@ fn analyze_helper_builtin(
     span: Span,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ExprInfo {
-    let Some(expected_arity) = builtin.arity() else {
+    let expected_arity = builtin.arity();
+    if matches!(expected_arity, BuiltinArity::NonCallable) {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::Type,
             "market data builtins are identifiers, not callable functions",
             span,
         ));
         return ExprInfo::series(0);
-    };
-    if args.len() != expected_arity {
+    }
+    if !expected_arity.accepts(args.len()) {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::Type,
             expected_arity_message(callee, expected_arity),
             span,
         ));
-        return fallback_expr_info_for_builtin(builtin);
+        return fallback_expr_info_for_builtin(builtin, arg_info);
     }
 
     match builtin.kind() {
@@ -2037,6 +2037,62 @@ fn analyze_helper_builtin(
             ExprInfo {
                 ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
                 update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::UnaryMathTransform
+        | BuiltinKind::NumericBinary
+        | BuiltinKind::PriceTransform => {
+            for (arg, info) in args.iter().zip(arg_info.iter()) {
+                if !info.ty.is_numeric_like() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires numeric or series numeric arguments"),
+                        arg.span,
+                    ));
+                }
+            }
+            numeric_result(arg_info)
+        }
+        BuiltinKind::RollingSingleInput => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() == 2 {
+                validate_min_window_literal(callee, &args[1], 2, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::RollingHighLow => {
+            let high_info = arg_info[0];
+            let low_info = arg_info[1];
+            if !high_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !low_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if args.len() == 3 {
+                validate_min_window_literal(callee, &args[2], 2, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: high_info.update_mask | low_info.update_mask,
             }
         }
         BuiltinKind::Relation2 => {
@@ -2149,11 +2205,63 @@ fn analyze_helper_builtin(
                 update_mask: condition_info.update_mask | source_info.update_mask,
             }
         }
+        BuiltinKind::VolumeIndicator => {
+            let price_info = arg_info[0];
+            let volume_info = arg_info[1];
+            if !price_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !volume_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: price_info.update_mask | volume_info.update_mask,
+            }
+        }
+        BuiltinKind::VolatilityIndicator => {
+            let high_info = arg_info[0];
+            let low_info = arg_info[1];
+            let close_info = arg_info[2];
+            if !high_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !low_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if !close_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the third argument"),
+                    args[2].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: high_info.update_mask | low_info.update_mask | close_info.update_mask,
+            }
+        }
         BuiltinKind::Plot | BuiltinKind::MarketSeries => unreachable!(),
     }
 }
 
-fn fallback_expr_info_for_builtin(builtin: BuiltinId) -> ExprInfo {
+fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> ExprInfo {
     match builtin.kind() {
         BuiltinKind::Plot => ExprInfo::scalar(Type::Void),
         BuiltinKind::Relation2 | BuiltinKind::Relation3 => ExprInfo::scalar(Type::Bool),
@@ -2167,13 +2275,20 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId) -> ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
+        BuiltinKind::UnaryMathTransform
+        | BuiltinKind::NumericBinary
+        | BuiltinKind::PriceTransform => numeric_result(arg_info),
         BuiltinKind::BarsSince
         | BuiltinKind::Indicator
         | BuiltinKind::MovingAverage
         | BuiltinKind::Change
         | BuiltinKind::Roc
         | BuiltinKind::Highest
-        | BuiltinKind::Lowest => ExprInfo::series(0),
+        | BuiltinKind::Lowest
+        | BuiltinKind::RollingSingleInput
+        | BuiltinKind::RollingHighLow
+        | BuiltinKind::VolumeIndicator
+        | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
     }
 }
@@ -2226,12 +2341,55 @@ fn bool_result(arg_info: &[ExprInfo]) -> ExprInfo {
     }
 }
 
+fn numeric_result(arg_info: &[ExprInfo]) -> ExprInfo {
+    let update_mask = arg_info
+        .iter()
+        .fold(0, |mask, info| mask | info.update_mask);
+    let has_series = arg_info
+        .iter()
+        .any(|info| matches!(info.ty, InferredType::Concrete(Type::SeriesF64)));
+    ExprInfo {
+        ty: if has_series {
+            InferredType::Concrete(Type::SeriesF64)
+        } else if arg_info
+            .iter()
+            .all(|info| matches!(info.ty, InferredType::Na))
+        {
+            InferredType::Na
+        } else {
+            InferredType::Concrete(Type::F64)
+        },
+        update_mask,
+    }
+}
+
 fn validate_positive_window_literal(callee: &str, expr: &Expr, diagnostics: &mut Vec<Diagnostic>) {
     match literal_window(expr) {
         Some(window) if window > 0 => {}
         Some(_) => diagnostics.push(Diagnostic::new(
             DiagnosticKind::Type,
             format!("{callee} length must be greater than zero"),
+            expr.span,
+        )),
+        None => diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            format!("{callee} length must be a non-negative integer literal"),
+            expr.span,
+        )),
+    }
+}
+
+fn validate_min_window_literal(
+    callee: &str,
+    expr: &Expr,
+    minimum: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match literal_window(expr) {
+        Some(window) if window >= minimum => {}
+        Some(_) => diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            format!("{callee} length must be greater than or equal to {minimum}"),
             expr.span,
         )),
         None => diagnostics.push(Diagnostic::new(
@@ -2257,17 +2415,41 @@ fn validate_non_negative_literal(
     }
 }
 
-fn expected_arity_message(callee: &str, arity: usize) -> String {
-    let quantity = match arity {
-        1 => "one",
-        2 => "two",
-        3 => "three",
-        _ => return format!("{callee} expects exactly {arity} arguments"),
-    };
-    format!(
-        "{callee} expects exactly {quantity} argument{}",
-        if arity == 1 { "" } else { "s" }
-    )
+fn expected_arity_message(callee: &str, arity: BuiltinArity) -> String {
+    match arity {
+        BuiltinArity::NonCallable => format!("{callee} is not callable"),
+        BuiltinArity::Exact(exact) => {
+            let quantity = match exact {
+                1 => "one".to_string(),
+                2 => "two".to_string(),
+                3 => "three".to_string(),
+                4 => "four".to_string(),
+                _ => exact.to_string(),
+            };
+            format!(
+                "{callee} expects exactly {quantity} argument{}",
+                if exact == 1 { "" } else { "s" }
+            )
+        }
+        BuiltinArity::Range { min, max } if max == min + 1 => {
+            let left = match min {
+                1 => "one".to_string(),
+                2 => "two".to_string(),
+                3 => "three".to_string(),
+                _ => min.to_string(),
+            };
+            let right = match max {
+                2 => "two".to_string(),
+                3 => "three".to_string(),
+                4 => "four".to_string(),
+                _ => max.to_string(),
+            };
+            format!("{callee} expects either {left} or {right} arguments")
+        }
+        BuiltinArity::Range { min, max } => {
+            format!("{callee} expects between {min} and {max} arguments")
+        }
+    }
 }
 
 fn literal_window(expr: &Expr) -> Option<usize> {
@@ -2719,8 +2901,24 @@ impl<'a> Compiler<'a> {
             BuiltinId::Sma
             | BuiltinId::Ema
             | BuiltinId::Rsi
+            | BuiltinId::Acos
+            | BuiltinId::Asin
+            | BuiltinId::Atan
+            | BuiltinId::Ceil
+            | BuiltinId::Cos
+            | BuiltinId::Cosh
+            | BuiltinId::Exp
+            | BuiltinId::Floor
+            | BuiltinId::Ln
+            | BuiltinId::Log10
+            | BuiltinId::Sin
+            | BuiltinId::Sinh
+            | BuiltinId::Sqrt
+            | BuiltinId::Tan
+            | BuiltinId::Tanh
             | BuiltinId::Highest
             | BuiltinId::Lowest
+            | BuiltinId::Sum
             | BuiltinId::Rising
             | BuiltinId::Falling
             | BuiltinId::BarsSince
@@ -2731,10 +2929,124 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Change
             | BuiltinId::Roc
             | BuiltinId::Ma
-            | BuiltinId::Macd => {
+            | BuiltinId::Macd
+            | BuiltinId::Obv
+            | BuiltinId::Trange => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
+            }
+            BuiltinId::Add | BuiltinId::Div | BuiltinId::Mult | BuiltinId::Sub => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                let opcode = match builtin {
+                    BuiltinId::Add => OpCode::Add,
+                    BuiltinId::Div => OpCode::Div,
+                    BuiltinId::Mult => OpCode::Mul,
+                    BuiltinId::Sub => OpCode::Sub,
+                    _ => unreachable!(),
+                };
+                self.emit(Instruction::new(opcode).with_span(expr.span));
+            }
+            BuiltinId::Avgprice => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_expr(&args[3], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_f64_constant(4.0, expr.span);
+                self.emit(Instruction::new(OpCode::Div).with_span(expr.span));
+            }
+            BuiltinId::Medprice => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_f64_constant(2.0, expr.span);
+                self.emit(Instruction::new(OpCode::Div).with_span(expr.span));
+            }
+            BuiltinId::Typprice => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_f64_constant(3.0, expr.span);
+                self.emit(Instruction::new(OpCode::Div).with_span(expr.span));
+            }
+            BuiltinId::Wclprice => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_f64_constant(4.0, expr.span);
+                self.emit(Instruction::new(OpCode::Div).with_span(expr.span));
+            }
+            BuiltinId::Max => {
+                self.emit_series_window_alias_call(
+                    BuiltinId::Highest,
+                    &args[0],
+                    args.get(1),
+                    30,
+                    expr_info,
+                    user_calls,
+                );
+            }
+            BuiltinId::Min => {
+                self.emit_series_window_alias_call(
+                    BuiltinId::Lowest,
+                    &args[0],
+                    args.get(1),
+                    30,
+                    expr_info,
+                    user_calls,
+                );
+            }
+            BuiltinId::Midpoint => {
+                self.emit_series_window_alias_call(
+                    BuiltinId::Highest,
+                    &args[0],
+                    args.get(1),
+                    14,
+                    expr_info,
+                    user_calls,
+                );
+                self.emit_series_window_alias_call(
+                    BuiltinId::Lowest,
+                    &args[0],
+                    args.get(1),
+                    14,
+                    expr_info,
+                    user_calls,
+                );
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_f64_constant(2.0, expr.span);
+                self.emit(Instruction::new(OpCode::Div).with_span(expr.span));
+            }
+            BuiltinId::Midprice => {
+                self.emit_high_low_window_alias_call(
+                    BuiltinId::Highest,
+                    &args[0],
+                    args.get(2),
+                    14,
+                    expr_info,
+                    user_calls,
+                );
+                self.emit_high_low_window_alias_call(
+                    BuiltinId::Lowest,
+                    &args[1],
+                    args.get(2),
+                    14,
+                    expr_info,
+                    user_calls,
+                );
+                self.emit(Instruction::new(OpCode::Add).with_span(expr.span));
+                self.emit_f64_constant(2.0, expr.span);
+                self.emit(Instruction::new(OpCode::Div).with_span(expr.span));
             }
             BuiltinId::Above | BuiltinId::Below => {
                 self.emit_expr(&args[0], expr_info, user_calls);
@@ -2794,6 +3106,16 @@ impl<'a> Compiler<'a> {
         callsite: u16,
     ) {
         match builtin.kind() {
+            BuiltinKind::UnaryMathTransform => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(1)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinKind::Indicator | BuiltinKind::Highest | BuiltinKind::Lowest => {
                 let required_history = literal_window(&args[1])
                     .map(|window| {
@@ -2810,6 +3132,47 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(args.len() as u16)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingSingleInput => {
+                let default_window = match builtin {
+                    BuiltinId::Max | BuiltinId::Min | BuiltinId::Sum => 30,
+                    BuiltinId::Midpoint => 14,
+                    _ => unreachable!(),
+                };
+                let required_history = args
+                    .get(1)
+                    .and_then(literal_window)
+                    .unwrap_or(default_window);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(1) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(default_window as f64, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingHighLow => {
+                let required_history = args.get(2).and_then(literal_window).unwrap_or(14);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(2) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(14.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );
@@ -2904,8 +3267,92 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            BuiltinKind::VolumeIndicator => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::VolatilityIndicator => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[2], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             _ => unreachable!(),
         }
+    }
+
+    fn emit_f64_constant(&mut self, value: f64, span: Span) {
+        let index = self.push_constant(Value::F64(value));
+        self.emit(
+            Instruction::new(OpCode::LoadConst)
+                .with_a(index)
+                .with_span(span),
+        );
+    }
+
+    fn emit_series_window_alias_call(
+        &mut self,
+        builtin: BuiltinId,
+        series: &Expr,
+        window: Option<&Expr>,
+        default_window: usize,
+        expr_info: &HashMap<NodeId, ExprInfo>,
+        user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
+    ) {
+        let required_history = window.and_then(literal_window).unwrap_or(default_window);
+        let callsite = self.next_callsite();
+        self.emit_series_ref(series, required_history.max(2), expr_info, user_calls);
+        if let Some(window) = window {
+            self.emit_expr(window, expr_info, user_calls);
+        } else {
+            self.emit_f64_constant(default_window as f64, series.span);
+        }
+        self.emit(
+            Instruction::new(OpCode::CallBuiltin)
+                .with_a(builtin as u16)
+                .with_b(2)
+                .with_c(callsite)
+                .with_span(series.span),
+        );
+    }
+
+    fn emit_high_low_window_alias_call(
+        &mut self,
+        builtin: BuiltinId,
+        target: &Expr,
+        window: Option<&Expr>,
+        default_window: usize,
+        expr_info: &HashMap<NodeId, ExprInfo>,
+        user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
+    ) {
+        let required_history = window.and_then(literal_window).unwrap_or(default_window);
+        let callsite = self.next_callsite();
+        self.emit_series_ref(target, required_history.max(2), expr_info, user_calls);
+        if let Some(window) = window {
+            self.emit_expr(window, expr_info, user_calls);
+        } else {
+            self.emit_f64_constant(default_window as f64, target.span);
+        }
+        self.emit(
+            Instruction::new(OpCode::CallBuiltin)
+                .with_a(builtin as u16)
+                .with_b(2)
+                .with_c(callsite)
+                .with_span(target.span),
+        );
     }
 
     fn emit_cross_arg(

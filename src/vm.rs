@@ -9,8 +9,9 @@ use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
-    calculate_wma, BarsSinceState, EmaState, FallingState, HighestState, IndicatorState,
-    LowestState, MacdState, RisingState, RsiState, SmaState, ValueWhenState,
+    apply_unary_math, calculate_sum, calculate_trange, calculate_wma, BarsSinceState, EmaState,
+    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, RisingState,
+    RsiState, SmaState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -427,6 +428,21 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Rsi => self.call_rsi(callsite, arity, args, pc),
             BuiltinId::Ma => self.call_ma(callsite, arity, args, pc),
             BuiltinId::Macd => self.call_macd(callsite, arity, args, pc),
+            BuiltinId::Acos => self.call_unary_math(UnaryMathTransform::Acos, arity, args, pc),
+            BuiltinId::Asin => self.call_unary_math(UnaryMathTransform::Asin, arity, args, pc),
+            BuiltinId::Atan => self.call_unary_math(UnaryMathTransform::Atan, arity, args, pc),
+            BuiltinId::Ceil => self.call_unary_math(UnaryMathTransform::Ceil, arity, args, pc),
+            BuiltinId::Cos => self.call_unary_math(UnaryMathTransform::Cos, arity, args, pc),
+            BuiltinId::Cosh => self.call_unary_math(UnaryMathTransform::Cosh, arity, args, pc),
+            BuiltinId::Exp => self.call_unary_math(UnaryMathTransform::Exp, arity, args, pc),
+            BuiltinId::Floor => self.call_unary_math(UnaryMathTransform::Floor, arity, args, pc),
+            BuiltinId::Ln => self.call_unary_math(UnaryMathTransform::Ln, arity, args, pc),
+            BuiltinId::Log10 => self.call_unary_math(UnaryMathTransform::Log10, arity, args, pc),
+            BuiltinId::Sin => self.call_unary_math(UnaryMathTransform::Sin, arity, args, pc),
+            BuiltinId::Sinh => self.call_unary_math(UnaryMathTransform::Sinh, arity, args, pc),
+            BuiltinId::Sqrt => self.call_unary_math(UnaryMathTransform::Sqrt, arity, args, pc),
+            BuiltinId::Tan => self.call_unary_math(UnaryMathTransform::Tan, arity, args, pc),
+            BuiltinId::Tanh => self.call_unary_math(UnaryMathTransform::Tanh, arity, args, pc),
             BuiltinId::Cross | BuiltinId::Crossover | BuiltinId::Crossunder => {
                 self.call_cross_builtin(builtin, arity, args, pc)
             }
@@ -434,12 +450,32 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Roc => self.call_roc(arity, args, pc),
             BuiltinId::Highest => self.call_highest(callsite, arity, args, pc),
             BuiltinId::Lowest => self.call_lowest(callsite, arity, args, pc),
+            BuiltinId::Sum => self.call_sum(arity, args, pc),
             BuiltinId::Rising => self.call_rising(callsite, arity, args, pc),
             BuiltinId::Falling => self.call_falling(callsite, arity, args, pc),
             BuiltinId::BarsSince => self.call_barssince(callsite, arity, args, pc),
             BuiltinId::ValueWhen => self.call_valuewhen(callsite, arity, args, pc),
+            BuiltinId::Obv => self.call_obv(callsite, arity, args, pc),
+            BuiltinId::Trange => self.call_trange(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
+    }
+
+    fn call_unary_math(
+        &mut self,
+        transform: UnaryMathTransform,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "math transform",
+                expected: 1,
+                found: arity,
+            });
+        }
+        apply_unary_math(args.into_iter().next().unwrap_or(Value::NA), transform, pc)
     }
 
     fn call_sma(
@@ -737,6 +773,29 @@ impl<'a> VmEngine<'a> {
         }
     }
 
+    fn call_sum(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "sum",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        self.consume_steps(window, pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        calculate_sum(buffer, window, pc)
+    }
+
     fn call_highest(
         &mut self,
         callsite: u16,
@@ -898,6 +957,75 @@ impl<'a> VmEngine<'a> {
         };
         self.indicator_state.insert(key, state);
         Ok(result)
+    }
+
+    fn call_obv(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "obv",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let price_slot = series_ref(args[0].clone(), pc)?;
+        let volume_slot = series_ref(args[1].clone(), pc)?;
+        let price = self
+            .series_values
+            .get(price_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: price_slot })?;
+        let volume = self
+            .series_values
+            .get(volume_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: volume_slot })?;
+        let key = (BuiltinId::Obv, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Obv(ObvState::new()));
+        let result = match &mut state {
+            IndicatorState::Obv(state) => state.update(price, volume, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_trange(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "trange",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        self.consume_steps(2, pc)?;
+        let high = self
+            .series_values
+            .get(high_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+        let low = self
+            .series_values
+            .get(low_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+        let close = self
+            .series_values
+            .get(close_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+        calculate_trange(high, low, close, pc)
     }
 }
 

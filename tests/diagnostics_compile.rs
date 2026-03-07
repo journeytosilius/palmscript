@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 20] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 23] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -413,6 +413,30 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "ma requires ma_type as the third argument",
+            )],
+        ),
+        (
+            "type_unary_math_requires_numeric_input",
+            with_interval("plot(sin(true))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "sin requires numeric or series numeric arguments",
+            )],
+        ),
+        (
+            "type_sum_requires_minimum_window",
+            with_interval("plot(sum(close, 1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "sum length must be greater than or equal to 2",
+            )],
+        ),
+        (
+            "type_obv_requires_series_volume",
+            with_interval("plot(obv(close, 1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "obv requires series<float> as the second argument",
             )],
         ),
         (

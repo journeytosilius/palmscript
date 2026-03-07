@@ -295,6 +295,90 @@ fn golden_macd_tuple_destructuring_shape_matches() {
 }
 
 #[test]
+fn golden_avgprice_matches_expected_value() {
+    let compiled =
+        compile(&with_interval("plot(avgprice(open, high, low, close))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(99.875)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(118.875)
+    );
+}
+
+#[test]
+fn golden_unary_math_transform_compiles_over_series() {
+    let compiled = compile(&with_interval("plot(cos(close - close))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(1.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_midpoint_uses_default_window() {
+    let compiled = compile(&with_interval("plot(midpoint(close))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][12]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][13]["value"],
+        serde_json::json!(106.5)
+    );
+}
+
+#[test]
+fn golden_obv_accumulates_with_direction() {
+    let compiled = compile(&with_interval("plot(obv(close, volume))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(1000.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::json!(2001.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][2]["value"],
+        serde_json::json!(3003.0)
+    );
+}
+
+#[test]
+fn golden_trange_skips_first_bar_and_uses_prior_close() {
+    let compiled = compile(&with_interval("plot(trange(high, low, close))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::json!(2.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(2.0)
+    );
+}
+
+#[test]
 fn golden_extrema_builtin_shape_matches() {
     let compiled = compile(&with_interval("plot(highest(close, 5) - lowest(close, 5))"))
         .expect("script compiles");
