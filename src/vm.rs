@@ -9,12 +9,13 @@ use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
-    apply_unary_math, calculate_avgdev, calculate_beta, calculate_correl,
-    calculate_linear_regression, calculate_max_index, calculate_min_index, calculate_min_max,
-    calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange, calculate_var,
-    calculate_willr, calculate_wma, BarsSinceState, CmoState, EmaState, FallingState, HighestState,
-    IndicatorState, LowestState, MacdState, ObvState, OscillatorKind, PriceOscillatorState,
-    RegressionOutput, RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
+    apply_unary_math, calculate_aroon, calculate_aroonosc, calculate_avgdev, calculate_beta,
+    calculate_correl, calculate_linear_regression, calculate_max_index, calculate_min_index,
+    calculate_min_max, calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange,
+    calculate_var, calculate_willr, calculate_wma, BarsSinceState, CmoState, EmaState,
+    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, OscillatorKind,
+    PriceOscillatorState, RegressionOutput, RisingState, RsiState, SmaState, UnaryMathTransform,
+    ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -483,6 +484,8 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Beta => self.call_beta(arity, args, pc),
             BuiltinId::Correl => self.call_correl(arity, args, pc),
             BuiltinId::Willr => self.call_willr(arity, args, pc),
+            BuiltinId::Aroon => self.call_aroon(arity, args, pc),
+            BuiltinId::AroonOsc => self.call_aroonosc(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -1168,6 +1171,38 @@ impl<'a> VmEngine<'a> {
         self.call_stateless_double_window_builtin("correl", arity, args, pc, 0, calculate_correl)
     }
 
+    fn call_aroon(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_high_low_window_tuple_builtin(
+            "aroon",
+            arity,
+            args,
+            pc,
+            1,
+            calculate_aroon,
+        )
+    }
+
+    fn call_aroonosc(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_high_low_window_builtin(
+            "aroonosc",
+            arity,
+            args,
+            pc,
+            1,
+            calculate_aroonosc,
+        )
+    }
+
     fn call_willr(
         &mut self,
         arity: usize,
@@ -1522,6 +1557,62 @@ impl<'a> VmEngine<'a> {
             .get(right_slot)
             .ok_or(RuntimeError::InvalidSeriesSlot { slot: right_slot })?;
         calculate(left, right, window, pc)
+    }
+
+    fn call_stateless_high_low_window_builtin<F>(
+        &mut self,
+        builtin: &'static str,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        extra_history: usize,
+        calculate: F,
+    ) -> Result<Value, RuntimeError>
+    where
+        F: FnOnce(&SeriesBuffer, &SeriesBuffer, usize, usize) -> Result<Value, RuntimeError>,
+    {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin,
+                expected: 3,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let window = expect_window(args[2].clone(), pc)?;
+        self.consume_steps((window + extra_history).max(1), pc)?;
+        let high = self
+            .series_values
+            .get(high_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+        let low = self
+            .series_values
+            .get(low_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+        calculate(high, low, window, pc)
+    }
+
+    fn call_stateless_high_low_window_tuple_builtin<F>(
+        &mut self,
+        builtin: &'static str,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        extra_history: usize,
+        calculate: F,
+    ) -> Result<Value, RuntimeError>
+    where
+        F: FnOnce(&SeriesBuffer, &SeriesBuffer, usize, usize) -> Result<Value, RuntimeError>,
+    {
+        self.call_stateless_high_low_window_builtin(
+            builtin,
+            arity,
+            args,
+            pc,
+            extra_history,
+            calculate,
+        )
     }
 }
 

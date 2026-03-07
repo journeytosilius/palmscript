@@ -2147,6 +2147,31 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::RollingHighLowTuple => {
+            let high_info = arg_info[0];
+            let low_info = arg_info[1];
+            if !high_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !low_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if args.len() == 3 {
+                validate_min_window_literal(callee, &args[2], 2, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask: high_info.update_mask | low_info.update_mask,
+            }
+        }
         BuiltinKind::RollingDoubleInput => {
             let left_info = arg_info[0];
             let right_info = arg_info[1];
@@ -2428,6 +2453,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             update_mask: 0,
         },
         BuiltinKind::RollingSingleInputTuple => ExprInfo {
+            ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+            update_mask: 0,
+        },
+        BuiltinKind::RollingHighLowTuple => ExprInfo {
             ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
@@ -3114,7 +3143,9 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Apo
             | BuiltinId::Ppo
             | BuiltinId::Cmo
-            | BuiltinId::Willr => {
+            | BuiltinId::Willr
+            | BuiltinId::Aroon
+            | BuiltinId::AroonOsc => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3409,6 +3440,23 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            BuiltinKind::RollingHighLowTuple => {
+                let required_history = args.get(2).and_then(literal_window).unwrap_or(14) + 1;
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(2) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(14.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinKind::RollingDoubleInput => {
                 let default_window = match builtin {
                     BuiltinId::Beta => 5usize,
@@ -3440,7 +3488,23 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::RollingHighLow => {
-                let required_history = args.get(2).and_then(literal_window).unwrap_or(14);
+                let required_history = args
+                    .get(2)
+                    .and_then(literal_window)
+                    .map(|window| {
+                        if matches!(builtin, BuiltinId::AroonOsc) {
+                            window + 1
+                        } else {
+                            window
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        if matches!(builtin, BuiltinId::AroonOsc) {
+                            15
+                        } else {
+                            14
+                        }
+                    });
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
                 if let Some(window) = args.get(2) {

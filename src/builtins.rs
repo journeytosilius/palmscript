@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     RollingSingleInputTuple,
     RollingDoubleInput,
     RollingHighLow,
+    RollingHighLowTuple,
     RollingHighLowClose,
     VolumeIndicator,
     VolatilityIndicator,
@@ -138,10 +139,12 @@ pub enum BuiltinId {
     Ppo = 77,
     Cmo = 78,
     Willr = 79,
+    Aroon = 80,
+    AroonOsc = 81,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 80] = [
+    pub const RESERVED: [Self; 82] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -222,9 +225,11 @@ impl BuiltinId {
         Self::Ppo,
         Self::Cmo,
         Self::Willr,
+        Self::Aroon,
+        Self::AroonOsc,
     ];
 
-    pub const CALLABLE: [Self; 74] = [
+    pub const CALLABLE: [Self; 76] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -299,6 +304,8 @@ impl BuiltinId {
         Self::Ppo,
         Self::Cmo,
         Self::Willr,
+        Self::Aroon,
+        Self::AroonOsc,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -383,6 +390,8 @@ impl BuiltinId {
             "ppo" => Some(Self::Ppo),
             "cmo" => Some(Self::Cmo),
             "willr" => Some(Self::Willr),
+            "aroon" => Some(Self::Aroon),
+            "aroonosc" => Some(Self::AroonOsc),
             _ => None,
         }
     }
@@ -469,6 +478,8 @@ impl BuiltinId {
             77 => Some(Self::Ppo),
             78 => Some(Self::Cmo),
             79 => Some(Self::Willr),
+            80 => Some(Self::Aroon),
+            81 => Some(Self::AroonOsc),
             _ => None,
         }
     }
@@ -555,6 +566,8 @@ impl BuiltinId {
             Self::Ppo => "ppo",
             Self::Cmo => "cmo",
             Self::Willr => "willr",
+            Self::Aroon => "aroon",
+            Self::AroonOsc => "aroonosc",
         }
     }
 
@@ -601,6 +614,8 @@ impl BuiltinId {
             | Self::Cmo => BuiltinKind::RollingSingleInput,
             Self::Beta | Self::Correl => BuiltinKind::RollingDoubleInput,
             Self::Midprice => BuiltinKind::RollingHighLow,
+            Self::Aroon => BuiltinKind::RollingHighLowTuple,
+            Self::AroonOsc => BuiltinKind::RollingHighLow,
             Self::Willr => BuiltinKind::RollingHighLowClose,
             Self::Obv => BuiltinKind::VolumeIndicator,
             Self::Trange => BuiltinKind::VolatilityIndicator,
@@ -667,6 +682,7 @@ impl BuiltinId {
                 BuiltinArity::Range { min: 1, max: 2 }
             }
             Self::Cmo => BuiltinArity::Range { min: 1, max: 2 },
+            Self::Aroon | Self::AroonOsc => BuiltinArity::Range { min: 2, max: 3 },
             Self::Avgprice => BuiltinArity::Exact(4),
             Self::Typprice
             | Self::Wclprice
@@ -781,6 +797,8 @@ impl BuiltinId {
             Self::Rocr => "rocr(series[, length=10])",
             Self::Rocr100 => "rocr100(series[, length=10])",
             Self::Willr => "willr(high, low, close[, length=14])",
+            Self::Aroon => "aroon(high, low[, length=14])",
+            Self::AroonOsc => "aroonosc(high, low[, length=14])",
         }
     }
 
@@ -866,6 +884,8 @@ impl BuiltinId {
             Self::Beta => "Beta over paired trailing series returns.",
             Self::Correl => "Pearson correlation over paired trailing series values.",
             Self::Willr => "Williams' %R over a trailing high-low-close window.",
+            Self::Aroon => "Aroon tuple (aroon_down, aroon_up) over a trailing high-low window.",
+            Self::AroonOsc => "Aroon oscillator over a trailing high-low window.",
         }
     }
 }

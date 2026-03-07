@@ -206,6 +206,41 @@ pub(crate) fn calculate_min_max_index(
     })
 }
 
+pub(crate) fn calculate_aroon(
+    high: &SeriesBuffer,
+    low: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    aroon_offsets(high, low, window, pc).map(|offsets| match offsets {
+        Some(offsets) => {
+            let factor = 100.0 / window as f64;
+            Value::Tuple2([
+                Box::new(Value::F64(factor * (window - offsets.lowest_offset) as f64)),
+                Box::new(Value::F64(
+                    factor * (window - offsets.highest_offset) as f64,
+                )),
+            ])
+        }
+        None => na_tuple2(),
+    })
+}
+
+pub(crate) fn calculate_aroonosc(
+    high: &SeriesBuffer,
+    low: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    aroon_offsets(high, low, window, pc).map(|offsets| match offsets {
+        Some(offsets) => Value::F64(
+            (100.0 / window as f64)
+                * (offsets.lowest_offset as f64 - offsets.highest_offset as f64),
+        ),
+        None => Value::NA,
+    })
+}
+
 pub(crate) fn calculate_willr(
     high: &SeriesBuffer,
     low: &SeriesBuffer,
@@ -360,6 +395,12 @@ struct ExtremaWindow {
     max_index: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AroonOffsets {
+    highest_offset: usize,
+    lowest_offset: usize,
+}
+
 fn extrema_window(
     buffer: &SeriesBuffer,
     window: usize,
@@ -410,6 +451,67 @@ fn extrema_window(
     Ok(extrema)
 }
 
+fn aroon_offsets(
+    high: &SeriesBuffer,
+    low: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Option<AroonOffsets>, RuntimeError> {
+    let sample_count = window + 1;
+    if high.len() < sample_count || low.len() < sample_count {
+        return Ok(None);
+    }
+
+    let mut highest: Option<(f64, usize)> = None;
+    let mut lowest: Option<(f64, usize)> = None;
+
+    for (offset, (high_value, low_value)) in high
+        .iter_recent(sample_count)
+        .zip(low.iter_recent(sample_count))
+        .enumerate()
+    {
+        let high_value = match high_value {
+            Value::F64(value) => *value,
+            Value::NA => return Ok(None),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        };
+        let low_value = match low_value {
+            Value::F64(value) => *value,
+            Value::NA => return Ok(None),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        };
+
+        match highest {
+            Some((current, _)) if current >= high_value => {}
+            _ => highest = Some((high_value, offset)),
+        }
+        match lowest {
+            Some((current, _)) if current <= low_value => {}
+            _ => lowest = Some((low_value, offset)),
+        }
+    }
+
+    Ok(match (highest, lowest) {
+        (Some((_, highest_offset)), Some((_, lowest_offset))) => Some(AroonOffsets {
+            highest_offset,
+            lowest_offset,
+        }),
+        _ => None,
+    })
+}
+
 fn na_tuple2() -> Value {
     Value::Tuple2([Box::new(Value::NA), Box::new(Value::NA)])
 }
@@ -417,9 +519,9 @@ fn na_tuple2() -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        calculate_falling, calculate_highest, calculate_lowest, calculate_max_index,
-        calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_rising,
-        calculate_willr,
+        calculate_aroon, calculate_aroonosc, calculate_falling, calculate_highest,
+        calculate_lowest, calculate_max_index, calculate_min_index, calculate_min_max,
+        calculate_min_max_index, calculate_rising, calculate_willr,
     };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
@@ -518,6 +620,40 @@ mod tests {
         assert_eq!(
             calculate_willr(&high, &low, &close, 3, 0).unwrap(),
             Value::F64(-25.0)
+        );
+    }
+
+    #[test]
+    fn aroon_returns_talib_down_up_order() {
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        for (high_value, low_value) in [(1.0, -1.0), (2.0, 0.0), (3.0, 1.0), (4.0, 2.0)] {
+            high.push(Value::F64(high_value));
+            low.push(Value::F64(low_value));
+        }
+
+        assert_eq!(
+            calculate_aroon(&high, &low, 3, 0).unwrap(),
+            Value::Tuple2([Box::new(Value::F64(0.0)), Box::new(Value::F64(100.0))])
+        );
+        assert_eq!(
+            calculate_aroonosc(&high, &low, 3, 0).unwrap(),
+            Value::F64(100.0)
+        );
+    }
+
+    #[test]
+    fn aroon_prefers_newest_equal_extrema_like_talib() {
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        for (high_value, low_value) in [(1.0, 0.0), (3.0, 1.0), (3.0, 2.0)] {
+            high.push(Value::F64(high_value));
+            low.push(Value::F64(low_value));
+        }
+
+        assert_eq!(
+            calculate_aroon(&high, &low, 2, 0).unwrap(),
+            Value::Tuple2([Box::new(Value::F64(0.0)), Box::new(Value::F64(100.0))])
         );
     }
 }

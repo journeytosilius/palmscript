@@ -335,6 +335,51 @@ fn golden_cmo_uses_talib_default_window() {
 }
 
 #[test]
+fn golden_aroon_tuple_destructuring_matches_talib_order() {
+    let compiled = compile(&with_interval(
+        "let (down, up) = aroon(high, low, 3)\nexport aroon_down = down\nexport aroon_up = up\nplot(0)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["exports"][0]["points"][2]["value"],
+        serde_json::json!("NA")
+    );
+    assert_eq!(
+        json["exports"][1]["points"][2]["value"],
+        serde_json::json!("NA")
+    );
+    assert_eq!(
+        json["exports"][0]["points"][3]["value"],
+        serde_json::json!({ "F64": 0.0 })
+    );
+    assert_eq!(
+        json["exports"][1]["points"][3]["value"],
+        serde_json::json!({ "F64": 100.0 })
+    );
+}
+
+#[test]
+fn golden_aroonosc_matches_up_minus_down() {
+    let compiled = compile(&with_interval("plot(aroonosc(high, low, 3))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][2]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][3]["value"],
+        serde_json::json!(100.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(100.0)
+    );
+}
+
+#[test]
 fn golden_willr_matches_trailing_high_low_close_window() {
     let compiled = compile(&with_interval("plot(willr(high, low, close, 3))")).expect("compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");

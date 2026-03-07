@@ -192,6 +192,8 @@ class TalibOracle:
             return [self.call_window_factor(function, inputs[0], int_options[0], float_options[0])]
         if family == "window_high_low":
             return [self.call_window_high_low(function, inputs[0], inputs[1], int_options[0])]
+        if family == "window_high_low_tuple":
+            return self.call_window_high_low_tuple(function, inputs[0], inputs[1], int_options[0])
         if family == "window_high_low_close":
             return [self.call_window_high_low_close(function, inputs[0], inputs[1], inputs[2], int_options[0])]
         if family == "window_double":
@@ -270,6 +272,12 @@ class TalibOracle:
     ) -> list[float | None]:
         c_name = function.upper()
         return self._call_2in_1out_1int(c_name, high, low, time_period)
+
+    def call_window_high_low_tuple(
+        self, function: str, high: list[float], low: list[float], time_period: int
+    ) -> list[list[float | None]]:
+        c_name = function.upper()
+        return self._call_2in_2out_1int(c_name, high, low, time_period)
 
     def call_window_high_low_close(
         self, function: str, high: list[float], low: list[float], close: list[float], time_period: int
@@ -479,6 +487,24 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_1out(func, lookback, [input0, input1], [opt0])
+
+    def _call_2in_2out_1int(
+        self, c_name: str, input0: list[float], input1: list[float], opt0: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0, input1], [opt0])
 
     def _call_3in_1out_0opt(
         self, c_name: str, input0: list[float], input1: list[float], input2: list[float]
@@ -818,6 +844,16 @@ def fixture_cases() -> list[Case]:
             Case("ppo_default", script_for_single_export("value", "ppo(close)"), ("value",), "ma_oscillator", "ppo", input_fields=("close",), int_options=(12, 26)),
             Case("apo_ema_3_5", script_for_single_export("value", "apo(close, 3, 5, ma_type.ema)"), ("value",), "ma_oscillator", "apo", input_fields=("close",), int_options=(3, 5), ma_type="ema"),
             Case("ppo_ema_3_5", script_for_single_export("value", "ppo(close, 3, 5, ma_type.ema)"), ("value",), "ma_oscillator", "ppo", input_fields=("close",), int_options=(3, 5), ma_type="ema"),
+            Case(
+                "aroon_default",
+                "interval 1m\nlet (down, up) = aroon(high, low)\nexport aroon_down = down\nexport aroon_up = up\nplot(0)",
+                ("aroon_down", "aroon_up"),
+                "window_high_low_tuple",
+                "aroon",
+                input_fields=("high", "low"),
+                int_options=(14,),
+            ),
+            Case("aroonosc_default", script_for_single_export("value", "aroonosc(high, low)"), ("value",), "window_high_low", "aroonosc", input_fields=("high", "low"), int_options=(14,)),
             Case("cmo_default", script_for_single_export("value", "cmo(close)"), ("value",), "window", "cmo", input_fields=("close",), int_options=(14,)),
             Case("mom_default", script_for_single_export("value", "mom(close)"), ("value",), "window", "mom", input_fields=("close",), int_options=(10,)),
             Case("roc_default", script_for_single_export("value", "roc(close)"), ("value",), "window", "roc", input_fields=("close",), int_options=(10,)),

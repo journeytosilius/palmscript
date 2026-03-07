@@ -56,6 +56,8 @@ PalmScript currently provides these callable builtins:
 - `tsf(series[, length=14])`
 - `beta(series0, series1[, length=5])`
 - `correl(series0, series1[, length=30])`
+- `aroon(high, low[, length=14])`
+- `aroonosc(high, low[, length=14])`
 - `cmo(series[, length=14])`
 - `willr(high, low, close[, length=14])`
 - `obv(series, volume)`
@@ -360,6 +362,18 @@ Rules:
 - the result type is `series<float>`
 - if the smoothed gain and loss sum to `0`, `cmo` returns `0`
 
+### `aroon(high, low[, length=14])` and `aroonosc(high, low[, length=14])`
+
+Rules:
+
+- the first two arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be an integer literal greater than or equal to `2`
+- `aroon` uses a trailing `length + 1` high/low window to match TA-Lib lookback
+- `aroon` returns a 2-tuple `(aroon_down, aroon_up)` in TA-Lib output order
+- `aroonosc` returns `aroon_up - aroon_down`
+- tuple-valued outputs must be destructured before further use
+
 ### `willr(high, low, close[, length=14])`
 
 Rules:
@@ -370,7 +384,6 @@ Rules:
 - `willr` uses the trailing highest high and lowest low over the requested window
 - the result type is `series<float>`
 - if the trailing high-low range is `0`, `willr` returns `0`
-- the result type is `series<float>`
 
 ### `highest(series, length)` and `lowest(series, length)`
 
