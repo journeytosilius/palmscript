@@ -16,6 +16,8 @@ The following forms must appear only at the top level of a script:
 - `trigger`
 - `entry`
 - `exit`
+- `protect`
+- `target`
 
 Top-level `let`, `if`, and expression statements are allowed.
 
@@ -128,13 +130,14 @@ Rules:
 
 ## Outputs
 
-`export`, `trigger`, first-class strategy signals, and `order` declarations are top-level backtest-facing declarations:
+`export`, `trigger`, first-class strategy signals, and order-facing backtest declarations are top-level only:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 trigger long_entry = spot.close > spot.high[1]
 entry long = spot.close > spot.high[1]
 order entry long = limit(spot.close[1], tif.gtc, false)
+protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
 ```
 
 Rules:
@@ -144,8 +147,11 @@ Rules:
 - `trigger` names become bindings after the declaration point
 - `entry long`, `exit long`, `entry short`, and `exit short` are first-class backtest signal declarations
 - `order entry long`, `order exit long`, `order entry short`, and `order exit short` attach an execution template to an existing backtest signal role
+- `protect long`, `protect short`, `target long`, and `target short` declare attached exits that arm only while the matching position is open
 - at most one `order` declaration is allowed per signal role
+- at most one `protect` and one `target` declaration are allowed per side
 - if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
+- `position.*` is only available inside `protect` and `target` declarations
 - legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 
 ## Conditional Scope

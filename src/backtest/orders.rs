@@ -5,7 +5,12 @@ use crate::backtest::{
 use crate::bytecode::SignalRole;
 use crate::order::{OrderKind, TimeInForce, TriggerReference};
 
-pub(crate) const ROLE_PRIORITY: [SignalRole; 4] = [
+pub(crate) const ROLE_COUNT: usize = 8;
+pub(crate) const ROLE_PRIORITY: [SignalRole; ROLE_COUNT] = [
+    SignalRole::ProtectLong,
+    SignalRole::ProtectShort,
+    SignalRole::TargetLong,
+    SignalRole::TargetShort,
     SignalRole::LongExit,
     SignalRole::ShortExit,
     SignalRole::LongEntry,
@@ -23,12 +28,6 @@ pub(crate) struct CapturedOrderRequest {
     pub trigger_price: Option<f64>,
     pub expire_time: Option<f64>,
     pub signal_time: f64,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct SignalBatch {
-    pub time: f64,
-    pub requests: [Option<CapturedOrderRequest>; 4],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -102,8 +101,8 @@ pub(crate) struct FillExecutionContext {
     pub execution_price: f64,
 }
 
-pub(crate) fn empty_request_slots() -> [Option<CapturedOrderRequest>; 4] {
-    [None, None, None, None]
+pub(crate) fn empty_request_slots() -> [Option<CapturedOrderRequest>; ROLE_COUNT] {
+    [None, None, None, None, None, None, None, None]
 }
 
 pub(crate) fn role_index(role: SignalRole) -> usize {
@@ -112,13 +111,23 @@ pub(crate) fn role_index(role: SignalRole) -> usize {
         SignalRole::LongExit => 1,
         SignalRole::ShortEntry => 2,
         SignalRole::ShortExit => 3,
+        SignalRole::ProtectLong => 4,
+        SignalRole::ProtectShort => 5,
+        SignalRole::TargetLong => 6,
+        SignalRole::TargetShort => 7,
     }
 }
 
 pub(crate) fn fill_action_for_role(role: SignalRole) -> FillAction {
     match role {
-        SignalRole::LongEntry | SignalRole::ShortExit => FillAction::Buy,
-        SignalRole::ShortEntry | SignalRole::LongExit => FillAction::Sell,
+        SignalRole::LongEntry
+        | SignalRole::ShortExit
+        | SignalRole::ProtectShort
+        | SignalRole::TargetShort => FillAction::Buy,
+        SignalRole::ShortEntry
+        | SignalRole::LongExit
+        | SignalRole::ProtectLong
+        | SignalRole::TargetLong => FillAction::Sell,
     }
 }
 
@@ -126,18 +135,45 @@ pub(crate) fn position_side_for_entry(role: SignalRole) -> Option<PositionSide> 
     match role {
         SignalRole::LongEntry => Some(PositionSide::Long),
         SignalRole::ShortEntry => Some(PositionSide::Short),
-        SignalRole::LongExit | SignalRole::ShortExit => None,
+        SignalRole::LongExit
+        | SignalRole::ShortExit
+        | SignalRole::ProtectLong
+        | SignalRole::ProtectShort
+        | SignalRole::TargetLong
+        | SignalRole::TargetShort => None,
     }
 }
 
 pub(crate) fn role_applicable(role: SignalRole, position: Option<&PositionState>) -> bool {
     match position.map(|state| state.side) {
         None => matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry),
-        Some(PositionSide::Long) => matches!(role, SignalRole::LongExit | SignalRole::ShortEntry),
+        Some(PositionSide::Long) => matches!(
+            role,
+            SignalRole::LongExit
+                | SignalRole::ProtectLong
+                | SignalRole::TargetLong
+                | SignalRole::ShortEntry
+        ),
         Some(PositionSide::Short) => {
-            matches!(role, SignalRole::ShortExit | SignalRole::LongEntry)
+            matches!(
+                role,
+                SignalRole::ShortExit
+                    | SignalRole::ProtectShort
+                    | SignalRole::TargetShort
+                    | SignalRole::LongEntry
+            )
         }
     }
+}
+
+pub(crate) const fn is_attached_exit_role(role: SignalRole) -> bool {
+    matches!(
+        role,
+        SignalRole::ProtectLong
+            | SignalRole::ProtectShort
+            | SignalRole::TargetLong
+            | SignalRole::TargetShort
+    )
 }
 
 pub(crate) fn order_record(

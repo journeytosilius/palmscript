@@ -1,21 +1,23 @@
-use crate::backtest::bridge::PreparedBacktest;
+use crate::backtest::bridge::{capture_request, PreparedBacktest};
 use crate::backtest::orders::{
     adjusted_price, close_position, close_trade, empty_request_slots, evaluate_active_order,
-    fill_action_for_role, missing_field_reason, open_position, position_side_for_entry,
-    role_applicable, role_index, unrealized_pnl_for_position, update_open_trade_excursions,
-    ActiveOrder, CapturedOrderRequest, FillExecutionContext, OpenTrade, PositionState,
-    TradeEntryContext, WorkingState, ROLE_PRIORITY,
+    fill_action_for_role, is_attached_exit_role, missing_field_reason, open_position,
+    position_side_for_entry, role_applicable, role_index, unrealized_pnl_for_position,
+    update_open_trade_excursions, ActiveOrder, CapturedOrderRequest, FillExecutionContext,
+    OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
-    BacktestSummary, EquityPoint, FeatureSnapshot, OrderDiagnostic, OrderEndReason,
-    OrderKindDiagnosticSummary, OrderRecord, OrderStatus, PositionSide, SideDiagnosticSummary,
-    TradeDiagnostic, TradeExitClassification,
+    BacktestSummary, EquityPoint, FeatureSnapshot, FeatureValue, Fill, OrderDiagnostic,
+    OrderEndReason, OrderKindDiagnosticSummary, OrderRecord, OrderStatus, PositionSnapshot,
+    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
 };
-use crate::bytecode::SignalRole;
+use crate::bytecode::{PositionFieldDecl, SignalRole};
 use crate::order::OrderKind;
-use crate::output::Outputs;
-use crate::runtime::Bar;
+use crate::output::StepOutput;
+use crate::position::{PositionField, PositionSide};
+use crate::runtime::{Bar, RuntimeStep, RuntimeStepper};
+use crate::types::Value;
 
 pub(crate) struct OrderRecordUpdate {
     pub trigger_time: Option<f64>,
@@ -32,10 +34,12 @@ struct OrderDiagnosticContext {
     signal_snapshot: Option<FeatureSnapshot>,
     placed_snapshot: Option<FeatureSnapshot>,
     fill_snapshot: Option<FeatureSnapshot>,
+    placed_position: Option<PositionSnapshot>,
+    fill_position: Option<PositionSnapshot>,
 }
 
 pub(crate) fn simulate_backtest(
-    outputs: Outputs,
+    mut stepper: RuntimeStepper,
     execution_bars: Vec<Bar>,
     config: &BacktestConfig,
     prepared: PreparedBacktest,
@@ -45,250 +49,266 @@ pub(crate) fn simulate_backtest(
     let mut cash = config.initial_capital;
     let mut position = None::<PositionState>;
     let mut open_trade = None::<OpenTrade>;
-    let mut fills = Vec::new();
-    let mut trades = Vec::new();
+    let mut fills = Vec::<Fill>::new();
+    let mut trades = Vec::<Trade>::new();
     let mut trade_diagnostics = Vec::<TradeDiagnostic>::new();
     let mut orders = Vec::<OrderRecord>::new();
     let mut order_contexts = Vec::<OrderDiagnosticContext>::new();
     let mut equity_curve = Vec::with_capacity(execution_bars.len());
-    let mut active_orders: [Option<ActiveOrder>; 4] = [None, None, None, None];
+    let mut active_orders: [Option<ActiveOrder>; ROLE_COUNT] =
+        [None, None, None, None, None, None, None, None];
     let mut pending_requests = empty_request_slots();
+    let mut pending_snapshots: [Option<FeatureSnapshot>; ROLE_COUNT] =
+        [None, None, None, None, None, None, None, None];
     let mut pending_conflict_time = None::<f64>;
-    let mut batch_cursor = 0usize;
     let mut total_realized_pnl = 0.0;
     let mut max_gross_exposure = 0.0_f64;
     let mut peak_equity = config.initial_capital;
     let mut max_drawdown = 0.0_f64;
+    let mut execution_cursor = 0usize;
+    let mut last_mark_price = None::<f64>;
 
-    for (bar_index, bar) in execution_bars.iter().copied().enumerate() {
-        while batch_cursor < prepared.signal_batches.len()
-            && prepared.signal_batches[batch_cursor].time < bar.time
-        {
-            let batch = &prepared.signal_batches[batch_cursor];
-            accumulate_pending_requests(
+    while let Some(open_time) = stepper.peek_open_time() {
+        let next_execution = execution_bars.get(execution_cursor).copied();
+        let current_execution =
+            next_execution.filter(|bar| bar.time.is_finite() && bar.time == open_time as f64);
+        let overrides = build_position_overrides(
+            &prepared.position_fields,
+            position.as_ref(),
+            open_trade.as_ref(),
+            current_execution.map(|bar| bar.close).or(last_mark_price),
+            open_time as f64,
+            current_execution.map(|_| execution_cursor),
+        );
+        let RuntimeStep { output, .. } = stepper
+            .step_with_overrides(&overrides)
+            .map_err(BacktestError::Runtime)?
+            .expect("peeked runtime step should exist");
+        let step_time = open_time as f64;
+        let snapshot = snapshot_from_step(&output, step_time);
+
+        let position_before_step = position.clone();
+        if let Some(bar) = current_execution {
+            if let Some(open_trade) = open_trade.as_mut() {
+                update_open_trade_excursions(open_trade, bar.high, bar.low);
+            }
+
+            if position.is_none()
+                && pending_requests[role_index(SignalRole::LongEntry)].is_some()
+                && pending_requests[role_index(SignalRole::ShortEntry)].is_some()
+            {
+                return Err(BacktestError::ConflictingSignals {
+                    time: pending_conflict_time.unwrap_or(bar.time),
+                });
+            }
+
+            place_pending_requests(
                 &mut pending_requests,
-                batch.requests,
-                &mut pending_conflict_time,
+                &mut pending_snapshots,
+                &mut active_orders,
+                &mut orders,
+                &mut order_contexts,
+                position.as_ref(),
+                snapshot.clone(),
+                current_position_snapshot(position.as_ref(), bar.close, bar.time),
+                execution_cursor,
+                bar.time,
             );
-            batch_cursor += 1;
-        }
+            pending_conflict_time = None;
 
-        if let Some(open_trade) = open_trade.as_mut() {
-            update_open_trade_excursions(open_trade, bar.high, bar.low);
-        }
-
-        if position.is_none()
-            && pending_requests[role_index(SignalRole::LongEntry)].is_some()
-            && pending_requests[role_index(SignalRole::ShortEntry)].is_some()
-        {
-            return Err(BacktestError::ConflictingSignals {
-                time: pending_conflict_time.unwrap_or(bar.time),
-            });
-        }
-
-        for role in ROLE_PRIORITY {
-            let slot = role_index(role);
-            let Some(request) = pending_requests[slot].take() else {
-                continue;
-            };
-            if !role_applicable(role, position.as_ref()) {
-                continue;
-            }
-
-            if let Some(existing) = active_orders[slot].take() {
-                update_order_record(
-                    &mut orders[existing.record_index],
-                    OrderRecordUpdate {
-                        trigger_time: None,
-                        fill_bar_index: None,
-                        fill_time: None,
-                        raw_price: None,
-                        fill_price: None,
-                        status: OrderStatus::Cancelled,
-                        end_reason: Some(OrderEndReason::Replaced),
-                    },
-                );
-            }
-
-            let context = OrderDiagnosticContext {
-                signal_snapshot: prepared
-                    .export_lookup
-                    .snapshot_at(&outputs, request.signal_time),
-                placed_snapshot: prepared.export_lookup.snapshot_at(&outputs, bar.time),
-                fill_snapshot: None,
-            };
-            let mut record =
-                crate::backtest::orders::order_record(request, bar_index, bar.time, orders.len());
-            let record_index = orders.len();
-            order_contexts.push(context);
-
-            if let Some(reason) = missing_field_reason(request) {
-                record.status = OrderStatus::Rejected;
-                record.end_reason = Some(reason);
-                orders.push(record);
-                continue;
-            }
-
-            orders.push(record);
-            active_orders[slot] = Some(ActiveOrder {
-                request,
-                record_index,
-                first_eval_done: false,
-                state: WorkingState::Ready,
-            });
-        }
-        pending_conflict_time = None;
-
-        let mut filled_this_bar = false;
-        for role in ROLE_PRIORITY {
-            if filled_this_bar {
-                break;
-            }
-            let slot = role_index(role);
-            let Some(mut active) = active_orders[slot].take() else {
-                continue;
-            };
-
-            let evaluation = evaluate_active_order(&active, bar.time, bar.open, bar.high, bar.low);
-            active.first_eval_done = true;
-
-            match evaluation {
-                crate::backtest::orders::Evaluation::None => {
-                    active_orders[slot] = Some(active);
+            let fill_snapshot = snapshot.clone();
+            let fill_position = current_position_snapshot(position.as_ref(), bar.close, bar.time);
+            let mut filled_this_bar = false;
+            for role in ROLE_PRIORITY {
+                if filled_this_bar {
+                    break;
                 }
-                crate::backtest::orders::Evaluation::Expire => {
-                    update_order_record(
-                        &mut orders[active.record_index],
-                        OrderRecordUpdate {
-                            trigger_time: None,
-                            fill_bar_index: None,
-                            fill_time: None,
-                            raw_price: None,
-                            fill_price: None,
-                            status: OrderStatus::Expired,
-                            end_reason: None,
-                        },
-                    );
-                }
-                crate::backtest::orders::Evaluation::Cancel(reason) => {
-                    update_order_record(
-                        &mut orders[active.record_index],
-                        OrderRecordUpdate {
-                            trigger_time: None,
-                            fill_bar_index: None,
-                            fill_time: None,
-                            raw_price: None,
-                            fill_price: None,
-                            status: OrderStatus::Cancelled,
-                            end_reason: Some(reason),
-                        },
-                    );
-                }
-                crate::backtest::orders::Evaluation::MoveToRestingLimit {
-                    active_after_time,
-                    trigger_time,
-                } => {
-                    orders[active.record_index].trigger_time = Some(trigger_time);
-                    active.state = WorkingState::RestingLimit { active_after_time };
-                    active_orders[slot] = Some(active);
-                }
-                crate::backtest::orders::Evaluation::Fill(execution) => {
-                    let action = fill_action_for_role(role);
-                    let execution_price = if matches!(active.request.kind, OrderKind::Market) {
-                        adjusted_price(execution.raw_price, action, slippage_rate)
-                    } else {
-                        execution.price
-                    };
-                    let fill_snapshot = prepared.export_lookup.snapshot_at(&outputs, bar.time);
-                    order_contexts[active.record_index].fill_snapshot = fill_snapshot.clone();
+                let slot = role_index(role);
+                let Some(mut active) = active_orders[slot].take() else {
+                    continue;
+                };
 
-                    maybe_close_position_for_role(
-                        role,
-                        active.record_index,
-                        active.request.kind,
-                        fill_snapshot.clone(),
-                        bar_index,
-                        bar.time,
-                        execution.raw_price,
-                        execution_price,
-                        fee_rate,
-                        &mut cash,
-                        &mut position,
-                        &mut open_trade,
-                        &mut fills,
-                        &mut trades,
-                        &mut trade_diagnostics,
-                        &mut total_realized_pnl,
-                    );
+                let evaluation =
+                    evaluate_active_order(&active, bar.time, bar.open, bar.high, bar.low);
+                active.first_eval_done = true;
 
-                    if let Some(next_side) = position_side_for_entry(role) {
-                        let (next_position, mut next_trade, entry_fill) = open_position(
-                            FillExecutionContext {
-                                bar_index,
-                                time: bar.time,
-                                raw_price: execution.raw_price,
-                                execution_price,
+                match evaluation {
+                    crate::backtest::orders::Evaluation::None => {
+                        active_orders[slot] = Some(active);
+                    }
+                    crate::backtest::orders::Evaluation::Expire => {
+                        update_order_record(
+                            &mut orders[active.record_index],
+                            OrderRecordUpdate {
+                                trigger_time: None,
+                                fill_bar_index: None,
+                                fill_time: None,
+                                raw_price: None,
+                                fill_price: None,
+                                status: OrderStatus::Expired,
+                                end_reason: None,
                             },
-                            next_side,
-                            TradeEntryContext {
-                                order_id: active.record_index,
-                                role,
-                                kind: active.request.kind,
-                                snapshot: fill_snapshot,
+                        );
+                    }
+                    crate::backtest::orders::Evaluation::Cancel(reason) => {
+                        update_order_record(
+                            &mut orders[active.record_index],
+                            OrderRecordUpdate {
+                                trigger_time: None,
+                                fill_bar_index: None,
+                                fill_time: None,
+                                raw_price: None,
+                                fill_price: None,
+                                status: OrderStatus::Cancelled,
+                                end_reason: Some(reason),
                             },
+                        );
+                    }
+                    crate::backtest::orders::Evaluation::MoveToRestingLimit {
+                        active_after_time,
+                        trigger_time,
+                    } => {
+                        orders[active.record_index].trigger_time = Some(trigger_time);
+                        active.state = WorkingState::RestingLimit { active_after_time };
+                        active_orders[slot] = Some(active);
+                    }
+                    crate::backtest::orders::Evaluation::Fill(execution) => {
+                        let action = fill_action_for_role(role);
+                        let execution_price = if matches!(active.request.kind, OrderKind::Market) {
+                            adjusted_price(execution.raw_price, action, slippage_rate)
+                        } else {
+                            execution.price
+                        };
+                        order_contexts[active.record_index].fill_snapshot = fill_snapshot.clone();
+                        order_contexts[active.record_index].fill_position = fill_position.clone();
+
+                        let closed_side = position.as_ref().and_then(|state| {
+                            if closes_existing_position(role, state.side) {
+                                Some(state.side)
+                            } else {
+                                None
+                            }
+                        });
+
+                        maybe_close_position_for_role(
+                            role,
+                            active.record_index,
+                            active.request.kind,
+                            fill_snapshot.clone(),
+                            execution_cursor,
+                            bar.time,
+                            execution.raw_price,
+                            execution_price,
                             fee_rate,
                             &mut cash,
+                            &mut position,
+                            &mut open_trade,
+                            &mut fills,
+                            &mut trades,
+                            &mut trade_diagnostics,
+                            &mut total_realized_pnl,
                         );
-                        update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
-                        fills.push(entry_fill);
-                        position = Some(next_position);
-                        open_trade = Some(next_trade);
+
+                        if let Some(side) = closed_side {
+                            cancel_orders_for_closed_side(
+                                &mut active_orders,
+                                side,
+                                role,
+                                &mut orders,
+                            );
+                        }
+
+                        if let Some(next_side) = position_side_for_entry(role) {
+                            let (next_position, mut next_trade, entry_fill) = open_position(
+                                FillExecutionContext {
+                                    bar_index: execution_cursor,
+                                    time: bar.time,
+                                    raw_price: execution.raw_price,
+                                    execution_price,
+                                },
+                                next_side,
+                                TradeEntryContext {
+                                    order_id: active.record_index,
+                                    role,
+                                    kind: active.request.kind,
+                                    snapshot: fill_snapshot.clone(),
+                                },
+                                fee_rate,
+                                &mut cash,
+                            );
+                            update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
+                            fills.push(entry_fill);
+                            position = Some(next_position);
+                            open_trade = Some(next_trade);
+                        }
+
+                        update_order_record(
+                            &mut orders[active.record_index],
+                            OrderRecordUpdate {
+                                trigger_time: execution.trigger_time,
+                                fill_bar_index: Some(execution_cursor),
+                                fill_time: Some(bar.time),
+                                raw_price: Some(execution.raw_price),
+                                fill_price: Some(execution_price),
+                                status: OrderStatus::Filled,
+                                end_reason: None,
+                            },
+                        );
+
+                        invalidate_inapplicable_orders(
+                            &mut active_orders,
+                            position.as_ref(),
+                            &mut orders,
+                        );
+                        filled_this_bar = true;
                     }
-
-                    update_order_record(
-                        &mut orders[active.record_index],
-                        OrderRecordUpdate {
-                            trigger_time: execution.trigger_time,
-                            fill_bar_index: Some(bar_index),
-                            fill_time: Some(bar.time),
-                            raw_price: Some(execution.raw_price),
-                            fill_price: Some(execution_price),
-                            status: OrderStatus::Filled,
-                            end_reason: None,
-                        },
-                    );
-
-                    invalidate_inapplicable_orders(
-                        &mut active_orders,
-                        position.as_ref(),
-                        &mut orders,
-                    );
-                    filled_this_bar = true;
                 }
             }
+
+            let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
+            let gross_exposure = quantity.abs() * bar.close;
+            max_gross_exposure = max_gross_exposure.max(gross_exposure);
+            let equity = cash + quantity * bar.close;
+            peak_equity = peak_equity.max(equity);
+            max_drawdown = max_drawdown.max(peak_equity - equity);
+            equity_curve.push(EquityPoint {
+                bar_index: execution_cursor,
+                time: bar.time,
+                cash,
+                equity,
+                position_side: position.as_ref().map(|state| state.side),
+                quantity,
+                mark_price: bar.close,
+                gross_exposure,
+            });
+            last_mark_price = Some(bar.close);
+            execution_cursor += 1;
         }
 
-        let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
-        let gross_exposure = quantity.abs() * bar.close;
-        max_gross_exposure = max_gross_exposure.max(gross_exposure);
-        let equity = cash + quantity * bar.close;
-        peak_equity = peak_equity.max(equity);
-        max_drawdown = max_drawdown.max(peak_equity - equity);
-        equity_curve.push(EquityPoint {
-            bar_index,
-            time: bar.time,
-            cash,
-            equity,
-            position_side: position.as_ref().map(|state| state.side),
-            quantity,
-            mark_price: bar.close,
-            gross_exposure,
-        });
+        enqueue_signal_requests(
+            &output,
+            step_time,
+            &prepared,
+            &mut pending_requests,
+            &mut pending_snapshots,
+            &mut pending_conflict_time,
+            snapshot.clone(),
+        );
+        enqueue_attached_requests(
+            step_time,
+            &output,
+            &prepared,
+            position_before_step.as_ref(),
+            position.as_ref(),
+            &mut pending_requests,
+            &mut pending_snapshots,
+            snapshot,
+        );
     }
 
+    let outputs = stepper.finish();
     let order_diagnostics = build_order_diagnostics(&orders, &order_contexts);
     let diagnostics_summary = build_diagnostics_summary(&order_diagnostics, &trade_diagnostics);
-
     let ending_equity = equity_curve
         .last()
         .map_or(config.initial_capital, |point| point.equity);
@@ -309,7 +329,7 @@ pub(crate) fn simulate_backtest(
     };
 
     let open_position = match (position, equity_curve.last()) {
-        (Some(position), Some(last_point)) => Some(crate::backtest::PositionSnapshot {
+        (Some(position), Some(last_point)) => Some(PositionSnapshot {
             side: position.side,
             quantity: position.quantity.abs(),
             entry_bar_index: position.entry_bar_index,
@@ -350,18 +370,291 @@ pub(crate) fn simulate_backtest(
     })
 }
 
-fn accumulate_pending_requests(
-    pending_requests: &mut [Option<CapturedOrderRequest>; 4],
-    requests: [Option<CapturedOrderRequest>; 4],
+fn build_position_overrides(
+    fields: &[PositionFieldDecl],
+    position: Option<&PositionState>,
+    open_trade: Option<&OpenTrade>,
+    market_price: Option<f64>,
+    _market_time: f64,
+    current_bar_index: Option<usize>,
+) -> Vec<(u16, Value)> {
+    fields
+        .iter()
+        .map(|decl| {
+            let value = match (decl.field, position, open_trade) {
+                (PositionField::IsLong, Some(state), _) => {
+                    Value::Bool(state.side == PositionSide::Long)
+                }
+                (PositionField::IsLong, None, _) => Value::Bool(false),
+                (PositionField::IsShort, Some(state), _) => {
+                    Value::Bool(state.side == PositionSide::Short)
+                }
+                (PositionField::IsShort, None, _) => Value::Bool(false),
+                (PositionField::Side, Some(state), _) => Value::PositionSide(state.side),
+                (PositionField::Side, None, _) => Value::NA,
+                (PositionField::EntryPrice, Some(state), _) => Value::F64(state.entry_price),
+                (PositionField::EntryTime, Some(state), _) => Value::F64(state.entry_time),
+                (PositionField::EntryBarIndex, Some(state), _) => {
+                    Value::F64(state.entry_bar_index as f64)
+                }
+                (PositionField::BarsHeld, Some(state), _) => Value::F64(
+                    current_bar_index
+                        .map(|index| index.saturating_sub(state.entry_bar_index) as f64)
+                        .unwrap_or(0.0),
+                ),
+                (PositionField::MarketPrice, Some(_), _) => {
+                    market_price.map(Value::F64).unwrap_or(Value::NA)
+                }
+                (PositionField::UnrealizedPnl, Some(state), _) => market_price
+                    .map(|price| Value::F64(unrealized_pnl_for_position(state, price)))
+                    .unwrap_or(Value::NA),
+                (PositionField::UnrealizedReturn, Some(state), _) => market_price
+                    .map(|price| {
+                        let pnl = unrealized_pnl_for_position(state, price);
+                        let notional = state.entry_price * state.quantity.abs();
+                        if notional.abs() < crate::backtest::EPSILON {
+                            Value::F64(0.0)
+                        } else {
+                            Value::F64(pnl / notional)
+                        }
+                    })
+                    .unwrap_or(Value::NA),
+                (PositionField::Mae, Some(_), Some(trade)) => Value::F64(trade.mae_price_delta),
+                (PositionField::Mfe, Some(_), Some(trade)) => Value::F64(trade.mfe_price_delta),
+                _ => Value::NA,
+            };
+            (decl.slot, value)
+        })
+        .collect()
+}
+
+fn enqueue_signal_requests(
+    output: &StepOutput,
+    signal_time: f64,
+    prepared: &PreparedBacktest,
+    pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
+    pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
     pending_conflict_time: &mut Option<f64>,
+    snapshot: Option<FeatureSnapshot>,
 ) {
-    for request in requests.into_iter().flatten() {
-        let slot = role_index(request.role);
-        pending_requests[slot] = Some(request);
-        if matches!(request.role, SignalRole::LongEntry | SignalRole::ShortEntry) {
-            *pending_conflict_time = Some(request.signal_time);
+    for event in &output.trigger_events {
+        let Some(role) = prepared.signal_roles.get(&event.output_id).copied() else {
+            continue;
+        };
+        let Some(template) = prepared.order_templates.get(&role).copied() else {
+            continue;
+        };
+        let slot = role_index(role);
+        pending_requests[slot] = Some(capture_request(template, signal_time, output));
+        pending_snapshots[slot] = snapshot.clone();
+        if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry) {
+            *pending_conflict_time = Some(signal_time);
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enqueue_attached_requests(
+    signal_time: f64,
+    output: &StepOutput,
+    prepared: &PreparedBacktest,
+    position_before_step: Option<&PositionState>,
+    position_after_step: Option<&PositionState>,
+    pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
+    pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
+    snapshot: Option<FeatureSnapshot>,
+) {
+    let (Some(before), Some(after)) = (position_before_step, position_after_step) else {
+        return;
+    };
+    if before.side != after.side {
+        return;
+    }
+
+    let roles = match before.side {
+        PositionSide::Long => [SignalRole::ProtectLong, SignalRole::TargetLong],
+        PositionSide::Short => [SignalRole::ProtectShort, SignalRole::TargetShort],
+    };
+    for role in roles {
+        let Some(template) = prepared.order_templates.get(&role).copied() else {
+            continue;
+        };
+        let slot = role_index(role);
+        pending_requests[slot] = Some(capture_request(template, signal_time, output));
+        pending_snapshots[slot] = snapshot.clone();
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_pending_requests(
+    pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
+    pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
+    active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
+    orders: &mut Vec<OrderRecord>,
+    order_contexts: &mut Vec<OrderDiagnosticContext>,
+    position: Option<&PositionState>,
+    placed_snapshot: Option<FeatureSnapshot>,
+    placed_position: Option<PositionSnapshot>,
+    bar_index: usize,
+    time: f64,
+) {
+    for role in ROLE_PRIORITY {
+        let slot = role_index(role);
+        let Some(request) = pending_requests[slot].take() else {
+            continue;
+        };
+        let signal_snapshot = pending_snapshots[slot].take();
+        if !role_applicable(role, position) {
+            continue;
+        }
+
+        if let Some(existing) = active_orders[slot].take() {
+            update_order_record(
+                &mut orders[existing.record_index],
+                OrderRecordUpdate {
+                    trigger_time: None,
+                    fill_bar_index: None,
+                    fill_time: None,
+                    raw_price: None,
+                    fill_price: None,
+                    status: OrderStatus::Cancelled,
+                    end_reason: Some(if is_attached_exit_role(role) {
+                        OrderEndReason::Rearmed
+                    } else {
+                        OrderEndReason::Replaced
+                    }),
+                },
+            );
+        }
+
+        let mut record =
+            crate::backtest::orders::order_record(request, bar_index, time, orders.len());
+        let record_index = orders.len();
+        order_contexts.push(OrderDiagnosticContext {
+            signal_snapshot,
+            placed_snapshot: placed_snapshot.clone(),
+            fill_snapshot: None,
+            placed_position: placed_position.clone(),
+            fill_position: None,
+        });
+
+        if let Some(reason) = missing_field_reason(request) {
+            record.status = OrderStatus::Rejected;
+            record.end_reason = Some(reason);
+            orders.push(record);
+            continue;
+        }
+
+        orders.push(record);
+        active_orders[slot] = Some(ActiveOrder {
+            request,
+            record_index,
+            first_eval_done: false,
+            state: WorkingState::Ready,
+        });
+    }
+}
+
+fn closes_existing_position(role: SignalRole, side: PositionSide) -> bool {
+    matches!(
+        (side, role),
+        (
+            PositionSide::Long,
+            SignalRole::LongExit
+                | SignalRole::ProtectLong
+                | SignalRole::TargetLong
+                | SignalRole::ShortEntry
+        ) | (
+            PositionSide::Short,
+            SignalRole::ShortExit
+                | SignalRole::ProtectShort
+                | SignalRole::TargetShort
+                | SignalRole::LongEntry
+        )
+    )
+}
+
+fn cancel_orders_for_closed_side(
+    active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
+    side: PositionSide,
+    filled_role: SignalRole,
+    orders: &mut [OrderRecord],
+) {
+    let (signal_role, protect_role, target_role) = match side {
+        PositionSide::Long => (
+            SignalRole::LongExit,
+            SignalRole::ProtectLong,
+            SignalRole::TargetLong,
+        ),
+        PositionSide::Short => (
+            SignalRole::ShortExit,
+            SignalRole::ProtectShort,
+            SignalRole::TargetShort,
+        ),
+    };
+
+    cancel_active_role(
+        active_orders,
+        signal_role,
+        orders,
+        OrderEndReason::PositionClosed,
+    );
+    match filled_role {
+        role if role == protect_role => {
+            cancel_active_role(
+                active_orders,
+                target_role,
+                orders,
+                OrderEndReason::OcoCancelled,
+            );
+        }
+        role if role == target_role => {
+            cancel_active_role(
+                active_orders,
+                protect_role,
+                orders,
+                OrderEndReason::OcoCancelled,
+            );
+        }
+        _ => {
+            cancel_active_role(
+                active_orders,
+                protect_role,
+                orders,
+                OrderEndReason::PositionClosed,
+            );
+            cancel_active_role(
+                active_orders,
+                target_role,
+                orders,
+                OrderEndReason::PositionClosed,
+            );
+        }
+    }
+}
+
+fn cancel_active_role(
+    active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
+    role: SignalRole,
+    orders: &mut [OrderRecord],
+    reason: OrderEndReason,
+) {
+    let slot = role_index(role);
+    let Some(active) = active_orders[slot].take() else {
+        return;
+    };
+    update_order_record(
+        &mut orders[active.record_index],
+        OrderRecordUpdate {
+            trigger_time: None,
+            fill_bar_index: None,
+            fill_time: None,
+            raw_price: None,
+            fill_price: None,
+            status: OrderStatus::Cancelled,
+            end_reason: Some(reason),
+        },
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -378,8 +671,8 @@ fn maybe_close_position_for_role(
     cash: &mut f64,
     position: &mut Option<PositionState>,
     open_trade: &mut Option<OpenTrade>,
-    fills: &mut Vec<crate::backtest::Fill>,
-    trades: &mut Vec<crate::backtest::Trade>,
+    fills: &mut Vec<Fill>,
+    trades: &mut Vec<Trade>,
     trade_diagnostics: &mut Vec<TradeDiagnostic>,
     total_realized_pnl: &mut f64,
 ) {
@@ -387,10 +680,16 @@ fn maybe_close_position_for_role(
         (position.as_ref().map(|state| state.side), role),
         (
             Some(PositionSide::Long),
-            SignalRole::LongExit | SignalRole::ShortEntry
+            SignalRole::LongExit
+                | SignalRole::ProtectLong
+                | SignalRole::TargetLong
+                | SignalRole::ShortEntry
         ) | (
             Some(PositionSide::Short),
-            SignalRole::ShortExit | SignalRole::LongEntry
+            SignalRole::ShortExit
+                | SignalRole::ProtectShort
+                | SignalRole::TargetShort
+                | SignalRole::LongEntry
         )
     );
     if !should_close {
@@ -420,7 +719,7 @@ fn maybe_close_position_for_role(
         exit_role: role,
         entry_kind: open_trade.entry_kind,
         exit_kind: order_kind,
-        exit_classification: classify_exit(role, order_kind),
+        exit_classification: classify_exit(role),
         entry_snapshot: open_trade.entry_snapshot,
         exit_snapshot,
         bars_held: exit_fill
@@ -437,7 +736,7 @@ fn maybe_close_position_for_role(
 }
 
 fn invalidate_inapplicable_orders(
-    active_orders: &mut [Option<ActiveOrder>; 4],
+    active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
     position: Option<&PositionState>,
     orders: &mut [OrderRecord],
 ) {
@@ -449,6 +748,7 @@ fn invalidate_inapplicable_orders(
             continue;
         }
         let record_index = active.record_index;
+        let role = active.request.role;
         *slot = None;
         update_order_record(
             &mut orders[record_index],
@@ -459,7 +759,11 @@ fn invalidate_inapplicable_orders(
                 raw_price: None,
                 fill_price: None,
                 status: OrderStatus::Cancelled,
-                end_reason: Some(OrderEndReason::RoleInvalidated),
+                end_reason: Some(if is_attached_exit_role(role) {
+                    OrderEndReason::PositionClosed
+                } else {
+                    OrderEndReason::RoleInvalidated
+                }),
             },
         );
     }
@@ -493,6 +797,8 @@ fn build_order_diagnostics(
             signal_snapshot: context.signal_snapshot.clone(),
             placed_snapshot: context.placed_snapshot.clone(),
             fill_snapshot: context.fill_snapshot.clone(),
+            placed_position: context.placed_position.clone(),
+            fill_position: context.fill_position.clone(),
             bars_to_fill: order
                 .fill_bar_index
                 .map(|fill_bar_index| fill_bar_index.saturating_sub(order.placed_bar_index)),
@@ -631,21 +937,21 @@ fn build_diagnostics_summary(
                 )
             })
             .count(),
-        stop_loss_exit_count: trade_diagnostics
+        protect_exit_count: trade_diagnostics
             .iter()
             .filter(|diagnostic| {
                 matches!(
                     diagnostic.exit_classification,
-                    TradeExitClassification::StopLoss
+                    TradeExitClassification::Protect
                 )
             })
             .count(),
-        take_profit_exit_count: trade_diagnostics
+        target_exit_count: trade_diagnostics
             .iter()
             .filter(|diagnostic| {
                 matches!(
                     diagnostic.exit_classification,
-                    TradeExitClassification::TakeProfit
+                    TradeExitClassification::Target
                 )
             })
             .count(),
@@ -663,19 +969,55 @@ fn build_diagnostics_summary(
     }
 }
 
-fn classify_exit(role: SignalRole, order_kind: OrderKind) -> TradeExitClassification {
-    if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry) {
-        TradeExitClassification::Reversal
-    } else if matches!(order_kind, OrderKind::StopMarket | OrderKind::StopLimit) {
-        TradeExitClassification::StopLoss
-    } else if matches!(
-        order_kind,
-        OrderKind::TakeProfitMarket | OrderKind::TakeProfitLimit
-    ) {
-        TradeExitClassification::TakeProfit
-    } else {
-        TradeExitClassification::Signal
+fn classify_exit(role: SignalRole) -> TradeExitClassification {
+    match role {
+        SignalRole::LongEntry | SignalRole::ShortEntry => TradeExitClassification::Reversal,
+        SignalRole::ProtectLong | SignalRole::ProtectShort => TradeExitClassification::Protect,
+        SignalRole::TargetLong | SignalRole::TargetShort => TradeExitClassification::Target,
+        SignalRole::LongExit | SignalRole::ShortExit => TradeExitClassification::Signal,
     }
+}
+
+fn snapshot_from_step(step: &StepOutput, time: f64) -> Option<FeatureSnapshot> {
+    let bar_index = step
+        .exports
+        .first()
+        .map(|sample| sample.bar_index)
+        .unwrap_or_default();
+    let values = step
+        .exports
+        .iter()
+        .map(|sample| FeatureValue {
+            name: sample.name.clone(),
+            value: sample.value.clone(),
+        })
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        None
+    } else {
+        Some(FeatureSnapshot {
+            bar_index,
+            time,
+            values,
+        })
+    }
+}
+
+fn current_position_snapshot(
+    position: Option<&PositionState>,
+    mark_price: f64,
+    market_time: f64,
+) -> Option<PositionSnapshot> {
+    position.map(|state| PositionSnapshot {
+        side: state.side,
+        quantity: state.quantity.abs(),
+        entry_bar_index: state.entry_bar_index,
+        entry_time: state.entry_time,
+        entry_price: state.entry_price,
+        market_price: mark_price,
+        market_time,
+        unrealized_pnl: unrealized_pnl_for_position(state, mark_price),
+    })
 }
 
 fn pct_delta(delta: f64, price: f64) -> f64 {

@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::order::{TimeInForce, TriggerReference};
+use crate::position::PositionSide;
 use crate::talib::MaType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -15,6 +16,7 @@ pub enum Type {
     MaType,
     TimeInForce,
     TriggerReference,
+    PositionSide,
     SeriesF64,
     SeriesBool,
     Void,
@@ -34,6 +36,7 @@ impl Type {
             | Self::MaType
             | Self::TimeInForce
             | Self::TriggerReference
+            | Self::PositionSide
             | Self::Void => Some(self),
         }
     }
@@ -52,6 +55,7 @@ pub enum Value {
     MaType(MaType),
     TimeInForce(TimeInForce),
     TriggerReference(TriggerReference),
+    PositionSide(PositionSide),
     NA,
     Void,
     SeriesRef(usize),
@@ -67,6 +71,7 @@ impl Value {
             Self::MaType(_) => "ma-type",
             Self::TimeInForce(_) => "time-in-force",
             Self::TriggerReference(_) => "trigger-reference",
+            Self::PositionSide(_) => "position-side",
             Self::NA => "na",
             Self::Void => "void",
             Self::SeriesRef(_) => "series-ref",

@@ -163,11 +163,35 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_attached_exit_declarations_with_position_fields() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+entry long = src.close > src.close[1]
+protect long = stop_market(
+    position.side == position_side.long ? position.entry_price - 1 : position.entry_price - 2,
+    trigger_ref.last
+)
+target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+plot(src.close)",
+    )
+    .expect("attached exits should compile");
+}
+
+#[test]
 fn rejects_order_declarations_inside_blocks() {
     let message = compile_err(&with_interval(
         "if true { order entry long = market() } else { plot(0) }",
     ));
     assert!(message.contains("order declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_attached_exit_declarations_inside_blocks() {
+    let message = compile_err(&with_interval(
+        "if true { protect long = stop_market(1, trigger_ref.last) } else { plot(0) }",
+    ));
+    assert!(message.contains("attached exit declarations are only allowed at the top level"));
 }
 
 #[test]

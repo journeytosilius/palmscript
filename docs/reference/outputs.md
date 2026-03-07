@@ -10,6 +10,7 @@ PalmScript exposes three output-producing constructs:
 - `export name = expr`
 - `trigger name = expr`
 - `entry long = expr`, `exit long = expr`, `entry short = expr`, `exit short = expr`
+- `protect long = order_spec`, `protect short = order_spec`, `target long = order_spec`, `target short = order_spec`
 
 `plot` is a builtin call. `export` and `trigger` are declarations.
 
@@ -101,6 +102,27 @@ Rules:
 - numeric order fields such as `price`, `trigger_price`, and `expire_time_ms` are evaluated by the runtime as hidden internal series
 - `tif.<variant>` and `trigger_ref.<variant>` are typed enum literals checked at compile time
 - venue-specific compatibility checks run when the backtest starts, based on the execution `source`
+
+## Attached Exits
+
+PalmScript also exposes first-class attached exits that keep the discretionary `exit` signal free:
+
+```palmscript
+entry long = spot.close > spot.high[1]
+exit long = spot.close < ema(spot.close, 20)
+protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
+target long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+```
+
+Rules:
+
+- attached exits are top-level only
+- `protect` and `target` are optional per side
+- they arm only after a matching entry fill exists
+- they are reevaluated once per execution bar while that position remains open
+- `protect` and `target` for one side are OCO: if one fills, the other is cancelled
+- if both become fillable on the same execution bar, `protect` wins deterministically
+- `position.*` is available only inside `protect` and `target` declarations
 
 ## Legacy Trigger Compatibility
 

@@ -608,6 +608,16 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                 hover: format!("`{}.{}`\n\nTyped TA-Lib enum literal.", namespace, variant),
             });
         }
+        ExprKind::PositionField { field, .. } => {
+            context.references.push(Reference {
+                span: expr.span,
+                definition_index: None,
+                hover: format!(
+                    "`position.{}`\n\nAttached-exit position field.",
+                    field.as_str()
+                ),
+            });
+        }
         ExprKind::Unary { expr: inner, .. } => resolve_expr(context, inner, scope),
         ExprKind::Binary { left, right, .. } => {
             resolve_expr(context, left, scope);
@@ -874,6 +884,7 @@ fn render_type(ty: Type) -> &'static str {
         Type::MaType => "ma_type",
         Type::TimeInForce => "tif",
         Type::TriggerReference => "trigger_ref",
+        Type::PositionSide => "position_side",
         Type::SeriesF64 => "series<float>",
         Type::SeriesBool => "series<bool>",
         Type::Void => "void",
@@ -1015,6 +1026,18 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
                 crate::ast::SignalRole::LongExit => "exit long",
                 crate::ast::SignalRole::ShortEntry => "entry short",
                 crate::ast::SignalRole::ShortExit => "exit short",
+                crate::ast::SignalRole::ProtectLong => {
+                    unreachable!("attached exits use order declarations")
+                }
+                crate::ast::SignalRole::ProtectShort => {
+                    unreachable!("attached exits use order declarations")
+                }
+                crate::ast::SignalRole::TargetLong => {
+                    unreachable!("attached exits use order declarations")
+                }
+                crate::ast::SignalRole::TargetShort => {
+                    unreachable!("attached exits use order declarations")
+                }
             };
             lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));
         }
@@ -1024,6 +1047,10 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
                 crate::ast::SignalRole::LongExit => "order exit long",
                 crate::ast::SignalRole::ShortEntry => "order entry short",
                 crate::ast::SignalRole::ShortExit => "order exit short",
+                crate::ast::SignalRole::ProtectLong => "protect long",
+                crate::ast::SignalRole::ProtectShort => "protect short",
+                crate::ast::SignalRole::TargetLong => "target long",
+                crate::ast::SignalRole::TargetShort => "target short",
             };
             lines.push(format!("{prefix}{header} = {}", format_order_spec(spec)));
         }
@@ -1248,6 +1275,7 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
         ExprKind::EnumVariant {
             namespace, variant, ..
         } => format!("{namespace}.{variant}"),
+        ExprKind::PositionField { field, .. } => format!("position.{}", field.as_str()),
         ExprKind::SourceSeries {
             source,
             interval,

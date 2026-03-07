@@ -114,6 +114,21 @@ pub struct Engine {
     advanced_mask: u32,
 }
 
+pub struct RuntimeStep {
+    pub open_time: i64,
+    pub bar: Bar,
+    pub output: crate::output::StepOutput,
+}
+
+pub struct RuntimeStepper {
+    engine: Engine,
+    timeline: Vec<i64>,
+    next_index: usize,
+    base_interval: Interval,
+    base_cursors: Vec<SourceBaseCursor>,
+    supplemental_cursors: Vec<SourceFeedCursor>,
+}
+
 impl Engine {
     pub fn new(compiled: CompiledProgram, limits: VmLimits) -> Self {
         Self::try_new(compiled, limits).expect("engine initialization should succeed")
@@ -447,6 +462,74 @@ impl Engine {
         }
         Ok(())
     }
+
+    fn set_scalar_override(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
+        let local = self
+            .compiled
+            .program
+            .locals
+            .get(slot)
+            .ok_or(RuntimeError::InvalidLocalSlot { slot })?;
+        if !matches!(local.kind, SlotKind::Scalar) {
+            return Err(RuntimeError::InvalidLocalSlot { slot });
+        }
+        self.current_values[slot] = value;
+        Ok(())
+    }
+}
+
+impl RuntimeStepper {
+    pub fn try_new(
+        compiled: &CompiledProgram,
+        config: SourceRuntimeConfig,
+        limits: VmLimits,
+    ) -> Result<Self, RuntimeError> {
+        let base_interval = config.base_interval;
+        let timeline = source_timeline(&config, base_interval)?;
+        let (base_cursors, supplemental_cursors) = build_source_feed_cursors(compiled, &config)?;
+        Ok(Self {
+            engine: Engine::try_new(compiled.clone(), limits)?,
+            timeline,
+            next_index: 0,
+            base_interval,
+            base_cursors,
+            supplemental_cursors,
+        })
+    }
+
+    pub fn step_with_overrides(
+        &mut self,
+        overrides: &[(u16, Value)],
+    ) -> Result<Option<RuntimeStep>, RuntimeError> {
+        let Some(open_time) = self.timeline.get(self.next_index).copied() else {
+            return Ok(None);
+        };
+        let bar = self.engine.prepare_source_step(
+            open_time,
+            self.base_interval,
+            &mut self.base_cursors,
+            &mut self.supplemental_cursors,
+        )?;
+        for (slot, value) in overrides {
+            self.engine
+                .set_scalar_override(*slot as usize, value.clone())?;
+        }
+        let output = self.engine.execute_prepared_step(bar)?;
+        self.next_index += 1;
+        Ok(Some(RuntimeStep {
+            open_time,
+            bar,
+            output,
+        }))
+    }
+
+    pub fn peek_open_time(&self) -> Option<i64> {
+        self.timeline.get(self.next_index).copied()
+    }
+
+    pub fn finish(self) -> Outputs {
+        self.engine.finish()
+    }
 }
 
 pub fn run_with_sources(
@@ -454,21 +537,9 @@ pub fn run_with_sources(
     config: SourceRuntimeConfig,
     limits: VmLimits,
 ) -> Result<Outputs, RuntimeError> {
-    let base_interval = config.base_interval;
-    let timeline = source_timeline(&config, base_interval)?;
-    let (mut base_cursors, mut supplemental_cursors) =
-        build_source_feed_cursors(compiled, &config)?;
-    let mut engine = Engine::try_new(compiled.clone(), limits)?;
-    for open_time in timeline {
-        let bar = engine.prepare_source_step(
-            open_time,
-            base_interval,
-            &mut base_cursors,
-            &mut supplemental_cursors,
-        )?;
-        engine.execute_prepared_step(bar)?;
-    }
-    Ok(engine.finish())
+    let mut stepper = RuntimeStepper::try_new(compiled, config, limits)?;
+    while stepper.step_with_overrides(&[])?.is_some() {}
+    Ok(stepper.finish())
 }
 
 fn build_source_feed_cursors(

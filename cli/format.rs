@@ -198,13 +198,13 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     );
     let _ = writeln!(
         out,
-        "stop_loss_exit_count={}",
-        result.diagnostics.summary.stop_loss_exit_count
+        "protect_exit_count={}",
+        result.diagnostics.summary.protect_exit_count
     );
     let _ = writeln!(
         out,
-        "take_profit_exit_count={}",
-        result.diagnostics.summary.take_profit_exit_count
+        "target_exit_count={}",
+        result.diagnostics.summary.target_exit_count
     );
     let _ = writeln!(
         out,
@@ -307,6 +307,7 @@ fn fmt_value(value: &Value) -> String {
         Value::MaType(value) => format!("ma_type.{}", value.as_str()),
         Value::TimeInForce(value) => format!("tif.{}", value.as_str()),
         Value::TriggerReference(value) => format!("trigger_ref.{}", value.as_str()),
+        Value::PositionSide(value) => format!("position_side.{}", value.as_str()),
         Value::NA => "na".to_string(),
         Value::Void => "void".to_string(),
         Value::SeriesRef(slot) => format!("series-ref({slot})"),
@@ -348,6 +349,10 @@ fn fmt_signal_role(role: SignalRole) -> &'static str {
         SignalRole::LongExit => "long_exit",
         SignalRole::ShortEntry => "short_entry",
         SignalRole::ShortExit => "short_exit",
+        SignalRole::ProtectLong => "protect_long",
+        SignalRole::ProtectShort => "protect_short",
+        SignalRole::TargetLong => "target_long",
+        SignalRole::TargetShort => "target_short",
     }
 }
 
@@ -562,8 +567,8 @@ mod tests {
                     average_mae_pct: -0.02,
                     average_mfe_pct: 0.05,
                     signal_exit_count: 1,
-                    stop_loss_exit_count: 0,
-                    take_profit_exit_count: 0,
+                    protect_exit_count: 0,
+                    target_exit_count: 0,
                     reversal_exit_count: 0,
                     by_order_kind: vec![],
                     by_side: vec![],

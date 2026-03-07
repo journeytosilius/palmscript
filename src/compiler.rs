@@ -12,7 +12,7 @@ use crate::ast::{
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
     Constant, Instruction, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
-    Program, SignalRole as CompiledSignalRole,
+    PositionFieldDecl, Program, SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -21,6 +21,7 @@ use crate::interval::{
 use crate::lexer;
 use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
 use crate::parser;
+use crate::position::PositionField;
 use crate::span::Span;
 use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunctionMetadata};
 use crate::types::{SlotKind, Type, Value};
@@ -170,6 +171,8 @@ struct Analysis {
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
     order_fields: Vec<OrderFieldDecl>,
+    position_fields: Vec<PositionFieldDecl>,
+    position_field_slots: HashMap<PositionField, u16>,
     orders: Vec<OrderDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
@@ -206,6 +209,7 @@ struct Analyzer<'a> {
     functions_by_name: HashMap<String, &'a FunctionDecl>,
     functions_by_id: HashMap<NodeId, &'a FunctionDecl>,
     active_specializations: HashSet<FunctionSpecializationKey>,
+    active_attached_role: Option<CompiledSignalRole>,
 }
 
 impl<'a> Analyzer<'a> {
@@ -217,6 +221,7 @@ impl<'a> Analyzer<'a> {
             functions_by_name: HashMap::new(),
             functions_by_id: HashMap::new(),
             active_specializations: HashSet::new(),
+            active_attached_role: None,
         };
 
         analyzer.validate_strategy_intervals(ast);
@@ -718,7 +723,10 @@ impl<'a> Analyzer<'a> {
                     update_mask: 0,
                 }
             }
-            ExprKind::String(_) | ExprKind::SourceSeries { .. } | ExprKind::Index { .. } => {
+            ExprKind::String(_)
+            | ExprKind::SourceSeries { .. }
+            | ExprKind::PositionField { .. }
+            | ExprKind::Index { .. } => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     if is_const {
@@ -767,6 +775,13 @@ impl<'a> Analyzer<'a> {
                         expr.span,
                     ));
                 }
+            }
+            ExprKind::PositionField { field_span, .. } => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "`position.*` is only available inside `protect` and `target` declarations",
+                    *field_span,
+                ));
             }
             ExprKind::SourceSeries { .. } | ExprKind::EnumVariant { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
@@ -1362,7 +1377,14 @@ impl<'a> Analyzer<'a> {
         kind: OrderFieldKind,
         expr: &Expr,
     ) -> Option<(u16, u16)> {
-        let info = self.analyze_expr(expr);
+        let info = if role.is_attached_exit() {
+            let previous = self.active_attached_role.replace(role);
+            let info = self.analyze_expr(expr);
+            self.active_attached_role = previous;
+            info
+        } else {
+            self.analyze_expr(expr)
+        };
         if !info.ty.is_numeric_like() {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
@@ -1392,6 +1414,24 @@ impl<'a> Analyzer<'a> {
             slot,
         });
         Some((field_id, slot))
+    }
+
+    fn position_field_slot(&mut self, field: PositionField) -> u16 {
+        if let Some(slot) = self.analysis.position_field_slots.get(&field).copied() {
+            return slot;
+        }
+        let name = format!("__position.{}", field.as_str());
+        let slot = self.define_symbol(
+            name,
+            ExprInfo::scalar(position_field_type(field)),
+            true,
+            None,
+        );
+        self.analysis
+            .position_fields
+            .push(PositionFieldDecl { field, slot });
+        self.analysis.position_field_slots.insert(field, slot);
+        slot
     }
 
     fn analyze_block(&mut self, block: &Block) {
@@ -1438,6 +1478,18 @@ impl<'a> Analyzer<'a> {
                     ExprInfo::scalar(Type::MaType)
                 }
             },
+            ExprKind::PositionField { field, field_span } => {
+                if self.active_attached_role.is_none() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`position.*` is only available inside `protect` and `target` declarations",
+                        *field_span,
+                    ));
+                }
+                let ty = position_field_type(*field);
+                self.position_field_slot(*field);
+                ExprInfo::scalar(ty)
+            }
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
                     if is_predefined_series_name(name) {
@@ -1863,6 +1915,14 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     ExprInfo::scalar(Type::MaType)
                 }
             },
+            ExprKind::PositionField { field_span, .. } => {
+                self.parent.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "`position.*` is only available inside `protect` and `target` declarations",
+                    *field_span,
+                ));
+                ExprInfo::scalar(Type::F64)
+            }
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => symbol.info,
                 None => {
@@ -2192,6 +2252,7 @@ fn collect_source_series_refs(
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::PositionField { .. }
         | ExprKind::EnumVariant { .. } => {}
     }
 }
@@ -2300,6 +2361,7 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::PositionField { .. }
         | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => None,
     }
@@ -2353,6 +2415,7 @@ fn collect_called_user_functions<'a>(
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::PositionField { .. }
         | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => {}
     }
@@ -2540,6 +2603,10 @@ fn infer_conditional(
             InferredType::Concrete(Type::TriggerReference),
             InferredType::Concrete(Type::TriggerReference),
         ) => InferredType::Concrete(Type::TriggerReference),
+        (
+            InferredType::Concrete(Type::PositionSide),
+            InferredType::Concrete(Type::PositionSide),
+        ) => InferredType::Concrete(Type::PositionSide),
         (InferredType::Tuple2(left), InferredType::Tuple2(right)) if left == right => {
             InferredType::Tuple2(left)
         }
@@ -3827,6 +3894,10 @@ fn compiled_signal_role(role: AstSignalRole) -> CompiledSignalRole {
         AstSignalRole::LongExit => CompiledSignalRole::LongExit,
         AstSignalRole::ShortEntry => CompiledSignalRole::ShortEntry,
         AstSignalRole::ShortExit => CompiledSignalRole::ShortExit,
+        AstSignalRole::ProtectLong => CompiledSignalRole::ProtectLong,
+        AstSignalRole::ProtectShort => CompiledSignalRole::ProtectShort,
+        AstSignalRole::TargetLong => CompiledSignalRole::TargetLong,
+        AstSignalRole::TargetShort => CompiledSignalRole::TargetShort,
     }
 }
 
@@ -3874,7 +3945,10 @@ fn eval_immutable_expr(expr: &Expr, values: &HashMap<String, Value>) -> Option<V
                 .collect::<Option<_>>()?;
             eval_immutable_builtin(builtin, &args)
         }
-        ExprKind::String(_) | ExprKind::SourceSeries { .. } | ExprKind::Index { .. } => None,
+        ExprKind::String(_)
+        | ExprKind::SourceSeries { .. }
+        | ExprKind::PositionField { .. }
+        | ExprKind::Index { .. } => None,
     }
 }
 
@@ -3988,6 +4062,7 @@ fn eq_values_const(left: &Value, right: &Value) -> Option<bool> {
         (Value::MaType(left), Value::MaType(right)) => Some(left == right),
         (Value::TimeInForce(left), Value::TimeInForce(right)) => Some(left == right),
         (Value::TriggerReference(left), Value::TriggerReference(right)) => Some(left == right),
+        (Value::PositionSide(left), Value::PositionSide(right)) => Some(left == right),
         (Value::NA, Value::NA) => Some(true),
         _ => None,
     }
@@ -4183,6 +4258,9 @@ fn resolve_enum_variant(namespace: &str, variant: &str) -> Option<Value> {
         "ma_type" => MaType::from_variant(variant).map(Value::MaType),
         "tif" => TimeInForce::from_variant(variant).map(Value::TimeInForce),
         "trigger_ref" => TriggerReference::from_variant(variant).map(Value::TriggerReference),
+        "position_side" => {
+            crate::position::PositionSide::from_variant(variant).map(Value::PositionSide)
+        }
         _ => None,
     }
 }
@@ -4194,8 +4272,25 @@ fn scalar_type_for_value(value: &Value) -> Type {
         Value::MaType(_) => Type::MaType,
         Value::TimeInForce(_) => Type::TimeInForce,
         Value::TriggerReference(_) => Type::TriggerReference,
+        Value::PositionSide(_) => Type::PositionSide,
         Value::NA => Type::F64,
         Value::Void | Value::SeriesRef(_) | Value::Tuple2(_) | Value::Tuple3(_) => Type::F64,
+    }
+}
+
+fn position_field_type(field: PositionField) -> Type {
+    match field {
+        PositionField::IsLong | PositionField::IsShort => Type::Bool,
+        PositionField::Side => Type::PositionSide,
+        PositionField::EntryPrice
+        | PositionField::EntryTime
+        | PositionField::EntryBarIndex
+        | PositionField::BarsHeld
+        | PositionField::MarketPrice
+        | PositionField::UnrealizedPnl
+        | PositionField::UnrealizedReturn
+        | PositionField::Mae
+        | PositionField::Mfe => Type::F64,
     }
 }
 
@@ -4239,6 +4334,7 @@ fn output_series_type(
             | InferredType::Concrete(Type::MaType)
             | InferredType::Concrete(Type::TimeInForce)
             | InferredType::Concrete(Type::TriggerReference)
+            | InferredType::Concrete(Type::PositionSide)
             | InferredType::Tuple2(_)
             | InferredType::Tuple3(_) => {
                 diagnostics.push(Diagnostic::new(
@@ -4292,6 +4388,7 @@ impl<'a> Compiler<'a> {
         self.program.locals = self.analysis.locals.clone();
         self.program.outputs = self.analysis.outputs.clone();
         self.program.order_fields = self.analysis.order_fields.clone();
+        self.program.position_fields = self.analysis.position_fields.clone();
         self.program.orders = self.analysis.orders.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
@@ -4557,6 +4654,24 @@ impl<'a> Compiler<'a> {
                     *variant_span,
                 )),
             },
+            ExprKind::PositionField { field, .. } => {
+                let Some(slot) = self.analysis.position_field_slots.get(field).copied() else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        format!(
+                            "missing compiled position slot for `position.{}`",
+                            field.as_str()
+                        ),
+                        expr.span,
+                    ));
+                    return;
+                };
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
             ExprKind::String(_) => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Compile,

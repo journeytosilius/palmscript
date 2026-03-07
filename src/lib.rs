@@ -19,6 +19,7 @@ pub mod lexer;
 mod order;
 pub mod output;
 pub mod parser;
+pub mod position;
 pub mod runtime;
 pub mod span;
 pub mod talib;
@@ -29,8 +30,8 @@ pub mod vm;
 pub use backtest::{
     run_backtest_with_sources, BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics,
     BacktestError, BacktestResult, BacktestSummary, EquityPoint, FeatureSnapshot, FeatureValue,
-    Fill, FillAction, OrderDiagnostic, OrderEndReason, OrderRecord, OrderStatus, PositionSide,
-    PositionSnapshot, SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
+    Fill, FillAction, OrderDiagnostic, OrderEndReason, OrderRecord, OrderStatus, PositionSnapshot,
+    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, CompiledProgram};
@@ -49,6 +50,7 @@ pub use output::{
     Alert, OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,
     PlotPoint, PlotSeries, StepOutput, TriggerEvent,
 };
+pub use position::{PositionField, PositionSide};
 pub use runtime::{run_with_sources, Bar, Engine, SourceFeed, SourceRuntimeConfig, VmLimits};
 pub use span::{Position, Span};
 pub use talib::{MaType, TalibFlag, TalibFunctionMetadata, TalibGroup, TALIB_UPSTREAM_COMMIT};

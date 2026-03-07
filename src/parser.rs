@@ -162,6 +162,26 @@ impl<'a> Parser<'a> {
             }
             return self.parse_signal_stmt(false);
         }
+        if self.matches_keyword(&TokenKind::Protect) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "attached exit declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_attached_order_stmt(true);
+        }
+        if self.matches_keyword(&TokenKind::Target) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "attached exit declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_attached_order_stmt(false);
+        }
         if self.matches_keyword(&TokenKind::Const) {
             if self.block_depth > 0 {
                 self.push_diagnostic(
@@ -461,10 +481,25 @@ impl<'a> Parser<'a> {
 
     fn parse_order_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
-        let entry = if self.matches_keyword(&TokenKind::Entry) {
-            true
+        let role = if self.matches_keyword(&TokenKind::Entry) {
+            self.parse_side_role(
+                "expected `long` or `short` after `order entry`",
+                |is_long| {
+                    if is_long {
+                        SignalRole::LongEntry
+                    } else {
+                        SignalRole::ShortEntry
+                    }
+                },
+            )?
         } else if self.matches_keyword(&TokenKind::Exit) {
-            false
+            self.parse_side_role("expected `long` or `short` after `order exit`", |is_long| {
+                if is_long {
+                    SignalRole::LongExit
+                } else {
+                    SignalRole::ShortExit
+                }
+            })?
         } else {
             self.push_diagnostic(
                 "expected `entry` or `exit` after `order`",
@@ -472,27 +507,43 @@ impl<'a> Parser<'a> {
             );
             return None;
         };
-        let side = self.advance()?.clone();
-        let role = match side.kind {
-            TokenKind::Long if entry => SignalRole::LongEntry,
-            TokenKind::Long => SignalRole::LongExit,
-            TokenKind::Short if entry => SignalRole::ShortEntry,
-            TokenKind::Short => SignalRole::ShortExit,
-            _ => {
-                self.push_diagnostic(
-                    if entry {
-                        "expected `long` or `short` after `order entry`"
-                    } else {
-                        "expected `long` or `short` after `order exit`"
-                    },
-                    side.span,
-                );
-                return None;
-            }
-        };
         self.expect_kind(
             |kind| matches!(kind, TokenKind::Assign),
             "expected `=` after order side",
+        )?;
+        let spec = self.parse_order_spec()?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(spec.span),
+            kind: StmtKind::Order {
+                role,
+                spec: Box::new(spec),
+            },
+        })
+    }
+
+    fn parse_attached_order_stmt(&mut self, protect: bool) -> Option<Stmt> {
+        let start = self.previous().span;
+        let role = if protect {
+            self.parse_side_role("expected `long` or `short` after `protect`", |is_long| {
+                if is_long {
+                    SignalRole::ProtectLong
+                } else {
+                    SignalRole::ProtectShort
+                }
+            })?
+        } else {
+            self.parse_side_role("expected `long` or `short` after `target`", |is_long| {
+                if is_long {
+                    SignalRole::TargetLong
+                } else {
+                    SignalRole::TargetShort
+                }
+            })?
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after attached exit side",
         )?;
         let spec = self.parse_order_spec()?;
         Some(Stmt {
@@ -833,6 +884,20 @@ impl<'a> Parser<'a> {
                 kind: TokenKind::Ident(name),
                 span,
             } => {
+                if source_name == "position" {
+                    let Some(field) = crate::position::PositionField::parse(&name) else {
+                        self.push_diagnostic("unknown `position` field", span);
+                        return None;
+                    };
+                    return Some(Expr {
+                        id: self.alloc_id(),
+                        span: source_span.merge(span),
+                        kind: ExprKind::PositionField {
+                            field,
+                            field_span: span,
+                        },
+                    });
+                }
                 if let Some(field) = MarketField::parse(&name) {
                     Some(Expr {
                         id: self.alloc_id(),
@@ -856,6 +921,30 @@ impl<'a> Parser<'a> {
                         },
                     })
                 }
+            }
+            Token {
+                kind: TokenKind::Long,
+                span,
+            }
+            | Token {
+                kind: TokenKind::Short,
+                span,
+            } => {
+                let name = match self.previous().kind {
+                    TokenKind::Long => "long".to_string(),
+                    TokenKind::Short => "short".to_string(),
+                    _ => unreachable!(),
+                };
+                Some(Expr {
+                    id: self.alloc_id(),
+                    span: source_span.merge(span),
+                    kind: ExprKind::EnumVariant {
+                        namespace: source_name,
+                        namespace_span: source_span,
+                        variant: name,
+                        variant_span: span,
+                    },
+                })
             }
             Token {
                 kind: TokenKind::Interval(interval),
@@ -1023,6 +1112,21 @@ impl<'a> Parser<'a> {
         let id = self.next_node_id;
         self.next_node_id += 1;
         id
+    }
+
+    fn parse_side_role<F>(&mut self, message: &'static str, map: F) -> Option<SignalRole>
+    where
+        F: FnOnce(bool) -> SignalRole,
+    {
+        let side = self.advance()?.clone();
+        match side.kind {
+            TokenKind::Long => Some(map(true)),
+            TokenKind::Short => Some(map(false)),
+            _ => {
+                self.push_diagnostic(message, side.span);
+                None
+            }
+        }
     }
 }
 

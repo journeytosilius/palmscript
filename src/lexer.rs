@@ -209,6 +209,8 @@ impl<'a> LexerState<'a> {
             "trigger" => TokenKind::Trigger,
             "entry" => TokenKind::Entry,
             "exit" => TokenKind::Exit,
+            "protect" => TokenKind::Protect,
+            "target" => TokenKind::Target,
             "long" => TokenKind::Long,
             "short" => TokenKind::Short,
             "if" => TokenKind::If,

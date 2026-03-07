@@ -21,6 +21,8 @@ pub enum TokenKind {
     Trigger,
     Entry,
     Exit,
+    Protect,
+    Target,
     Long,
     Short,
     If,

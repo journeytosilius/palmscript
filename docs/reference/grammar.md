@@ -32,6 +32,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | trigger_stmt
                          | signal_stmt
+                         | attached_exit_stmt
                          | order_stmt
                          | if_stmt
                          | expr_stmt
@@ -44,6 +45,8 @@ export_stmt            ::= "export" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
+attached_exit_stmt     ::= "protect" signal_side "=" order_spec
+                         | "target" signal_side "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
 signal_side            ::= "long" | "short"
 order_spec             ::= "market" "(" ")"
@@ -128,7 +131,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, and `order` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, `protect`, `target`, and `order` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
@@ -136,8 +139,8 @@ The grammar does not by itself make a program valid. The implementation addition
 - only identifiers may be called
 - series indexing must use a non-negative integer literal or a top-level immutable numeric binding
 - tuple-valued builtins must be bound with tuple destructuring before use
-- `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` are typed enum namespaces
-- `tif.<variant>` and `trigger_ref.<variant>` are typed enum namespaces used by order declarations
+- `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, and `position_side.<variant>` are typed enum namespaces
+- `position.*` is valid only inside `protect` and `target` declarations
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

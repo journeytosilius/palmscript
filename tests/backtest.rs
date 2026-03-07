@@ -1,6 +1,6 @@
 use palmscript::{
     compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval,
-    OrderEndReason, OrderKind, OrderStatus, SourceFeed, SourceRuntimeConfig, VmLimits,
+    OrderEndReason, OrderKind, OrderStatus, SignalRole, SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -957,4 +957,133 @@ fn venue_profiles_reject_unsupported_order_configurations() {
             "{name}"
         );
     }
+}
+
+#[test]
+fn attached_exits_use_position_state_and_protect_wins_same_bar_ambiguity() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0}
+protect long = stop_market(position.entry_price - 1, trigger_ref.last)
+target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 11.0, 11.0),
+                bar(t0 + 2 * support::MINUTE_MS, 11.0, 11.5),
+                Bar {
+                    open: 10.5,
+                    high: 14.0,
+                    low: 9.0,
+                    close: 12.0,
+                    volume: 1_000.0,
+                    time: (t0 + 3 * support::MINUTE_MS) as f64,
+                },
+                bar(t0 + 4 * support::MINUTE_MS, 12.0, 12.0),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        palmscript::TradeExitClassification::Protect
+    );
+    approx_eq(result.trades[0].exit.price, 10.0);
+
+    let protect_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::ProtectLong)
+        .expect("protect order should exist");
+    let target_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::TargetLong)
+        .expect("target order should exist");
+    assert_eq!(protect_order.status, OrderStatus::Filled);
+    assert_eq!(target_order.status, OrderStatus::Cancelled);
+    assert_eq!(target_order.end_reason, Some(OrderEndReason::OcoCancelled));
+
+    let protect_diag = result
+        .diagnostics
+        .order_diagnostics
+        .iter()
+        .find(|diag| diag.role == SignalRole::ProtectLong)
+        .expect("protect diagnostic should exist");
+    let placed_position = protect_diag
+        .placed_position
+        .as_ref()
+        .expect("attached order should capture placed position");
+    approx_eq(placed_position.entry_price, 11.0);
+}
+
+#[test]
+fn signal_exit_cancels_attached_exits_when_position_closes() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0}
+exit long = spot.time == {}
+protect long = stop_market(position.entry_price - 5, trigger_ref.last)
+target long = take_profit_market(position.entry_price + 5, trigger_ref.last)
+plot(spot.close)",
+        t0 + 2 * support::MINUTE_MS
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 11.0, 11.0),
+                bar(t0 + 2 * support::MINUTE_MS, 11.0, 11.2),
+                bar(t0 + 3 * support::MINUTE_MS, 11.5, 11.5),
+                bar(t0 + 4 * support::MINUTE_MS, 11.0, 11.0),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        palmscript::TradeExitClassification::Signal
+    );
+    let protect_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::ProtectLong)
+        .expect("protect order should exist");
+    let target_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::TargetLong)
+        .expect("target order should exist");
+    assert_eq!(protect_order.status, OrderStatus::Cancelled);
+    assert_eq!(
+        protect_order.end_reason,
+        Some(OrderEndReason::PositionClosed)
+    );
+    assert_eq!(target_order.status, OrderStatus::Cancelled);
+    assert_eq!(
+        target_order.end_reason,
+        Some(OrderEndReason::PositionClosed)
+    );
 }

@@ -17,7 +17,8 @@ use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
 use crate::order::{OrderKind, TimeInForce, TriggerReference};
 use crate::output::{OutputValue, Outputs};
-use crate::runtime::{run_with_sources, Bar, SourceRuntimeConfig, VmLimits};
+use crate::position::PositionSide;
+use crate::runtime::{Bar, RuntimeStepper, SourceRuntimeConfig, VmLimits};
 
 const BPS_SCALE: f64 = 10_000.0;
 const EPSILON: f64 = 1e-9;
@@ -28,12 +29,6 @@ pub struct BacktestConfig {
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PositionSide {
-    Long,
-    Short,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +109,9 @@ pub enum OrderStatus {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderEndReason {
     Replaced,
+    Rearmed,
+    OcoCancelled,
+    PositionClosed,
     RoleInvalidated,
     MissingPrice,
     MissingTriggerPrice,
@@ -163,8 +161,8 @@ pub struct FeatureSnapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TradeExitClassification {
     Signal,
-    StopLoss,
-    TakeProfit,
+    Protect,
+    Target,
     Reversal,
 }
 
@@ -178,6 +176,8 @@ pub struct OrderDiagnostic {
     pub signal_snapshot: Option<FeatureSnapshot>,
     pub placed_snapshot: Option<FeatureSnapshot>,
     pub fill_snapshot: Option<FeatureSnapshot>,
+    pub placed_position: Option<PositionSnapshot>,
+    pub fill_position: Option<PositionSnapshot>,
     pub bars_to_fill: Option<usize>,
     pub time_to_fill_ms: Option<f64>,
 }
@@ -235,8 +235,8 @@ pub struct BacktestDiagnosticSummary {
     pub average_mae_pct: f64,
     pub average_mfe_pct: f64,
     pub signal_exit_count: usize,
-    pub stop_loss_exit_count: usize,
-    pub take_profit_exit_count: usize,
+    pub protect_exit_count: usize,
+    pub target_exit_count: usize,
     pub reversal_exit_count: usize,
     pub by_order_kind: Vec<OrderKindDiagnosticSummary>,
     pub by_side: Vec<SideDiagnosticSummary>,
@@ -305,14 +305,10 @@ pub fn run_backtest_with_sources(
         execution.source_id,
         &config.execution_source_alias,
     )?;
-    let outputs = run_with_sources(compiled, runtime, vm_limits)?;
-    let prepared = bridge::prepare_backtest(
-        compiled,
-        &outputs,
-        &config.execution_source_alias,
-        execution.template,
-    )?;
-    engine::simulate_backtest(outputs, execution_bars, &config, prepared)
+    let prepared =
+        bridge::prepare_backtest(compiled, &config.execution_source_alias, execution.template)?;
+    let stepper = RuntimeStepper::try_new(compiled, runtime, vm_limits)?;
+    engine::simulate_backtest(stepper, execution_bars, &config, prepared)
 }
 
 fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {

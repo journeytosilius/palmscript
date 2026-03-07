@@ -83,8 +83,9 @@ The `diagnostics` payload is designed for machine analysis and LLM-driven
 iteration. It currently includes:
 
 - per-order diagnostics with signal, placement, and fill snapshots of named `export` features
+- per-order position snapshots at placement and fill time for attached exits and other order paths
 - per-trade diagnostics with entry and exit snapshots, MAE, MFE, holding time, and exit classification
-- aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, stop-loss, take-profit, and reversal exits
+- aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, protect, target, and reversal exits
 
 To make regime and setup context available to diagnostics, export those fields
 explicitly in the strategy:
@@ -105,6 +106,10 @@ Preferred v1 surface:
 - `exit long = ...`
 - `entry short = ...`
 - `exit short = ...`
+- `protect long = ...`
+- `protect short = ...`
+- `target long = ...`
+- `target short = ...`
 
 Optional execution templates:
 
@@ -112,6 +117,12 @@ Optional execution templates:
 - `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
 - `order entry short = limit(spot.close[1], tif.gtc, false)`
 - `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
+
+Attached position-aware exits:
+
+- `protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
+- `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
+- `position.*` is valid only inside `protect` and `target`
 
 Legacy compatibility bridge:
 
@@ -130,6 +141,9 @@ The backtester stays intentionally simple and deterministic:
 - same-side re-entry is ignored
 - opposite entry reverses on the same eligible open by closing first and then
   opening the new side
+- attached exits arm only after an actual entry fill exists and are reevaluated once per execution bar while that position stays open
+- `protect` and `target` for the same side are OCO
+- if `protect` and `target` both become fillable on one execution bar, `protect` fills and `target` is cancelled
 - open positions are marked to market on the execution-source close and are not
   force-closed at the end of the run
 

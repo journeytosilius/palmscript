@@ -52,6 +52,7 @@ palmscript run backtest strategy.palm \
 Use backtest mode when:
 
 - the script emits backtest signals through `entry` / `exit` declarations or legacy trigger names
+- the script may also declare attached exits through `protect` / `target`
 - the script optionally declares explicit order templates with `order entry ... = ...` or `order exit ... = ...`
 - you want PalmScript to fetch exchange-backed candles and run the built-in deterministic portfolio simulator in one command
 

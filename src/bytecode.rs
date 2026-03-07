@@ -4,6 +4,7 @@
 //! fixed-layout instructions. The VM executes this representation directly.
 
 use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
+use crate::position::PositionField;
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
 use crate::{DeclaredMarketSource, MarketBinding, SourceIntervalRef};
@@ -98,6 +99,10 @@ pub enum SignalRole {
     LongExit,
     ShortEntry,
     ShortExit,
+    ProtectLong,
+    ProtectShort,
+    TargetLong,
+    TargetShort,
 }
 
 impl SignalRole {
@@ -107,7 +112,18 @@ impl SignalRole {
             Self::LongExit => "long_exit",
             Self::ShortEntry => "short_entry",
             Self::ShortExit => "short_exit",
+            Self::ProtectLong => "protect_long",
+            Self::ProtectShort => "protect_short",
+            Self::TargetLong => "target_long",
+            Self::TargetShort => "target_short",
         }
+    }
+
+    pub const fn is_attached_exit(self) -> bool {
+        matches!(
+            self,
+            Self::ProtectLong | Self::ProtectShort | Self::TargetLong | Self::TargetShort
+        )
     }
 }
 
@@ -125,6 +141,12 @@ pub struct OrderFieldDecl {
     pub name: String,
     pub role: SignalRole,
     pub kind: OrderFieldKind,
+    pub slot: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PositionFieldDecl {
+    pub field: PositionField,
     pub slot: u16,
 }
 
@@ -158,6 +180,7 @@ pub struct Program {
     pub locals: Vec<LocalInfo>,
     pub outputs: Vec<OutputDecl>,
     pub order_fields: Vec<OrderFieldDecl>,
+    pub position_fields: Vec<PositionFieldDecl>,
     pub orders: Vec<OrderDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,

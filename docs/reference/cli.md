@@ -67,6 +67,7 @@ Requirements:
 
 - the script must declare at least one `source`
 - the script must emit at least one configured backtest trigger
+- the script may optionally declare attached exits through `protect` / `target`
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
 

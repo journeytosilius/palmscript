@@ -4,6 +4,7 @@
 //! between parsing and compilation.
 
 use crate::span::Span;
+use crate::PositionField;
 use crate::{Interval, MarketField, SourceTemplate};
 use serde::{Deserialize, Serialize};
 
@@ -89,6 +90,10 @@ pub enum SignalRole {
     LongExit,
     ShortEntry,
     ShortExit,
+    ProtectLong,
+    ProtectShort,
+    TargetLong,
+    TargetShort,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -197,6 +202,10 @@ pub enum ExprKind {
         namespace_span: Span,
         variant: String,
         variant_span: Span,
+    },
+    PositionField {
+        field: PositionField,
+        field_span: Span,
     },
     SourceSeries {
         source: String,

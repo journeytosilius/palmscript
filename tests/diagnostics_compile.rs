@@ -243,6 +243,19 @@ fn compile_diagnostic_catalog_matches_contract() {
 }
 
 #[test]
+fn rejects_position_namespace_outside_attached_exits() {
+    let source = with_interval("entry long = position.entry_price > 0\nplot(src.close)");
+    assert_compile_diagnostics(
+        "position_namespace_outside_attached_exits",
+        &source,
+        &[expected(
+            DiagnosticKind::Type,
+            "`position.*` is only available inside `protect` and `target` declarations",
+        )],
+    );
+}
+
+#[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
     let cases: [(&str, String, Vec<ExpectedDiagnostic>); 36] = [
         (

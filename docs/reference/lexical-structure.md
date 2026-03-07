@@ -17,6 +17,8 @@ The following tokens are reserved keywords:
 - `trigger`
 - `entry`
 - `exit`
+- `protect`
+- `target`
 - `order`
 - `if`
 - `else`

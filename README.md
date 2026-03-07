@@ -25,8 +25,8 @@ PalmScript currently implements:
 - one or more named exchange-backed `source` declarations per executable script
 - source-qualified series such as `bn.close` or `hl.1h.close`
 - source-scoped `use <alias> <interval>` declarations for supplemental intervals
-- top-level expression-bodied `fn` declarations, `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, first-class `entry` / `exit` signals, and `order` declarations
-- deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals
+- top-level expression-bodied `fn` declarations, `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, first-class `entry` / `exit` signals, attached `protect` / `target` exits, and `order` declarations
+- deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, and `position_side.<variant>` enum literals
 - an expanding executable TA-Lib-style builtin surface, with remaining reserved catalog names exposed through diagnostics and IDE metadata
 - exchange-backed execution through `palmscript run market`
 - venue-aware signal-to-portfolio backtesting through `palmscript run backtest` and `run_backtest_with_sources`, including machine-readable order and trade diagnostics
