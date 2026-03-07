@@ -20,13 +20,15 @@ Current metadata-driven surface behavior:
 Implemented TA-Lib-style builtins in this change:
 
 - `ma(series, length, ma_type)`
+- `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
+- `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
 - `macd(series, fast_length, slow_length, signal_length)`
 - unary math transforms: `acos`, `asin`, `atan`, `ceil`, `cos`, `cosh`, `exp`, `floor`, `ln`, `log10`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`
 - math operators: `add`, `div`, `mult`, `sub`, `max`, `min`, `sum`, `maxindex`, `minindex`, `minmax`, `minmaxindex`
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
 - overlap helpers: `midpoint`, `midprice`, `wma`
 - statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`, `beta`, `correl`
-- momentum helpers: `mom`, `roc`, `rocp`, `rocr`, `rocr100`
+- momentum helpers: `apo`, `ppo`, `mom`, `roc`, `rocp`, `rocr`, `rocr100`
 - volume and volatility helpers: `obv`, `trange`
 
 Current `ma_type` variants:
@@ -41,7 +43,7 @@ Current `ma_type` variants:
 - `ma_type.mama`
 - `ma_type.t3`
 
-Only `sma`, `ema`, and `wma` are currently executable through `ma(...)`. The remaining variants are reserved in the typed surface so later TA-Lib batches can extend behavior without changing syntax.
+Only `sma`, `ema`, and `wma` are currently executable through `ma(...)`, `apo(...)`, and `ppo(...)`. The remaining variants are reserved in the typed surface so later TA-Lib batches can extend behavior without changing syntax.
 
 Current TA-Lib defaults now honored in the executable surface:
 
@@ -53,6 +55,7 @@ Current TA-Lib defaults now honored in the executable surface:
 - `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, and `tsf` default to `length=14`
 - `beta` defaults to `length=5` and uses TA-Lib's return-based beta calculation
 - `correl` defaults to `length=30`
+- `apo` and `ppo` default to `fast_length=12`, `slow_length=26`, and `ma_type.sma`
 - `mom`, `roc`, `rocp`, `rocr`, and `rocr100` default to `length=10`
 
 Oracle fixture refresh for the implemented subset:

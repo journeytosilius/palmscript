@@ -10,6 +10,8 @@ PalmScript currently provides these callable builtins:
 - `ema(series, length)`
 - `rsi(series, length)`
 - `ma(series, length, ma_type)`
+- `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
+- `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
 - `macd(series, fast_length, slow_length, signal_length)`
 - `acos(real)`
 - `asin(real)`
@@ -141,6 +143,21 @@ Rules:
 - the third argument must be a typed `ma_type.<variant>` value
 - the result type is `series<float>`
 - `ma_type.sma`, `ma_type.ema`, and `ma_type.wma` are currently implemented
+
+### `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])` and `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- `fast_length` and `slow_length` default to `12` and `26`
+- if provided, `fast_length` and `slow_length` must be integer literals greater than or equal to `2`
+- if provided, the fourth argument must be a typed `ma_type.<variant>` value
+- omitted `ma_type` defaults to `ma_type.sma`
+- `apo` returns `fast_ma - slow_ma`
+- `ppo` returns `((fast_ma - slow_ma) / slow_ma) * 100`
+- if the slow moving average is `0`, `ppo` returns `0`
+- `ma_type.sma`, `ma_type.ema`, and `ma_type.wma` are currently implemented
+- the result type is `series<float>`
 
 ### `macd(series, fast_length, slow_length, signal_length)`
 

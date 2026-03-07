@@ -8,6 +8,7 @@ pub(crate) mod event;
 pub(crate) mod extrema;
 pub(crate) mod macd;
 pub(crate) mod math;
+pub(crate) mod oscillator;
 pub(crate) mod rsi;
 pub(crate) mod sma;
 pub(crate) mod statistics;
@@ -25,6 +26,7 @@ pub(crate) use macd::MacdState;
 pub(crate) use math::{
     apply_unary as apply_unary_math, calculate_avgdev, calculate_sum, UnaryMathTransform,
 };
+pub(crate) use oscillator::{OscillatorKind, PriceOscillatorState};
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
 pub(crate) use statistics::{
@@ -47,5 +49,6 @@ pub(crate) enum IndicatorState {
     BarsSince(BarsSinceState),
     ValueWhen(ValueWhenState),
     Macd(MacdState),
+    PriceOscillator(PriceOscillatorState),
     Obv(ObvState),
 }

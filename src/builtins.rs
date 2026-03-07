@@ -29,6 +29,7 @@ pub enum BuiltinKind {
     Plot,
     Indicator,
     MovingAverage,
+    MaOscillator,
     IndicatorTuple,
     UnaryMathTransform,
     NumericBinary,
@@ -132,10 +133,12 @@ pub enum BuiltinId {
     Rocp = 73,
     Rocr = 74,
     Rocr100 = 75,
+    Apo = 76,
+    Ppo = 77,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 76] = [
+    pub const RESERVED: [Self; 78] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -212,9 +215,11 @@ impl BuiltinId {
         Self::Rocp,
         Self::Rocr,
         Self::Rocr100,
+        Self::Apo,
+        Self::Ppo,
     ];
 
-    pub const CALLABLE: [Self; 70] = [
+    pub const CALLABLE: [Self; 72] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -285,6 +290,8 @@ impl BuiltinId {
         Self::Rocp,
         Self::Rocr,
         Self::Rocr100,
+        Self::Apo,
+        Self::Ppo,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -365,6 +372,8 @@ impl BuiltinId {
             "rocp" => Some(Self::Rocp),
             "rocr" => Some(Self::Rocr),
             "rocr100" => Some(Self::Rocr100),
+            "apo" => Some(Self::Apo),
+            "ppo" => Some(Self::Ppo),
             _ => None,
         }
     }
@@ -447,6 +456,8 @@ impl BuiltinId {
             73 => Some(Self::Rocp),
             74 => Some(Self::Rocr),
             75 => Some(Self::Rocr100),
+            76 => Some(Self::Apo),
+            77 => Some(Self::Ppo),
             _ => None,
         }
     }
@@ -529,6 +540,8 @@ impl BuiltinId {
             Self::Rocp => "rocp",
             Self::Rocr => "rocr",
             Self::Rocr100 => "rocr100",
+            Self::Apo => "apo",
+            Self::Ppo => "ppo",
         }
     }
 
@@ -540,6 +553,7 @@ impl BuiltinId {
             Self::Plot => BuiltinKind::Plot,
             Self::Sma | Self::Ema | Self::Rsi => BuiltinKind::Indicator,
             Self::Ma => BuiltinKind::MovingAverage,
+            Self::Apo | Self::Ppo => BuiltinKind::MaOscillator,
             Self::Macd => BuiltinKind::IndicatorTuple,
             Self::Acos
             | Self::Asin
@@ -662,6 +676,7 @@ impl BuiltinId {
             | Self::LinearRegSlope
             | Self::Tsf => BuiltinArity::Range { min: 1, max: 2 },
             Self::Beta | Self::Correl => BuiltinArity::Range { min: 2, max: 3 },
+            Self::Apo | Self::Ppo => BuiltinArity::Range { min: 1, max: 4 },
             Self::Stddev | Self::Var => BuiltinArity::Range { min: 1, max: 3 },
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
         }
@@ -695,6 +710,8 @@ impl BuiltinId {
             Self::BarsSince => "barssince(condition)",
             Self::ValueWhen => "valuewhen(condition, source, occurrence)",
             Self::Ma => "ma(series, length, ma_type)",
+            Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
+            Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Macd => "macd(series, fast_length, slow_length, signal_length)",
             Self::Acos => "acos(real)",
             Self::Asin => "asin(real)",
@@ -780,6 +797,8 @@ impl BuiltinId {
             Self::BarsSince => "Bars since the last true condition on the condition's update clock.",
             Self::ValueWhen => "Captured source value from the Nth most recent true condition.",
             Self::Ma => "TA-Lib moving average with typed ma_type selection.",
+            Self::Apo => "Absolute price oscillator using a typed moving-average family.",
+            Self::Ppo => "Percentage price oscillator using a typed moving-average family.",
             Self::Macd => "Moving average convergence/divergence tuple (macd, signal, histogram).",
             Self::Acos => "Vector trigonometric acos.",
             Self::Asin => "Vector trigonometric asin.",

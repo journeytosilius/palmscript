@@ -202,6 +202,8 @@ class TalibOracle:
             return self.call_window_index_tuple(function, inputs[0], int_options[0])
         if family == "ma":
             return [self.call_ma(inputs[0], int_options[0], ma_type or "sma")]
+        if family == "ma_oscillator":
+            return [self.call_ma_oscillator(function, inputs[0], int_options[0], int_options[1], ma_type or "sma")]
         if family == "macd":
             return self.call_macd(inputs[0], *int_options)
         raise RuntimeError(f"unsupported oracle family {family}")
@@ -277,6 +279,12 @@ class TalibOracle:
         c_name = "MA"
         return self._call_1in_1out_2int(c_name, input0, time_period, TA_MATYPE[ma_type])
 
+    def call_ma_oscillator(
+        self, function: str, input0: list[float], fast_period: int, slow_period: int, ma_type: str
+    ) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_1in_1out_3int(c_name, input0, fast_period, slow_period, TA_MATYPE[ma_type])
+
     def call_macd(
         self, input0: list[float], fast_period: int, slow_period: int, signal_period: int
     ) -> list[list[float | None]]:
@@ -341,6 +349,24 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_1out(func, lookback, [input0], [opt0, opt1])
+
+    def _call_1in_1out_3int(
+        self, c_name: str, input0: list[float], opt0: int, opt1: int, opt2: int
+    ) -> list[float | None]:
+        lookback = self._lookup_3int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0], [opt0, opt1, opt2])
 
     def _call_1in_1out_1int_1real(
         self, c_name: str, input0: list[float], opt0: int, opt1: float
@@ -762,6 +788,10 @@ def fixture_cases() -> list[Case]:
             Case("tsf_default", script_for_single_export("value", "tsf(close)"), ("value",), "window", "tsf", input_fields=("close",), int_options=(14,)),
             Case("beta_open_close_default", script_for_single_export("value", "beta(open, close)"), ("value",), "window_double", "beta", input_fields=("open", "close"), int_options=(5,)),
             Case("correl_open_close_default", script_for_single_export("value", "correl(open, close)"), ("value",), "window_double", "correl", input_fields=("open", "close"), int_options=(30,)),
+            Case("apo_default", script_for_single_export("value", "apo(close)"), ("value",), "ma_oscillator", "apo", input_fields=("close",), int_options=(12, 26)),
+            Case("ppo_default", script_for_single_export("value", "ppo(close)"), ("value",), "ma_oscillator", "ppo", input_fields=("close",), int_options=(12, 26)),
+            Case("apo_ema_3_5", script_for_single_export("value", "apo(close, 3, 5, ma_type.ema)"), ("value",), "ma_oscillator", "apo", input_fields=("close",), int_options=(3, 5), ma_type="ema"),
+            Case("ppo_ema_3_5", script_for_single_export("value", "ppo(close, 3, 5, ma_type.ema)"), ("value",), "ma_oscillator", "ppo", input_fields=("close",), int_options=(3, 5), ma_type="ema"),
             Case("mom_default", script_for_single_export("value", "mom(close)"), ("value",), "window", "mom", input_fields=("close",), int_options=(10,)),
             Case("roc_default", script_for_single_export("value", "roc(close)"), ("value",), "window", "roc", input_fields=("close",), int_options=(10,)),
             Case("rocp_default", script_for_single_export("value", "rocp(close)"), ("value",), "window", "rocp", input_fields=("close",), int_options=(10,)),

@@ -13,8 +13,8 @@ use crate::indicators::{
     calculate_linear_regression, calculate_max_index, calculate_min_index, calculate_min_max,
     calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange, calculate_var,
     calculate_wma, BarsSinceState, EmaState, FallingState, HighestState, IndicatorState,
-    LowestState, MacdState, ObvState, RegressionOutput, RisingState, RsiState, SmaState,
-    UnaryMathTransform, ValueWhenState,
+    LowestState, MacdState, ObvState, OscillatorKind, PriceOscillatorState, RegressionOutput,
+    RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -455,6 +455,8 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Rocp => self.call_rocp(arity, args, pc),
             BuiltinId::Rocr => self.call_rocr(arity, args, pc),
             BuiltinId::Rocr100 => self.call_rocr100(arity, args, pc),
+            BuiltinId::Apo => self.call_apo(callsite, arity, args, pc),
+            BuiltinId::Ppo => self.call_ppo(callsite, arity, args, pc),
             BuiltinId::Highest => self.call_highest(callsite, arity, args, pc),
             BuiltinId::Lowest => self.call_lowest(callsite, arity, args, pc),
             BuiltinId::Sum => self.call_sum(arity, args, pc),
@@ -853,6 +855,86 @@ impl<'a> VmEngine<'a> {
             },
             (None, _) | (_, None) => Ok(Value::NA),
         }
+    }
+
+    fn call_apo(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_ma_oscillator(
+            BuiltinId::Apo,
+            callsite,
+            arity,
+            args,
+            pc,
+            OscillatorKind::Absolute,
+        )
+    }
+
+    fn call_ppo(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_ma_oscillator(
+            BuiltinId::Ppo,
+            callsite,
+            arity,
+            args,
+            pc,
+            OscillatorKind::Percentage,
+        )
+    }
+
+    fn call_ma_oscillator(
+        &mut self,
+        builtin_id: BuiltinId,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        kind: OscillatorKind,
+    ) -> Result<Value, RuntimeError> {
+        let builtin_name = builtin_id.as_str();
+        if arity != 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin_name,
+                expected: 4,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let fast = expect_window(args[1].clone(), pc)?;
+        let slow = expect_window(args[2].clone(), pc)?;
+        let ma_type = expect_ma_type(args[3].clone(), pc)?;
+        let key = (builtin_id, callsite);
+        let mut state =
+            self.indicator_state
+                .remove(&key)
+                .unwrap_or(IndicatorState::PriceOscillator(PriceOscillatorState::new(
+                    builtin_name,
+                    fast,
+                    slow,
+                    ma_type,
+                    kind,
+                )));
+        let result = match &mut state {
+            IndicatorState::PriceOscillator(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
     }
 
     fn call_sum(

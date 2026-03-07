@@ -316,6 +316,46 @@ fn golden_roc_uses_talib_default_window() {
 }
 
 #[test]
+fn golden_apo_matches_explicit_sma_difference() {
+    let compiled =
+        compile(&with_interval("plot(apo(close, 3, 5, ma_type.sma))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][3]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::json!(1.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_ppo_matches_explicit_sma_percentage() {
+    let compiled =
+        compile(&with_interval("plot(ppo(close, 3, 5, ma_type.sma))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][3]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::json!(0.9803921568627451)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(0.8547008547008548)
+    );
+}
+
+#[test]
 fn golden_ma_builtin_with_typed_enum_matches_weighted_window() {
     let compiled =
         compile(&with_interval("plot(ma(close, 3, ma_type.wma))")).expect("script compiles");

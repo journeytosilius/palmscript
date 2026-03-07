@@ -2026,6 +2026,33 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::MaOscillator => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() >= 2 {
+                validate_min_window_literal(callee, &args[1], 2, diagnostics);
+            }
+            if args.len() >= 3 {
+                validate_min_window_literal(callee, &args[2], 2, diagnostics);
+            }
+            if args.len() == 4 && !matches!(arg_info[3].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the fourth argument"),
+                    args[3].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
         BuiltinKind::IndicatorTuple => {
             let series_info = arg_info[0];
             if !series_info.ty.is_series_numeric() {
@@ -2377,6 +2404,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         BuiltinKind::BarsSince
         | BuiltinKind::Indicator
         | BuiltinKind::MovingAverage
+        | BuiltinKind::MaOscillator
         | BuiltinKind::Change
         | BuiltinKind::Roc
         | BuiltinKind::Highest
@@ -3048,7 +3076,9 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Mom
             | BuiltinId::Rocp
             | BuiltinId::Rocr
-            | BuiltinId::Rocr100 => {
+            | BuiltinId::Rocr100
+            | BuiltinId::Apo
+            | BuiltinId::Ppo => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3398,6 +3428,38 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::MaOscillator => {
+                let fast = args.get(1).and_then(literal_window).unwrap_or(12);
+                let slow = args.get(2).and_then(literal_window).unwrap_or(26);
+                self.emit_series_ref(&args[0], fast.max(slow).max(2), expr_info, user_calls);
+                if let Some(fast_expr) = args.get(1) {
+                    self.emit_expr(fast_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(12.0, expr.span);
+                }
+                if let Some(slow_expr) = args.get(2) {
+                    self.emit_expr(slow_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(26.0, expr.span);
+                }
+                if let Some(ma_type) = args.get(3) {
+                    self.emit_expr(ma_type, expr_info, user_calls);
+                } else {
+                    let index = self.push_constant(Value::MaType(MaType::Sma));
+                    self.emit(
+                        Instruction::new(OpCode::LoadConst)
+                            .with_a(index)
+                            .with_span(expr.span),
+                    );
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );
