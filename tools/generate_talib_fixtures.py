@@ -181,6 +181,8 @@ class TalibOracle:
     ) -> list[list[float | None]]:
         if family == "unary":
             return [self.call_unary(function, inputs[0])]
+        if family == "unary_index":
+            return [self.call_unary_index(function, inputs[0])]
         if family == "binary":
             return [self.call_binary(function, inputs[0], inputs[1])]
         if family == "ternary":
@@ -252,6 +254,10 @@ class TalibOracle:
             return self.call_stochf(inputs[0], inputs[1], inputs[2], int_options[0], int_options[1], ma_type or "sma")
         if family == "stochrsi":
             return self.call_stochrsi(inputs[0], int_options[0], int_options[1], int_options[2], ma_type or "sma")
+        if family == "cycle_tuple":
+            return self.call_cycle_tuple(function, inputs[0])
+        if family == "mama":
+            return self.call_mama(inputs[0], float_options[0], float_options[1])
         raise RuntimeError(f"unsupported oracle family {family}")
 
     def call_unary(self, function: str, input0: list[float]) -> list[float | None]:
@@ -261,6 +267,10 @@ class TalibOracle:
     def call_binary(self, function: str, input0: list[float], input1: list[float]) -> list[float | None]:
         c_name = function.upper()
         return self._call_2in_1out_0opt(c_name, input0, input1)
+
+    def call_unary_index(self, function: str, input0: list[float]) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_1in_1out_0opt_index(c_name, input0)
 
     def call_ternary(
         self,
@@ -492,6 +502,15 @@ class TalibOracle:
         c_name = function.upper()
         return self._call_4in_1out_2int(c_name, input0, input1, input2, input3, fast_period, slow_period)
 
+    def call_cycle_tuple(self, function: str, input0: list[float]) -> list[list[float | None]]:
+        c_name = function.upper()
+        return self._call_1in_2out_0opt(c_name, input0)
+
+    def call_mama(
+        self, input0: list[float], fast_limit: float, slow_limit: float
+    ) -> list[list[float | None]]:
+        return self._call_1in_2out_2real("MAMA", input0, fast_limit, slow_limit)
+
     def _call_1in_1out_0opt(self, c_name: str, input0: list[float]) -> list[float | None]:
         lookback = self._lookup_void(f"TA_{c_name}_Lookback")
         func = getattr(self.lib, f"TA_{c_name}")
@@ -504,6 +523,19 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_1out(func, lookback, [input0])
+
+    def _call_1in_1out_0opt_index(self, c_name: str, input0: list[float]) -> list[float | None]:
+        lookback = self._lookup_void(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        return self._invoke_1out_int(func, lookback, [input0])
 
     def _call_1in_1out_1int(self, c_name: str, input0: list[float], opt0: int) -> list[float | None]:
         lookback = self._lookup_int(f"TA_{c_name}_Lookback")
@@ -691,6 +723,38 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_2out(func, lookback, [input0], [opt0])
+
+    def _call_1in_2out_0opt(self, c_name: str, input0: list[float]) -> list[list[float | None]]:
+        lookback = self._lookup_void(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0])
+
+    def _call_1in_2out_2real(
+        self, c_name: str, input0: list[float], opt0: float, opt1: float
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_2real(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0], [opt0, opt1])
 
     def _call_1in_2out_4int(
         self, c_name: str, input0: list[float], opt0: int, opt1: int, opt2: int, opt3: int
@@ -1442,6 +1506,7 @@ def fixture_cases() -> list[Case]:
             Case("kama_default", script_for_single_export("value", "kama(close)"), ("value",), "window", "kama", epsilon=5e-3, input_fields=("close",), int_options=(30,)),
             Case("t3_default", script_for_single_export("value", "t3(close)"), ("value",), "window_factor", "t3", epsilon=5e-3, input_fields=("close",), int_options=(5,), float_options=(0.7,)),
             Case("trix_default", script_for_single_export("value", "trix(close)"), ("value",), "window", "trix", input_fields=("close",), int_options=(30,)),
+            Case("ma_close_5_mama", script_for_single_export("value", "ma(close, 5, ma_type.mama)"), ("value",), "ma", "ma", input_fields=("close",), int_options=(5,), ma_type="mama"),
             Case(
                 "accbands_default",
                 script_for_tuple_exports(("upper", "middle", "lower"), ("u", "m", "l"), "accbands(high, low, close)"),
@@ -1521,6 +1586,35 @@ def fixture_cases() -> list[Case]:
                 input_fields=("close",),
                 int_options=(14, 5, 3),
                 ma_type="sma",
+            ),
+            Case("ht_dcperiod_default", script_for_single_export("value", "ht_dcperiod(close)"), ("value",), "unary", "ht_dcperiod", input_fields=("close",)),
+            Case("ht_dcphase_default", script_for_single_export("value", "ht_dcphase(close)"), ("value",), "unary", "ht_dcphase", input_fields=("close",)),
+            Case(
+                "ht_phasor_default",
+                script_for_tuple_exports(("inphase", "quadrature"), ("i", "q"), "ht_phasor(close)"),
+                ("inphase", "quadrature"),
+                "cycle_tuple",
+                "ht_phasor",
+                input_fields=("close",),
+            ),
+            Case(
+                "ht_sine_default",
+                script_for_tuple_exports(("sine", "lead_sine"), ("s", "l"), "ht_sine(close)"),
+                ("sine", "lead_sine"),
+                "cycle_tuple",
+                "ht_sine",
+                input_fields=("close",),
+            ),
+            Case("ht_trendline_default", script_for_single_export("value", "ht_trendline(close)"), ("value",), "unary", "ht_trendline", input_fields=("close",)),
+            Case("ht_trendmode_default", script_for_single_export("value", "ht_trendmode(close)"), ("value",), "unary_index", "ht_trendmode", input_fields=("close",)),
+            Case(
+                "mama_default",
+                script_for_tuple_exports(("mama", "fama"), ("m", "f"), "mama(close)"),
+                ("mama", "fama"),
+                "mama",
+                "mama",
+                input_fields=("close",),
+                float_options=(0.5, 0.05),
             ),
         ]
     )

@@ -15,10 +15,12 @@ use crate::indicators::{
     calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
     calculate_sum, calculate_trange, calculate_var, calculate_willr, calculate_wma, AccbandsState,
     AdOscState, AdState, BarsSinceState, BbandsState, CmoState, CumState, DirectionalKind,
-    DirectionalState, DmKind, DmState, EmaState, FallingState, HighestState, IndicatorState,
-    LowestState, MacdExtState, MacdState, MavpState, MovingAverageState, ObvState, OscillatorKind,
-    PriceOscillatorState, RegressionOutput, RisingState, RsiState, SarConfig, SarState, SmaState,
-    StochFastState, StochRsiState, StochState, TrixState, UnaryMathTransform, ValueWhenState,
+    DirectionalState, DmKind, DmState, EmaState, FallingState, HighestState, HtDcPeriodState,
+    HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState, HtTrendlineState, IndicatorState,
+    LowestState, MacdExtState, MacdState, MamaState, MavpState, MovingAverageState, ObvState,
+    OscillatorKind, PriceOscillatorState, RegressionOutput, RisingState, RsiState, SarConfig,
+    SarState, SmaState, StochFastState, StochRsiState, StochState, TrixState, UnaryMathTransform,
+    ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -530,6 +532,13 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Stoch => self.call_stoch(callsite, arity, args, pc),
             BuiltinId::Stochf => self.call_stochf(callsite, arity, args, pc),
             BuiltinId::Stochrsi => self.call_stochrsi(callsite, arity, args, pc),
+            BuiltinId::HtDcPeriod => self.call_ht_dcperiod(callsite, arity, args, pc),
+            BuiltinId::HtDcPhase => self.call_ht_dcphase(callsite, arity, args, pc),
+            BuiltinId::HtPhasor => self.call_ht_phasor(callsite, arity, args, pc),
+            BuiltinId::HtSine => self.call_ht_sine(callsite, arity, args, pc),
+            BuiltinId::HtTrendline => self.call_ht_trendline(callsite, arity, args, pc),
+            BuiltinId::HtTrendmode => self.call_ht_trendmode(callsite, arity, args, pc),
+            BuiltinId::Mama => self.call_mama(callsite, arity, args, pc),
             BuiltinId::Obv => self.call_obv(callsite, arity, args, pc),
             BuiltinId::Trange => self.call_trange(arity, args, pc),
             BuiltinId::Wma => self.call_wma(arity, args, pc),
@@ -757,12 +766,6 @@ impl<'a> VmEngine<'a> {
             });
         }
         let ma_type = expect_ma_type(args[2].clone(), pc)?;
-        if matches!(ma_type, MaType::Mama) {
-            return Err(RuntimeError::UnsupportedMaType {
-                builtin: "ma",
-                ma_type: ma_type.as_str(),
-            });
-        }
         let series_slot = series_ref(args[0].clone(), pc)?;
         let window = expect_window(args[1].clone(), pc)?;
         let key = (BuiltinId::Ma, callsite);
@@ -995,12 +998,6 @@ impl<'a> VmEngine<'a> {
         let deviations_up = expect_f64(args[2].clone(), pc)?;
         let deviations_down = expect_f64(args[3].clone(), pc)?;
         let ma_type = expect_ma_type(args[4].clone(), pc)?;
-        if matches!(ma_type, MaType::Mama) {
-            return Err(RuntimeError::UnsupportedMaType {
-                builtin: "bbands",
-                ma_type: ma_type.as_str(),
-            });
-        }
         let key = (BuiltinId::Bbands, callsite);
         let mut state = self
             .indicator_state
@@ -1093,9 +1090,6 @@ impl<'a> VmEngine<'a> {
         let slow_ma = expect_ma_type(args[4].clone(), pc)?;
         let signal = expect_window(args[5].clone(), pc)?;
         let signal_ma = expect_ma_type(args[6].clone(), pc)?;
-        reject_mama("macdext", fast_ma)?;
-        reject_mama("macdext", slow_ma)?;
-        reject_mama("macdext", signal_ma)?;
         let key = (BuiltinId::Macdext, callsite);
         let mut state = self
             .indicator_state
@@ -1136,7 +1130,6 @@ impl<'a> VmEngine<'a> {
         let min_period = expect_window(args[2].clone(), pc)?;
         let max_period = expect_window(args[3].clone(), pc)?;
         let ma_type = expect_ma_type(args[4].clone(), pc)?;
-        reject_mama("mavp", ma_type)?;
         let (min_period, max_period) = if max_period < min_period {
             (max_period, min_period)
         } else {
@@ -1281,8 +1274,6 @@ impl<'a> VmEngine<'a> {
         let slow_k_ma = expect_ma_type(args[5].clone(), pc)?;
         let slow_d = expect_window(args[6].clone(), pc)?;
         let slow_d_ma = expect_ma_type(args[7].clone(), pc)?;
-        reject_mama("stoch", slow_k_ma)?;
-        reject_mama("stoch", slow_d_ma)?;
         let key = (BuiltinId::Stoch, callsite);
         let mut state = self
             .indicator_state
@@ -1332,7 +1323,6 @@ impl<'a> VmEngine<'a> {
         let fast_k = expect_window(args[3].clone(), pc)?;
         let fast_d = expect_window(args[4].clone(), pc)?;
         let fast_d_ma = expect_ma_type(args[5].clone(), pc)?;
-        reject_mama("stochf", fast_d_ma)?;
         let key = (BuiltinId::Stochf, callsite);
         let mut state = self
             .indicator_state
@@ -1381,7 +1371,6 @@ impl<'a> VmEngine<'a> {
         let fast_k = expect_window(args[2].clone(), pc)?;
         let fast_d = expect_window(args[3].clone(), pc)?;
         let fast_d_ma = expect_ma_type(args[4].clone(), pc)?;
-        reject_mama("stochrsi", fast_d_ma)?;
         let key = (BuiltinId::Stochrsi, callsite);
         let mut state = self
             .indicator_state
@@ -1399,6 +1388,252 @@ impl<'a> VmEngine<'a> {
                     .get(series_slot)
                     .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
                 state.update(series, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ht_dcperiod(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ht_dcperiod",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let key = (BuiltinId::HtDcPeriod, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::HtDcPeriod(Box::new(HtDcPeriodState::new())));
+        let result = match &mut state {
+            IndicatorState::HtDcPeriod(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ht_dcphase(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ht_dcphase",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let key = (BuiltinId::HtDcPhase, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::HtDcPhase(Box::new(HtDcPhaseState::new())));
+        let result = match &mut state {
+            IndicatorState::HtDcPhase(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ht_phasor(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ht_phasor",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let key = (BuiltinId::HtPhasor, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::HtPhasor(Box::new(HtPhasorState::new())));
+        let result = match &mut state {
+            IndicatorState::HtPhasor(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ht_sine(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ht_sine",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let key = (BuiltinId::HtSine, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::HtSine(Box::new(HtSineState::new())));
+        let result = match &mut state {
+            IndicatorState::HtSine(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ht_trendline(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ht_trendline",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let key = (BuiltinId::HtTrendline, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::HtTrendline(Box::new(
+                HtTrendlineState::new(),
+            )));
+        let result = match &mut state {
+            IndicatorState::HtTrendline(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ht_trendmode(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ht_trendmode",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let key = (BuiltinId::HtTrendmode, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::HtTrendMode(Box::new(
+                HtTrendModeState::new(),
+            )));
+        let result = match &mut state {
+            IndicatorState::HtTrendMode(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_mama(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "mama",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let fast_limit = expect_f64(args[1].clone(), pc)?;
+        let slow_limit = expect_f64(args[2].clone(), pc)?;
+        let key = (BuiltinId::Mama, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Mama(Box::new(MamaState::new(
+                fast_limit, slow_limit,
+            ))));
+        let result = match &mut state {
+            IndicatorState::Mama(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
             }
             _ => unreachable!(),
         };
@@ -2783,17 +3018,6 @@ fn expect_ma_type(value: Value, pc: usize) -> Result<MaType, RuntimeError> {
             expected: "ma-type",
             found: other.type_name(),
         }),
-    }
-}
-
-fn reject_mama(builtin: &'static str, ma_type: MaType) -> Result<(), RuntimeError> {
-    if matches!(ma_type, MaType::Mama) {
-        Err(RuntimeError::UnsupportedMaType {
-            builtin,
-            ma_type: ma_type.as_str(),
-        })
-    } else {
-        Ok(())
     }
 }
 

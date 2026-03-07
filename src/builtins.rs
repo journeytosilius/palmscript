@@ -71,6 +71,7 @@ pub enum BuiltinKind {
     ParabolicSar,
     ParabolicSarExt,
     RollingHighLowCloseBands,
+    AdaptiveCycleTuple,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -195,10 +196,17 @@ pub enum BuiltinId {
     Stoch = 116,
     Stochf = 117,
     Stochrsi = 118,
+    HtDcPeriod = 119,
+    HtDcPhase = 120,
+    HtPhasor = 121,
+    HtSine = 122,
+    HtTrendline = 123,
+    HtTrendmode = 124,
+    Mama = 125,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 119] = [
+    pub const RESERVED: [Self; 126] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -318,9 +326,16 @@ impl BuiltinId {
         Self::Stoch,
         Self::Stochf,
         Self::Stochrsi,
+        Self::HtDcPeriod,
+        Self::HtDcPhase,
+        Self::HtPhasor,
+        Self::HtSine,
+        Self::HtTrendline,
+        Self::HtTrendmode,
+        Self::Mama,
     ];
 
-    pub const CALLABLE: [Self; 113] = [
+    pub const CALLABLE: [Self; 120] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -434,6 +449,13 @@ impl BuiltinId {
         Self::Stoch,
         Self::Stochf,
         Self::Stochrsi,
+        Self::HtDcPeriod,
+        Self::HtDcPhase,
+        Self::HtPhasor,
+        Self::HtSine,
+        Self::HtTrendline,
+        Self::HtTrendmode,
+        Self::Mama,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -557,6 +579,13 @@ impl BuiltinId {
             "stoch" => Some(Self::Stoch),
             "stochf" => Some(Self::Stochf),
             "stochrsi" => Some(Self::Stochrsi),
+            "ht_dcperiod" => Some(Self::HtDcPeriod),
+            "ht_dcphase" => Some(Self::HtDcPhase),
+            "ht_phasor" => Some(Self::HtPhasor),
+            "ht_sine" => Some(Self::HtSine),
+            "ht_trendline" => Some(Self::HtTrendline),
+            "ht_trendmode" => Some(Self::HtTrendmode),
+            "mama" => Some(Self::Mama),
             _ => None,
         }
     }
@@ -682,6 +711,13 @@ impl BuiltinId {
             116 => Some(Self::Stoch),
             117 => Some(Self::Stochf),
             118 => Some(Self::Stochrsi),
+            119 => Some(Self::HtDcPeriod),
+            120 => Some(Self::HtDcPhase),
+            121 => Some(Self::HtPhasor),
+            122 => Some(Self::HtSine),
+            123 => Some(Self::HtTrendline),
+            124 => Some(Self::HtTrendmode),
+            125 => Some(Self::Mama),
             _ => None,
         }
     }
@@ -807,6 +843,13 @@ impl BuiltinId {
             Self::Stoch => "stoch",
             Self::Stochf => "stochf",
             Self::Stochrsi => "stochrsi",
+            Self::HtDcPeriod => "ht_dcperiod",
+            Self::HtDcPhase => "ht_dcphase",
+            Self::HtPhasor => "ht_phasor",
+            Self::HtSine => "ht_sine",
+            Self::HtTrendline => "ht_trendline",
+            Self::HtTrendmode => "ht_trendmode",
+            Self::Mama => "mama",
         }
     }
 
@@ -902,6 +945,11 @@ impl BuiltinId {
             Self::Sarext => BuiltinKind::ParabolicSarExt,
             Self::Stoch | Self::Stochf => BuiltinKind::RollingHighLowCloseTuple,
             Self::Stochrsi => BuiltinKind::RollingSingleInputTupleMa,
+            Self::HtDcPeriod | Self::HtDcPhase | Self::HtTrendline | Self::HtTrendmode => {
+                BuiltinKind::RollingSingleInput
+            }
+            Self::HtPhasor | Self::HtSine => BuiltinKind::RollingSingleInputTuple,
+            Self::Mama => BuiltinKind::AdaptiveCycleTuple,
         }
     }
 
@@ -1015,6 +1063,13 @@ impl BuiltinId {
             Self::Stoch => BuiltinArity::Range { min: 3, max: 8 },
             Self::Stochf => BuiltinArity::Range { min: 3, max: 6 },
             Self::Stochrsi => BuiltinArity::Range { min: 1, max: 5 },
+            Self::HtDcPeriod
+            | Self::HtDcPhase
+            | Self::HtPhasor
+            | Self::HtSine
+            | Self::HtTrendline
+            | Self::HtTrendmode => BuiltinArity::Exact(1),
+            Self::Mama => BuiltinArity::Range { min: 1, max: 3 },
         }
     }
 
@@ -1082,6 +1137,13 @@ impl BuiltinId {
             Self::Stoch => "stoch(high, low, close[, fast_k=5[, slow_k=3[, slow_k_ma=ma_type.sma[, slow_d=3[, slow_d_ma=ma_type.sma]]]]])",
             Self::Stochf => "stochf(high, low, close[, fast_k=5[, fast_d=3[, fast_d_ma=ma_type.sma]]])",
             Self::Stochrsi => "stochrsi(series[, time_period=14[, fast_k=5[, fast_d=3[, fast_d_ma=ma_type.sma]]]])",
+            Self::HtDcPeriod => "ht_dcperiod(series)",
+            Self::HtDcPhase => "ht_dcphase(series)",
+            Self::HtPhasor => "ht_phasor(series)",
+            Self::HtSine => "ht_sine(series)",
+            Self::HtTrendline => "ht_trendline(series)",
+            Self::HtTrendmode => "ht_trendmode(series)",
+            Self::Mama => "mama(series[, fast_limit=0.5[, slow_limit=0.05]])",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1212,6 +1274,13 @@ impl BuiltinId {
             Self::Stoch => "Stochastic oscillator tuple (slowk, slowd).",
             Self::Stochf => "Fast stochastic oscillator tuple (fastk, fastd).",
             Self::Stochrsi => "Stochastic RSI tuple (fastk, fastd).",
+            Self::HtDcPeriod => "Hilbert Transform dominant cycle period.",
+            Self::HtDcPhase => "Hilbert Transform dominant cycle phase.",
+            Self::HtPhasor => "Hilbert Transform phasor components tuple (inphase, quadrature).",
+            Self::HtSine => "Hilbert Transform sine wave tuple (sine, lead_sine).",
+            Self::HtTrendline => "Hilbert Transform instantaneous trendline.",
+            Self::HtTrendmode => "Hilbert Transform trend versus cycle mode.",
+            Self::Mama => "MESA Adaptive Moving Average tuple (mama, fama).",
             Self::Ma => "TA-Lib moving average with typed ma_type selection.",
             Self::Apo => "Absolute price oscillator using a typed moving-average family.",
             Self::Ppo => "Percentage price oscillator using a typed moving-average family.",

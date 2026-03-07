@@ -37,7 +37,7 @@ Current typed enum surface:
 - `ma_type.mama`
 - `ma_type.t3`
 
-Only part of that enum surface is executable today through TA-Lib-style builtins; see [TA-Lib Surface](ta-lib.md).
+All current `ma_type` variants are executable through the TA-Lib-style moving-average builtins; see [TA-Lib Surface](ta-lib.md).
 
 ## Series Types
 

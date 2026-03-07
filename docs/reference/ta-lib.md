@@ -35,6 +35,7 @@ Implemented TA-Lib-style builtins:
 - math operators: `add`, `div`, `mult`, `sub`, `max`, `min`, `sum`, `maxindex`, `minindex`, `minmax`, `minmaxindex`
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
 - overlap helpers: `accbands`, `bbands`, `dema`, `ema`, `kama`, `ma`, `mavp`, `midpoint`, `midprice`, `sar`, `sarext`, `sma`, `t3`, `tema`, `trima`, `wma`
+- cycle helpers: `ht_dcperiod`, `ht_dcphase`, `ht_phasor`, `ht_sine`, `ht_trendline`, `ht_trendmode`, `mama`
 - statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`, `beta`, `correl`
 - momentum helpers: `adx`, `adxr`, `apo`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `dx`, `imi`, `mfi`, `minus_di`, `minus_dm`, `mom`, `plus_di`, `plus_dm`, `ppo`, `roc`, `rocp`, `rocr`, `rocr100`, `stoch`, `stochf`, `stochrsi`, `trix`, `willr`
 - volume and volatility helpers: `ad`, `adosc`, `atr`, `natr`, `obv`, `trange`
@@ -51,7 +52,7 @@ Current `ma_type` variants:
 - `ma_type.mama`
 - `ma_type.t3`
 
-All `ma_type` variants except `ma_type.mama` are currently executable through `ma(...)`, `apo(...)`, `ppo(...)`, `bbands(...)`, `macdext(...)`, `mavp(...)`, `stoch(...)`, `stochf(...)`, and `stochrsi(...)`. `ma_type.mama` remains reserved for the later Hilbert/MAMA batch.
+All `ma_type` variants are currently executable through `ma(...)`, `apo(...)`, `ppo(...)`, `bbands(...)`, `macdext(...)`, `mavp(...)`, `stoch(...)`, `stochf(...)`, and `stochrsi(...)`. For the generic TA-Lib moving-average family, `ma_type.mama` follows upstream TA-Lib behavior: it ignores the explicit `length` parameter and uses MAMA defaults `fast_limit=0.5` and `slow_limit=0.05`.
 
 Current TA-Lib defaults now honored in the executable surface:
 
@@ -78,6 +79,7 @@ Current TA-Lib defaults now honored in the executable surface:
 - `cmo` defaults to `length=14`
 - `dema`, `tema`, `trima`, `kama`, and `trix` default to `length=30`
 - `t3` defaults to `length=5` and `volume_factor=0.7`
+- `mama` defaults to `fast_limit=0.5` and `slow_limit=0.05`
 - `mom`, `roc`, `rocp`, `rocr`, and `rocr100` default to `length=10`
 - `stoch` defaults to `fast_k=5`, `slow_k=3`, `slow_d=3`, and `ma_type.sma` for both smoothing stages
 - `stochf` defaults to `fast_k=5`, `fast_d=3`, and `ma_type.sma`

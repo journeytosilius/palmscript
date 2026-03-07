@@ -900,3 +900,50 @@ fn golden_export_series_shape_matches() {
     assert_eq!(json["exports"][0]["points"].as_array().unwrap().len(), 20);
     assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
 }
+
+#[test]
+fn golden_ht_sine_tuple_exports_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (sine_value, lead_value) = ht_sine(close)\nexport sine = sine_value\nexport lead = lead_value\nplot(0)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["exports"][0]["name"], json!("sine"));
+    assert_eq!(json["exports"][1]["name"], json!("lead"));
+    assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
+    assert_eq!(json["exports"][1]["points"][0]["value"], json!("NA"));
+}
+
+#[test]
+fn golden_mama_tuple_exports_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (mama_value, fama_value) = mama(close)\nexport mama = mama_value\nexport fama = fama_value\nplot(0)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["exports"][0]["name"], json!("mama"));
+    assert_eq!(json["exports"][1]["name"], json!("fama"));
+    assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
+    assert_eq!(json["exports"][1]["points"][0]["value"], json!("NA"));
+}
+
+#[test]
+fn golden_ma_type_mama_shape_matches() {
+    let compiled = compile(&with_interval("plot(ma(close, 5, ma_type.mama))")).expect("compiles");
+    let bars = bars_with_spacing(
+        JAN_1_2024_UTC_MS,
+        MINUTE_MS,
+        &(0..60)
+            .map(|index| 100.0 + index as f64)
+            .collect::<Vec<_>>(),
+    );
+    let outputs = run(&compiled, &bars, VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert!(json["plots"][0]["points"][59]["value"].is_number());
+}

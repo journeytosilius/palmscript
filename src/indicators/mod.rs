@@ -5,6 +5,7 @@
 
 pub(crate) mod advanced_ma;
 pub(crate) mod cmo;
+pub(crate) mod cycle;
 pub(crate) mod directional;
 pub(crate) mod ema;
 pub(crate) mod event;
@@ -26,6 +27,10 @@ pub(crate) use advanced_ma::{
     AccbandsState, BbandsState, MavpState, MovingAverageState, T3State, TrixState,
 };
 pub(crate) use cmo::CmoState;
+pub(crate) use cycle::{
+    HtDcPeriodState, HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState,
+    HtTrendlineState, MamaAverageState, MamaState,
+};
 pub(crate) use directional::{DirectionalKind, DirectionalState, DmKind, DmState};
 pub(crate) use ema::EmaState;
 pub(crate) use event::{BarsSinceState, CumState, ValueWhenState};
@@ -83,4 +88,11 @@ pub(crate) enum IndicatorState {
     StochFast(Box<StochFastState>),
     StochRsi(Box<StochRsiState>),
     Sar(Box<SarState>),
+    HtDcPeriod(Box<HtDcPeriodState>),
+    HtDcPhase(Box<HtDcPhaseState>),
+    HtPhasor(Box<HtPhasorState>),
+    HtSine(Box<HtSineState>),
+    HtTrendline(Box<HtTrendlineState>),
+    HtTrendMode(Box<HtTrendModeState>),
+    Mama(Box<MamaState>),
 }

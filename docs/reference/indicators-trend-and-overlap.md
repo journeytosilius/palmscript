@@ -32,8 +32,8 @@ Rules:
 - the second argument must be a positive integer literal
 - the third argument must be a typed `ma_type.<variant>` value
 - the result type is `series<float>`
-- `ma_type.sma`, `ma_type.ema`, `ma_type.wma`, `ma_type.dema`, `ma_type.tema`, `ma_type.trima`, `ma_type.kama`, and `ma_type.t3` are implemented
-- `ma_type.mama` remains reserved for a later batch
+- all `ma_type` variants are implemented
+- `ma_type.mama` matches upstream TA-Lib behavior and ignores the explicit `length` parameter, using MAMA defaults `fast_limit=0.5` and `slow_limit=0.05`
 
 ## `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])` and `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
 
@@ -126,6 +126,28 @@ Rules:
 - the moving-average family is the same executable `ma_type` subset as `ma(...)`
 - `periods` is clamped per bar into `[minimum_period, maximum_period]`
 - the result type is `series<float>`
+
+## `mama(series[, fast_limit=0.5[, slow_limit=0.05]])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- `fast_limit` and `slow_limit` default to `0.5` and `0.05`
+- if provided, both optional arguments must be numeric scalars
+- the result type is a 2-tuple of series values in TA-Lib order: `(mama, fama)`
+- the result must be destructured before further use
+
+## `ht_dcperiod(series)`, `ht_dcphase(series)`, `ht_phasor(series)`, `ht_sine(series)`, `ht_trendline(series)`, and `ht_trendmode(series)`
+
+Rules:
+
+- each function requires exactly one `series<float>` argument
+- `ht_dcperiod`, `ht_dcphase`, and `ht_trendline` return `series<float>`
+- `ht_trendmode` returns `series<float>` with TA-Lib's `0`/`1` trend-mode values
+- `ht_phasor` returns a 2-tuple `(inphase, quadrature)`
+- `ht_sine` returns a 2-tuple `(sine, lead_sine)`
+- tuple results must be destructured before further use
+- these indicators follow TA-Lib's Hilbert-transform warmup behavior and yield `na` until the upstream lookback is satisfied
 
 ## `sar(high, low[, acceleration=0.02[, maximum=0.2]])` and `sarext(high, low[, ...])`
 

@@ -244,7 +244,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 37] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 36] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -554,14 +554,6 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "tuple-valued expressions must be destructured with `let (...) = ...`",
-            )],
-        ),
-        (
-            "type_unimplemented_talib_builtin_reports_reserved_catalog",
-            with_interval("let (sine, lead) = ht_sine(close)\nplot(0)"),
-            vec![expected(
-                DiagnosticKind::Type,
-                "builtin `ht_sine` is reserved by the TA-Lib catalog but is not implemented yet",
             )],
         ),
         (

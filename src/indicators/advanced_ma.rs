@@ -5,7 +5,7 @@ use crate::talib::MaType;
 use crate::types::Value;
 use crate::vm::SeriesBuffer;
 
-use super::{calculate_stddev, calculate_wma, EmaState, SmaState};
+use super::{calculate_stddev, calculate_wma, EmaState, MamaAverageState, SmaState};
 
 #[derive(Clone, Debug)]
 pub(crate) enum MovingAverageState {
@@ -16,6 +16,7 @@ pub(crate) enum MovingAverageState {
     Tema(TemaState),
     Trima(WindowCacheState),
     Kama(KamaState),
+    Mama(Box<MamaAverageState>),
     T3(Box<T3State>),
 }
 
@@ -29,20 +30,15 @@ impl MovingAverageState {
             MaType::Tema => Self::Tema(TemaState::new(window)),
             MaType::Trima => Self::Trima(WindowCacheState::new(window)),
             MaType::Kama => Self::Kama(KamaState::new(window)),
+            MaType::Mama => Self::Mama(Box::new(MamaAverageState::new())),
             MaType::T3 => Self::T3(Box::new(T3State::new(window, 0.7))),
-            MaType::Mama => {
-                return Err(RuntimeError::UnsupportedMaType {
-                    builtin: "ma-type",
-                    ma_type: "mama",
-                })
-            }
         })
     }
 
     pub(crate) const fn input_history(window: usize, ma_type: MaType) -> usize {
         match ma_type {
             MaType::Kama => window + 1,
-            MaType::Mama => window,
+            MaType::Mama => 4,
             _ => window,
         }
     }
@@ -63,6 +59,7 @@ impl MovingAverageState {
             Self::Tema(state) => state.update(buffer, pc),
             Self::Trima(cache) => cache.update(buffer, pc, calculate_trima),
             Self::Kama(state) => state.update(buffer, pc),
+            Self::Mama(state) => state.update(buffer, pc),
             Self::T3(state) => state.update(buffer, pc),
         }
     }
