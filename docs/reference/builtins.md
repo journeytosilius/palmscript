@@ -45,6 +45,13 @@ PalmScript currently provides these callable builtins:
 - `minindex(series[, length=30])`
 - `minmax(series[, length=30])`
 - `minmaxindex(series[, length=30])`
+- `stddev(series[, length=5[, deviations=1.0]])`
+- `var(series[, length=5[, deviations=1.0]])`
+- `linearreg(series[, length=14])`
+- `linearreg_angle(series[, length=14])`
+- `linearreg_intercept(series[, length=14])`
+- `linearreg_slope(series[, length=14])`
+- `tsf(series[, length=14])`
 - `obv(series, volume)`
 - `trange(high, low, close)`
 - `plot(value)`
@@ -196,11 +203,18 @@ These builtins are currently executable:
 - `minindex(series[, length=30])`
 - `minmax(series[, length=30])`
 - `minmaxindex(series[, length=30])`
+- `stddev(series[, length=5[, deviations=1.0]])`
+- `var(series[, length=5[, deviations=1.0]])`
+- `linearreg(series[, length=14])`
+- `linearreg_angle(series[, length=14])`
+- `linearreg_intercept(series[, length=14])`
+- `linearreg_slope(series[, length=14])`
+- `tsf(series[, length=14])`
 
 Rules:
 
 - the first argument must be `series<float>`
-- the optional `length` must be an integer literal greater than or equal to `2`
+- the optional `length` must be an integer literal that satisfies the TA-Lib minimum for that builtin
 - omitted `length` uses the TA-Lib default for that builtin
 - `wma` and `avgdev` return `series<float>`
 - `maxindex` and `minindex` return `series<float>` containing the absolute bar index as `f64`
@@ -209,6 +223,16 @@ Rules:
 - tuple-valued outputs must be destructured before further use
 - if insufficient history exists, the current sample is `na`
 - if the required window contains `na`, the current sample is `na`
+
+Additional statistics rules:
+
+- `stddev` defaults to `length=5` and `deviations=1.0`
+- `stddev` requires `length >= 2`
+- `var` defaults to `length=5`, allows `length >= 1`, and ignores the `deviations` argument to match TA-Lib
+- `stddev` multiplies the square root of the rolling variance by `deviations`
+- `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, and `tsf` default to `length=14`
+- `linearreg` returns the fitted value at the current bar
+- `tsf` returns the one-step-ahead forecast
 
 ## Relational Helpers
 

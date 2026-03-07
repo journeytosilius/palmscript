@@ -71,6 +71,10 @@ impl InferredType {
         matches!(self, Self::Concrete(Type::F64 | Type::SeriesF64) | Self::Na)
     }
 
+    fn is_scalar_numeric(self) -> bool {
+        matches!(self, Self::Concrete(Type::F64) | Self::Na)
+    }
+
     fn is_series_numeric(self) -> bool {
         matches!(self, Self::Concrete(Type::SeriesF64))
     }
@@ -2070,6 +2074,35 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::RollingSingleInputFactor => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() >= 2 {
+                let minimum = if matches!(builtin, BuiltinId::Var) {
+                    1
+                } else {
+                    2
+                };
+                validate_min_window_literal(callee, &args[1], minimum, diagnostics);
+            }
+            if args.len() == 3 && !arg_info[2].ty.is_scalar_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} deviations must be a numeric scalar value"),
+                    args[2].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
         BuiltinKind::RollingSingleInputTuple => {
             let series_info = arg_info[0];
             if !series_info.ty.is_series_numeric() {
@@ -2307,6 +2340,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::Highest
         | BuiltinKind::Lowest
         | BuiltinKind::RollingSingleInput
+        | BuiltinKind::RollingSingleInputFactor
         | BuiltinKind::RollingHighLow
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
@@ -2958,7 +2992,14 @@ impl<'a> Compiler<'a> {
             | BuiltinId::MaxIndex
             | BuiltinId::MinIndex
             | BuiltinId::MinMax
-            | BuiltinId::MinMaxIndex => {
+            | BuiltinId::MinMaxIndex
+            | BuiltinId::Stddev
+            | BuiltinId::Var
+            | BuiltinId::LinearReg
+            | BuiltinId::LinearRegAngle
+            | BuiltinId::LinearRegIntercept
+            | BuiltinId::LinearRegSlope
+            | BuiltinId::Tsf => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3169,6 +3210,11 @@ impl<'a> Compiler<'a> {
                     BuiltinId::Midpoint => 14,
                     BuiltinId::Wma | BuiltinId::MaxIndex | BuiltinId::MinIndex => 30,
                     BuiltinId::Avgdev => 14,
+                    BuiltinId::LinearReg
+                    | BuiltinId::LinearRegAngle
+                    | BuiltinId::LinearRegIntercept
+                    | BuiltinId::LinearRegSlope
+                    | BuiltinId::Tsf => 14,
                     _ => unreachable!(),
                 };
                 let required_history = args
@@ -3185,6 +3231,41 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingSingleInputFactor => {
+                let default_window = 5usize;
+                let minimum = if matches!(builtin, BuiltinId::Var) {
+                    1
+                } else {
+                    2
+                };
+                let required_history = args
+                    .get(1)
+                    .and_then(literal_window)
+                    .unwrap_or(default_window);
+                self.emit_series_ref(
+                    &args[0],
+                    required_history.max(minimum),
+                    expr_info,
+                    user_calls,
+                );
+                if let Some(window) = args.get(1) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(default_window as f64, expr.span);
+                }
+                if let Some(deviations) = args.get(2) {
+                    self.emit_expr(deviations, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(1.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

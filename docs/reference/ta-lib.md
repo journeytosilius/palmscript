@@ -25,7 +25,7 @@ Implemented TA-Lib-style builtins in this change:
 - math operators: `add`, `div`, `mult`, `sub`, `max`, `min`, `sum`, `maxindex`, `minindex`, `minmax`, `minmaxindex`
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
 - overlap helpers: `midpoint`, `midprice`, `wma`
-- statistics helpers: `avgdev`
+- statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`
 - volume and volatility helpers: `obv`, `trange`
 
 Current `ma_type` variants:
@@ -48,6 +48,8 @@ Current TA-Lib defaults now honored in the executable surface:
 - `midpoint` and `midprice` default to a window of `14`
 - `wma`, `maxindex`, `minindex`, `minmax`, and `minmaxindex` default to a window of `30`
 - `avgdev` defaults to a window of `14`
+- `stddev` and `var` default to `length=5`
+- `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, and `tsf` default to `length=14`
 
 Oracle fixture refresh for the implemented subset:
 

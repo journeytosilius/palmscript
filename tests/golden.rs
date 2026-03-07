@@ -359,6 +359,36 @@ fn golden_minmax_tuple_destructuring_shape_matches() {
 }
 
 #[test]
+fn golden_stddev_applies_factor() {
+    let compiled = compile(&with_interval("plot(stddev(close, 5, 2))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][3]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::json!(2.8284271247461903)
+    );
+}
+
+#[test]
+fn golden_linearreg_uses_default_window() {
+    let compiled = compile(&with_interval("plot(linearreg(close))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][12]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][13]["value"],
+        serde_json::json!(113.0)
+    );
+}
+
+#[test]
 fn golden_obv_accumulates_with_direction() {
     let compiled = compile(&with_interval("plot(obv(close, volume))")).expect("compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");

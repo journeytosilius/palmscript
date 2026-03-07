@@ -59,6 +59,7 @@ class Case:
     dataset: str = "oscillating_ohlcv_v1"
     input_fields: tuple[str, ...] = ()
     int_options: tuple[int, ...] = ()
+    float_options: tuple[float, ...] = ()
     ma_type: str | None = None
 
 
@@ -174,6 +175,7 @@ class TalibOracle:
         function: str,
         inputs: list[list[float]],
         int_options: tuple[int, ...],
+        float_options: tuple[float, ...],
         ma_type: str | None,
     ) -> list[list[float | None]]:
         if family == "unary":
@@ -186,6 +188,8 @@ class TalibOracle:
             return [self.call_quaternary(function, inputs[0], inputs[1], inputs[2], inputs[3])]
         if family == "window":
             return [self.call_window(function, inputs[0], int_options[0])]
+        if family == "window_factor":
+            return [self.call_window_factor(function, inputs[0], int_options[0], float_options[0])]
         if family == "window_high_low":
             return [self.call_window_high_low(function, inputs[0], inputs[1], int_options[0])]
         if family == "window_index":
@@ -232,6 +236,12 @@ class TalibOracle:
     def call_window(self, function: str, input0: list[float], time_period: int) -> list[float | None]:
         c_name = function.upper()
         return self._call_1in_1out_1int(c_name, input0, time_period)
+
+    def call_window_factor(
+        self, function: str, input0: list[float], time_period: int, factor: float
+    ) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_1in_1out_1int_1real(c_name, input0, time_period, factor)
 
     def call_window_index(self, function: str, input0: list[float], time_period: int) -> list[float | None]:
         c_name = function.upper()
@@ -318,6 +328,23 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
             ctypes.c_int,
             ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0], [opt0, opt1])
+
+    def _call_1in_1out_1int_1real(
+        self, c_name: str, input0: list[float], opt0: int, opt1: float
+    ) -> list[float | None]:
+        lookback = self._lookup_int_real(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_double,
             ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_int),
             ctypes.POINTER(ctypes.c_double),
@@ -575,6 +602,12 @@ class TalibOracle:
         func.restype = ctypes.c_int
         return func
 
+    def _lookup_int_real(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [ctypes.c_int, ctypes.c_double]
+        func.restype = ctypes.c_int
+        return func
+
     def _lookup_3int(self, name: str):
         func = getattr(self.lib, name)
         func.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
@@ -605,7 +638,14 @@ def render_fixture_document(dataset: list[Bar], oracle: TalibOracle) -> dict:
     cases = []
     for case in fixture_cases():
         inputs = [fields[name] for name in case.input_fields]
-        outputs = oracle.compute(case.family, case.function, inputs, case.int_options, case.ma_type)
+        outputs = oracle.compute(
+            case.family,
+            case.function,
+            inputs,
+            case.int_options,
+            case.float_options,
+            case.ma_type,
+        )
         cases.append(
             {
                 "name": case.name,
@@ -705,6 +745,13 @@ def fixture_cases() -> list[Case]:
             Case("avgdev_default", script_for_single_export("value", "avgdev(close)"), ("value",), "window", "avgdev", input_fields=("close",), int_options=(14,)),
             Case("maxindex_default", script_for_single_export("value", "maxindex(close)"), ("value",), "window_index", "maxindex", input_fields=("close",), int_options=(30,)),
             Case("minindex_default", script_for_single_export("value", "minindex(close)"), ("value",), "window_index", "minindex", input_fields=("close",), int_options=(30,)),
+            Case("stddev_close_5_2", script_for_single_export("value", "stddev(close, 5, 2)"), ("value",), "window_factor", "stddev", input_fields=("close",), int_options=(5,), float_options=(2.0,)),
+            Case("var_close_5_3", script_for_single_export("value", "var(close, 5, 3)"), ("value",), "window_factor", "var", input_fields=("close",), int_options=(5,), float_options=(3.0,)),
+            Case("linearreg_default", script_for_single_export("value", "linearreg(close)"), ("value",), "window", "linearreg", input_fields=("close",), int_options=(14,)),
+            Case("linearreg_angle_default", script_for_single_export("value", "linearreg_angle(close)"), ("value",), "window", "linearreg_angle", input_fields=("close",), int_options=(14,)),
+            Case("linearreg_intercept_default", script_for_single_export("value", "linearreg_intercept(close)"), ("value",), "window", "linearreg_intercept", input_fields=("close",), int_options=(14,)),
+            Case("linearreg_slope_default", script_for_single_export("value", "linearreg_slope(close)"), ("value",), "window", "linearreg_slope", input_fields=("close",), int_options=(14,)),
+            Case("tsf_default", script_for_single_export("value", "tsf(close)"), ("value",), "window", "tsf", input_fields=("close",), int_options=(14,)),
             Case(
                 "minmax_default",
                 "interval 1m\nlet (lo, hi) = minmax(close)\nexport min_value = lo\nexport max_value = hi\nplot(0)",

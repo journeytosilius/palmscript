@@ -9,10 +9,11 @@ use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
-    apply_unary_math, calculate_avgdev, calculate_max_index, calculate_min_index,
-    calculate_min_max, calculate_min_max_index, calculate_sum, calculate_trange, calculate_wma,
-    BarsSinceState, EmaState, FallingState, HighestState, IndicatorState, LowestState, MacdState,
-    ObvState, RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
+    apply_unary_math, calculate_avgdev, calculate_linear_regression, calculate_max_index,
+    calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
+    calculate_sum, calculate_trange, calculate_var, calculate_wma, BarsSinceState, EmaState,
+    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, RegressionOutput,
+    RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -464,6 +465,13 @@ impl<'a> VmEngine<'a> {
             BuiltinId::MinIndex => self.call_min_index(arity, args, pc),
             BuiltinId::MinMax => self.call_min_max(arity, args, pc),
             BuiltinId::MinMaxIndex => self.call_min_max_index(arity, args, pc),
+            BuiltinId::Stddev => self.call_stddev(arity, args, pc),
+            BuiltinId::Var => self.call_var(arity, args, pc),
+            BuiltinId::LinearReg => self.call_linearreg(arity, args, pc),
+            BuiltinId::LinearRegAngle => self.call_linearreg_angle(arity, args, pc),
+            BuiltinId::LinearRegIntercept => self.call_linearreg_intercept(arity, args, pc),
+            BuiltinId::LinearRegSlope => self.call_linearreg_slope(arity, args, pc),
+            BuiltinId::Tsf => self.call_tsf(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -857,6 +865,97 @@ impl<'a> VmEngine<'a> {
         self.call_stateless_window_builtin("minmaxindex", arity, args, pc, calculate_min_max_index)
     }
 
+    fn call_stddev(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_factor_builtin("stddev", arity, args, pc, calculate_stddev)
+    }
+
+    fn call_var(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_factor_builtin("var", arity, args, pc, calculate_var)
+    }
+
+    fn call_linearreg(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("linearreg", arity, args, pc, |buffer, window, pc| {
+            calculate_linear_regression(buffer, window, RegressionOutput::Value, pc)
+        })
+    }
+
+    fn call_linearreg_angle(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin(
+            "linearreg_angle",
+            arity,
+            args,
+            pc,
+            |buffer, window, pc| {
+                calculate_linear_regression(buffer, window, RegressionOutput::Angle, pc)
+            },
+        )
+    }
+
+    fn call_linearreg_intercept(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin(
+            "linearreg_intercept",
+            arity,
+            args,
+            pc,
+            |buffer, window, pc| {
+                calculate_linear_regression(buffer, window, RegressionOutput::Intercept, pc)
+            },
+        )
+    }
+
+    fn call_linearreg_slope(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin(
+            "linearreg_slope",
+            arity,
+            args,
+            pc,
+            |buffer, window, pc| {
+                calculate_linear_regression(buffer, window, RegressionOutput::Slope, pc)
+            },
+        )
+    }
+
+    fn call_tsf(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("tsf", arity, args, pc, |buffer, window, pc| {
+            calculate_linear_regression(buffer, window, RegressionOutput::Forecast, pc)
+        })
+    }
+
     fn call_highest(
         &mut self,
         callsite: u16,
@@ -1115,6 +1214,35 @@ impl<'a> VmEngine<'a> {
             .get(series_slot)
             .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
         calculate(buffer, window, pc)
+    }
+
+    fn call_stateless_window_factor_builtin<F>(
+        &mut self,
+        builtin: &'static str,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        calculate: F,
+    ) -> Result<Value, RuntimeError>
+    where
+        F: FnOnce(&SeriesBuffer, usize, f64, usize) -> Result<Value, RuntimeError>,
+    {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin,
+                expected: 3,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let factor = expect_f64(args[2].clone(), pc)?;
+        self.consume_steps(window.max(1), pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        calculate(buffer, window, factor, pc)
     }
 }
 

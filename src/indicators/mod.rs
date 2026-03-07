@@ -10,6 +10,7 @@ pub(crate) mod macd;
 pub(crate) mod math;
 pub(crate) mod rsi;
 pub(crate) mod sma;
+pub(crate) mod statistics;
 pub(crate) mod volatility;
 pub(crate) mod volume;
 pub(crate) mod wma;
@@ -26,6 +27,9 @@ pub(crate) use math::{
 };
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
+pub(crate) use statistics::{
+    calculate_linear_regression, calculate_stddev, calculate_var, RegressionOutput,
+};
 pub(crate) use volatility::calculate_trange;
 pub(crate) use volume::ObvState;
 pub(crate) use wma::calculate as calculate_wma;

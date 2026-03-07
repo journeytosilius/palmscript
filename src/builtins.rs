@@ -34,6 +34,7 @@ pub enum BuiltinKind {
     NumericBinary,
     PriceTransform,
     RollingSingleInput,
+    RollingSingleInputFactor,
     RollingSingleInputTuple,
     RollingHighLow,
     VolumeIndicator,
@@ -117,10 +118,17 @@ pub enum BuiltinId {
     MinIndex = 60,
     MinMax = 61,
     MinMaxIndex = 62,
+    Stddev = 63,
+    Var = 64,
+    LinearReg = 65,
+    LinearRegAngle = 66,
+    LinearRegIntercept = 67,
+    LinearRegSlope = 68,
+    Tsf = 69,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 63] = [
+    pub const RESERVED: [Self; 70] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -184,9 +192,16 @@ impl BuiltinId {
         Self::MinIndex,
         Self::MinMax,
         Self::MinMaxIndex,
+        Self::Stddev,
+        Self::Var,
+        Self::LinearReg,
+        Self::LinearRegAngle,
+        Self::LinearRegIntercept,
+        Self::LinearRegSlope,
+        Self::Tsf,
     ];
 
-    pub const CALLABLE: [Self; 57] = [
+    pub const CALLABLE: [Self; 64] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -244,6 +259,13 @@ impl BuiltinId {
         Self::MinIndex,
         Self::MinMax,
         Self::MinMaxIndex,
+        Self::Stddev,
+        Self::Var,
+        Self::LinearReg,
+        Self::LinearRegAngle,
+        Self::LinearRegIntercept,
+        Self::LinearRegSlope,
+        Self::Tsf,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -311,6 +333,13 @@ impl BuiltinId {
             "minindex" => Some(Self::MinIndex),
             "minmax" => Some(Self::MinMax),
             "minmaxindex" => Some(Self::MinMaxIndex),
+            "stddev" => Some(Self::Stddev),
+            "var" => Some(Self::Var),
+            "linearreg" => Some(Self::LinearReg),
+            "linearreg_angle" => Some(Self::LinearRegAngle),
+            "linearreg_intercept" => Some(Self::LinearRegIntercept),
+            "linearreg_slope" => Some(Self::LinearRegSlope),
+            "tsf" => Some(Self::Tsf),
             _ => None,
         }
     }
@@ -380,6 +409,13 @@ impl BuiltinId {
             60 => Some(Self::MinIndex),
             61 => Some(Self::MinMax),
             62 => Some(Self::MinMaxIndex),
+            63 => Some(Self::Stddev),
+            64 => Some(Self::Var),
+            65 => Some(Self::LinearReg),
+            66 => Some(Self::LinearRegAngle),
+            67 => Some(Self::LinearRegIntercept),
+            68 => Some(Self::LinearRegSlope),
+            69 => Some(Self::Tsf),
             _ => None,
         }
     }
@@ -449,6 +485,13 @@ impl BuiltinId {
             Self::MinIndex => "minindex",
             Self::MinMax => "minmax",
             Self::MinMaxIndex => "minmaxindex",
+            Self::Stddev => "stddev",
+            Self::Var => "var",
+            Self::LinearReg => "linearreg",
+            Self::LinearRegAngle => "linearreg_angle",
+            Self::LinearRegIntercept => "linearreg_intercept",
+            Self::LinearRegSlope => "linearreg_slope",
+            Self::Tsf => "tsf",
         }
     }
 
@@ -484,7 +527,13 @@ impl BuiltinId {
             Self::Wma | Self::Avgdev | Self::MaxIndex | Self::MinIndex => {
                 BuiltinKind::RollingSingleInput
             }
+            Self::Stddev | Self::Var => BuiltinKind::RollingSingleInputFactor,
             Self::MinMax | Self::MinMaxIndex => BuiltinKind::RollingSingleInputTuple,
+            Self::LinearReg
+            | Self::LinearRegAngle
+            | Self::LinearRegIntercept
+            | Self::LinearRegSlope
+            | Self::Tsf => BuiltinKind::RollingSingleInput,
             Self::Midprice => BuiltinKind::RollingHighLow,
             Self::Obv => BuiltinKind::VolumeIndicator,
             Self::Trange => BuiltinKind::VolatilityIndicator,
@@ -566,7 +615,13 @@ impl BuiltinId {
             | Self::MaxIndex
             | Self::MinIndex
             | Self::MinMax
-            | Self::MinMaxIndex => BuiltinArity::Range { min: 1, max: 2 },
+            | Self::MinMaxIndex
+            | Self::LinearReg
+            | Self::LinearRegAngle
+            | Self::LinearRegIntercept
+            | Self::LinearRegSlope
+            | Self::Tsf => BuiltinArity::Range { min: 1, max: 2 },
+            Self::Stddev | Self::Var => BuiltinArity::Range { min: 1, max: 3 },
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
         }
     }
@@ -636,6 +691,13 @@ impl BuiltinId {
             Self::MinIndex => "minindex(series[, length=30])",
             Self::MinMax => "minmax(series[, length=30])",
             Self::MinMaxIndex => "minmaxindex(series[, length=30])",
+            Self::Stddev => "stddev(series[, length=5[, deviations=1.0]])",
+            Self::Var => "var(series[, length=5[, deviations=1.0]])",
+            Self::LinearReg => "linearreg(series[, length=14])",
+            Self::LinearRegAngle => "linearreg_angle(series[, length=14])",
+            Self::LinearRegIntercept => "linearreg_intercept(series[, length=14])",
+            Self::LinearRegSlope => "linearreg_slope(series[, length=14])",
+            Self::Tsf => "tsf(series[, length=14])",
         }
     }
 
@@ -704,6 +766,13 @@ impl BuiltinId {
             Self::MinIndex => "Absolute index of the lowest value over a specified period.",
             Self::MinMax => "Lowest and highest values over a specified period.",
             Self::MinMaxIndex => "Absolute indexes of the lowest and highest values over a specified period.",
+            Self::Stddev => "Standard deviation over a trailing period.",
+            Self::Var => "Variance over a trailing period.",
+            Self::LinearReg => "Linear regression value at the current bar.",
+            Self::LinearRegAngle => "Linear regression angle in degrees.",
+            Self::LinearRegIntercept => "Linear regression intercept.",
+            Self::LinearRegSlope => "Linear regression slope.",
+            Self::Tsf => "Time series forecast for the next bar.",
         }
     }
 }
