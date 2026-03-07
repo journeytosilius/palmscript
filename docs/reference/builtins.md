@@ -1,99 +1,29 @@
 # Builtins
 
-This page defines the builtin functions implemented by PalmScript.
+This page defines PalmScript's shared builtin rules and the non-indicator builtin helpers.
+
+Indicator-specific contracts live in the dedicated [Indicators](indicators.md) section.
 
 ## Executable Builtins vs Reserved Names
 
 PalmScript exposes three related surfaces:
 
-- executable builtins documented on this page
-- canonical market fields exposed through source-qualified series such as `spot.close`
+- executable builtin helpers and outputs documented on this page
+- executable indicators documented in the [Indicators](indicators.md) section
 - a broader reserved TA-Lib catalog described in [TA-Lib Surface](ta-lib.md)
 
 Not every reserved TA-Lib name is executable today. Reserved-but-not-yet-executable names produce deterministic compile diagnostics instead of being treated as unknown identifiers.
 
-## Builtin Function Set
+## Builtin Categories
 
-PalmScript currently provides these callable builtins:
+PalmScript currently exposes these builtin categories:
 
-- `sma(series, length)`
-- `ema(series, length)`
-- `rsi(series, length)`
-- `ma(series, length, ma_type)`
-- `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
-- `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
-- `macd(series, fast_length, slow_length, signal_length)`
-- `acos(real)`
-- `asin(real)`
-- `atan(real)`
-- `ceil(real)`
-- `cos(real)`
-- `cosh(real)`
-- `exp(real)`
-- `floor(real)`
-- `ln(real)`
-- `log10(real)`
-- `sin(real)`
-- `sinh(real)`
-- `sqrt(real)`
-- `tan(real)`
-- `tanh(real)`
-- `add(a, b)`
-- `div(a, b)`
-- `mult(a, b)`
-- `sub(a, b)`
-- `avgprice(open, high, low, close)`
-- `bop(open, high, low, close)`
-- `medprice(high, low)`
-- `typprice(high, low, close)`
-- `wclprice(high, low, close)`
-- `max(series[, length=30])`
-- `min(series[, length=30])`
-- `sum(series[, length=30])`
-- `midpoint(series[, length=14])`
-- `midprice(high, low[, length=14])`
-- `wma(series[, length=30])`
-- `avgdev(series[, length=14])`
-- `maxindex(series[, length=30])`
-- `minindex(series[, length=30])`
-- `minmax(series[, length=30])`
-- `minmaxindex(series[, length=30])`
-- `stddev(series[, length=5[, deviations=1.0]])`
-- `var(series[, length=5[, deviations=1.0]])`
-- `linearreg(series[, length=14])`
-- `linearreg_angle(series[, length=14])`
-- `linearreg_intercept(series[, length=14])`
-- `linearreg_slope(series[, length=14])`
-- `tsf(series[, length=14])`
-- `beta(series0, series1[, length=5])`
-- `correl(series0, series1[, length=30])`
-- `aroon(high, low[, length=14])`
-- `aroonosc(high, low[, length=14])`
-- `cci(high, low, close[, length=14])`
-- `cmo(series[, length=14])`
-- `willr(high, low, close[, length=14])`
-- `obv(series, volume)`
-- `trange(high, low, close)`
-- `plot(value)`
-- `above(a, b)`
-- `below(a, b)`
-- `between(x, low, high)`
-- `outside(x, low, high)`
-- `cross(a, b)`
-- `crossover(a, b)`
-- `crossunder(a, b)`
-- `change(series, length)`
-- `roc(series[, length=10])`
-- `mom(series[, length=10])`
-- `rocp(series[, length=10])`
-- `rocr(series[, length=10])`
-- `rocr100(series[, length=10])`
-- `highest(series, length)`
-- `lowest(series, length)`
-- `rising(series, length)`
-- `falling(series, length)`
-- `barssince(condition)`
-- `valuewhen(condition, source, occurrence)`
+- indicators: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), and [Math, Price, and Statistics](indicators-math-price-statistics.md)
+- relational helpers: `above`, `below`, `between`, `outside`
+- crossing helpers: `cross`, `crossover`, `crossunder`
+- series and window helpers: `change`, `highest`, `lowest`, `rising`, `falling`
+- event-memory helpers: `barssince`, `valuewhen`
+- outputs: `plot`
 
 Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `hl.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
 
@@ -101,10 +31,10 @@ Market fields are selected through source-qualified series such as `spot.open`, 
 
 The current executable tuple-valued builtins are:
 
-- `macd(series, fast_length, slow_length, signal_length)`
-- `minmax(series[, length=30])`
-- `minmaxindex(series[, length=30])`
-- `aroon(high, low[, length=14])`
+- `macd(series, fast_length, slow_length, signal_length)` documented in [Trend and Overlap](indicators-trend-and-overlap.md)
+- `minmax(series[, length=30])` documented in [Math, Price, and Statistics](indicators-math-price-statistics.md)
+- `minmaxindex(series[, length=30])` documented in [Math, Price, and Statistics](indicators-math-price-statistics.md)
+- `aroon(high, low[, length=14])` documented in [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md)
 
 All tuple-valued builtin results must be destructured immediately with `let (...) = ...` before further use.
 
@@ -115,175 +45,8 @@ Rules:
 - all builtins are deterministic
 - builtins must not perform I/O, access time, or access the network
 - `plot` writes to the output stream; all other builtins are pure
-- helper builtins propagate `na` unless a more specific rule below overrides that behavior
-- helper builtins follow the update clocks implied by their series arguments
-
-## Indicators
-
-### `sma(series, length)`
-
-Rules:
-
-- it requires exactly two arguments
-- the first argument must be `series<float>`
-- the second argument must be a positive integer literal
-- the result type is `series<float>`
-- if insufficient history exists, the current sample is `na`
-- if the required window contains `na`, the current sample is `na`
-
-### `ema(series, length)`
-
-Rules:
-
-- it requires exactly two arguments
-- the first argument must be `series<float>`
-- the second argument must be a positive integer literal
-- the result type is `series<float>`
-- the series returns `na` until the seed window is available
-
-### `rsi(series, length)`
-
-Rules:
-
-- it requires exactly two arguments
-- the first argument must be `series<float>`
-- the second argument must be a positive integer literal
-- the result type is `series<float>`
-- the series returns `na` until enough history exists to seed the indicator state
-
-### `ma(series, length, ma_type)`
-
-Rules:
-
-- it requires exactly three arguments
-- the first argument must be `series<float>`
-- the second argument must be a positive integer literal
-- the third argument must be a typed `ma_type.<variant>` value
-- the result type is `series<float>`
-- `ma_type.sma`, `ma_type.ema`, and `ma_type.wma` are currently implemented
-
-### `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])` and `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
-
-Rules:
-
-- the first argument must be `series<float>`
-- `fast_length` and `slow_length` default to `12` and `26`
-- if provided, `fast_length` and `slow_length` must be integer literals greater than or equal to `2`
-- if provided, the fourth argument must be a typed `ma_type.<variant>` value
-- omitted `ma_type` defaults to `ma_type.sma`
-- `apo` returns `fast_ma - slow_ma`
-- `ppo` returns `((fast_ma - slow_ma) / slow_ma) * 100`
-- if the slow moving average is `0`, `ppo` returns `0`
-- `ma_type.sma`, `ma_type.ema`, and `ma_type.wma` are currently implemented
-- the result type is `series<float>`
-
-### `macd(series, fast_length, slow_length, signal_length)`
-
-Rules:
-
-- it requires exactly four arguments
-- the first argument must be `series<float>`
-- the remaining arguments must be positive integer literals
-- the result type is a 3-tuple of series values in TA-Lib order: `(macd_line, signal, histogram)`
-- the result must be destructured before it can be used in `plot`, `export`, conditions, or further expressions
-
-### TA-Lib math transforms
-
-These builtins are currently executable:
-
-- `acos(real)`
-- `asin(real)`
-- `atan(real)`
-- `ceil(real)`
-- `cos(real)`
-- `cosh(real)`
-- `exp(real)`
-- `floor(real)`
-- `ln(real)`
-- `log10(real)`
-- `sin(real)`
-- `sinh(real)`
-- `sqrt(real)`
-- `tan(real)`
-- `tanh(real)`
-
-Rules:
-
-- each requires exactly one numeric or `series<float>` argument
-- if the input is a series, the result type is `series<float>`
-- if the input is scalar, the result type is `float`
-- if the input is `na`, the result is `na`
-
-### TA-Lib arithmetic and price transforms
-
-These builtins are currently executable:
-
-- `add(a, b)`
-- `div(a, b)`
-- `mult(a, b)`
-- `sub(a, b)`
-- `avgprice(open, high, low, close)`
-- `bop(open, high, low, close)`
-- `medprice(high, low)`
-- `typprice(high, low, close)`
-- `wclprice(high, low, close)`
-
-Rules:
-
-- all arguments must be numeric, `series<float>`, or `na`
-- if any argument is a series, the result type is `series<float>`
-- otherwise the result type is `float`
-- if any required input is `na`, the result is `na`
-
-Additional OHLC rule:
-
-- `bop` returns `(close - open) / (high - low)` and returns `0` when `high - low <= 0`
-
-### TA-Lib rolling window helpers
-
-These builtins are currently executable:
-
-- `wma(series[, length=30])`
-- `avgdev(series[, length=14])`
-- `maxindex(series[, length=30])`
-- `minindex(series[, length=30])`
-- `minmax(series[, length=30])`
-- `minmaxindex(series[, length=30])`
-- `stddev(series[, length=5[, deviations=1.0]])`
-- `var(series[, length=5[, deviations=1.0]])`
-- `linearreg(series[, length=14])`
-- `linearreg_angle(series[, length=14])`
-- `linearreg_intercept(series[, length=14])`
-- `linearreg_slope(series[, length=14])`
-- `tsf(series[, length=14])`
-- `beta(series0, series1[, length=5])`
-- `correl(series0, series1[, length=30])`
-
-Rules:
-
-- the first argument must be `series<float>`
-- `beta` and `correl` require `series<float>` as both inputs
-- the optional `length` must be an integer literal that satisfies the TA-Lib minimum for that builtin
-- omitted `length` uses the TA-Lib default for that builtin
-- `wma` and `avgdev` return `series<float>`
-- `maxindex` and `minindex` return `series<float>` containing the absolute bar index as `f64`
-- `minmax` returns a 2-tuple `(min_value, max_value)` in TA-Lib output order
-- `minmaxindex` returns a 2-tuple `(min_index, max_index)` in TA-Lib output order
-- tuple-valued outputs must be destructured before further use
-- if insufficient history exists, the current sample is `na`
-- if the required window contains `na`, the current sample is `na`
-
-Additional statistics rules:
-
-- `stddev` defaults to `length=5` and `deviations=1.0`
-- `stddev` requires `length >= 2`
-- `var` defaults to `length=5`, allows `length >= 1`, and ignores the `deviations` argument to match TA-Lib
-- `stddev` multiplies the square root of the rolling variance by `deviations`
-- `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, and `tsf` default to `length=14`
-- `linearreg` returns the fitted value at the current bar
-- `tsf` returns the one-step-ahead forecast
-- `beta` defaults to `length=5` and follows TA-Lib's return-ratio formulation, so it first yields output after `length + 1` source samples
-- `correl` defaults to `length=30` and returns the Pearson correlation of the paired raw input series
+- builtin helpers and indicators propagate `na` unless a more specific rule overrides that behavior
+- builtin results follow the update clocks implied by their series arguments
 
 ## Relational Helpers
 
@@ -355,66 +118,6 @@ Rules:
 - if the current or referenced sample is `na`, the result is `na`
 - the result type is `series<float>`
 
-### `roc(series[, length=10])`, `mom(series[, length=10])`, `rocp(series[, length=10])`, `rocr(series[, length=10])`, and `rocr100(series[, length=10])`
-
-Rules:
-
-- the first argument must be `series<float>`
-- the optional `length` must be a positive integer literal
-- omitted `length` uses the TA-Lib default of `10`
-- `roc` evaluates as `((series - series[length]) / series[length]) * 100`
-- `mom` evaluates as `series - series[length]`
-- `rocp` evaluates as `(series - series[length]) / series[length]`
-- `rocr` evaluates as `series / series[length]`
-- `rocr100` evaluates as `(series / series[length]) * 100`
-- if the current or referenced sample is `na`, the result is `na`
-- if `series[length]` is `0`, `roc`, `rocp`, `rocr`, and `rocr100` return `na`
-
-### `cmo(series[, length=14])`
-
-Rules:
-
-- the first argument must be `series<float>`
-- omitted `length` uses the TA-Lib default of `14`
-- if provided, `length` must be an integer literal greater than or equal to `2`
-- `cmo` uses TA-Lib's Wilder-style smoothed gain and loss state
-- the result type is `series<float>`
-- if the smoothed gain and loss sum to `0`, `cmo` returns `0`
-
-### `cci(high, low, close[, length=14])`
-
-Rules:
-
-- the first three arguments must be `series<float>`
-- omitted `length` uses the TA-Lib default of `14`
-- if provided, `length` must be an integer literal greater than or equal to `2`
-- `cci` uses the trailing typical-price average and mean deviation over the requested window
-- if the current typical-price delta or mean deviation is `0`, `cci` returns `0`
-- the result type is `series<float>`
-
-### `aroon(high, low[, length=14])` and `aroonosc(high, low[, length=14])`
-
-Rules:
-
-- the first two arguments must be `series<float>`
-- omitted `length` uses the TA-Lib default of `14`
-- if provided, `length` must be an integer literal greater than or equal to `2`
-- `aroon` uses a trailing `length + 1` high/low window to match TA-Lib lookback
-- `aroon` returns a 2-tuple `(aroon_down, aroon_up)` in TA-Lib output order
-- `aroonosc` returns `aroon_up - aroon_down`
-- tuple-valued outputs must be destructured before further use
-
-### `willr(high, low, close[, length=14])`
-
-Rules:
-
-- the first three arguments must be `series<float>`
-- omitted `length` uses the TA-Lib default of `14`
-- if provided, `length` must be an integer literal greater than or equal to `2`
-- `willr` uses the trailing highest high and lowest low over the requested window
-- the result type is `series<float>`
-- if the trailing high-low range is `0`, `willr` returns `0`
-
 ### `highest(series, length)` and `lowest(series, length)`
 
 Rules:
@@ -424,31 +127,6 @@ Rules:
 - the window includes the current sample
 - if insufficient history exists, the result is `na`
 - if any sample in the required window is `na`, the result is `na`
-- the result type is `series<float>`
-
-### `max(series[, length=30])`, `min(series[, length=30])`, and `sum(series[, length=30])`
-
-Rules:
-
-- the first argument must be `series<float>`
-- the optional trailing window defaults to `30`
-- if provided, the window must be an integer literal greater than or equal to `2`
-- the window includes the current sample
-- if insufficient history exists, the result is `na`
-- if any sample in the required window is `na`, the result is `na`
-- the result type is `series<float>`
-
-### `midpoint(series[, length=14])` and `midprice(high, low[, length=14])`
-
-Rules:
-
-- `midpoint` requires `series<float>` as the first argument
-- `midprice` requires `series<float>` for both `high` and `low`
-- the optional trailing window defaults to `14`
-- if provided, the window must be an integer literal greater than or equal to `2`
-- the window includes the current sample
-- if insufficient history exists, the result is `na`
-- if any required sample in the window is `na`, the result is `na`
 - the result type is `series<float>`
 
 ### `rising(series, length)` and `falling(series, length)`
@@ -462,26 +140,6 @@ Rules:
 - if insufficient history exists, the result is `na`
 - if any required sample is `na`, the result is `na`
 - the result type is `series<bool>`
-
-### `obv(series, volume)`
-
-Rules:
-
-- both arguments must be `series<float>`
-- the first output sample seeds from the current `volume`
-- later samples add or subtract the current `volume` based on whether `series` rose or fell from the prior bar
-- if the current price or volume sample is `na`, the result is `na`
-- the result type is `series<float>`
-
-### `trange(high, low, close)`
-
-Rules:
-
-- all arguments must be `series<float>`
-- the first output sample is `na`
-- later samples use TA-Lib true range semantics based on current `high`, current `low`, and prior `close`
-- if any required sample is `na`, the result is `na`
-- the result type is `series<float>`
 
 ## Event Memory Helpers
 

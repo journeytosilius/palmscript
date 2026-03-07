@@ -43,6 +43,7 @@ Start here:
 
 - [Learn](docs/learn/overview.md)
 - [Language Reference](docs/reference/overview.md)
+- [Indicators Reference](docs/reference/indicators.md)
 - [CLI](docs/tooling/cli.md)
 - [VS Code Extension](docs/tooling/vscode.md)
 

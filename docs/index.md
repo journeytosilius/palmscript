@@ -17,6 +17,7 @@ This site is the canonical documentation source for the repository.
 - New to PalmScript: [Learn Overview](learn/overview.md)
 - Want a first runnable strategy: [Quickstart](learn/quickstart.md)
 - Need the formal language definition: [Reference Overview](reference/overview.md)
+- Looking for indicator contracts: [Indicators Overview](reference/indicators.md)
 - Running scripts from the CLI: [CLI](tooling/cli.md)
 - Understanding the editor workflow: [VS Code Extension](tooling/vscode.md)
 

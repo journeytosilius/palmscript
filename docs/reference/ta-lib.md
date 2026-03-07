@@ -21,9 +21,9 @@ In other words:
 
 - reserved name coverage is broader than runtime execution coverage
 - IDE/catalog visibility does not imply that a function is executable yet
-- [Builtins](builtins.md) is the authoritative page for the executable subset
+- [Builtins](builtins.md) and the [Indicators](indicators.md) section are the authoritative docs for the executable subset
 
-Implemented TA-Lib-style builtins in this change:
+Implemented TA-Lib-style builtins:
 
 - `ma(series, length, ma_type)`
 - `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`

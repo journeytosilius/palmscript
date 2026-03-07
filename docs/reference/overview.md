@@ -15,7 +15,7 @@ This section defines the language that exists today. It is not a design document
 - series and indexing semantics
 - evaluation semantics
 - interval and source rules
-- builtin contracts
+- builtin and indicator contracts
 - output semantics
 - diagnostics classes
 
@@ -51,13 +51,13 @@ Important implementation boundaries:
 - string literals are only valid inside `source` declarations
 - series indexing requires a non-negative integer literal
 - tuple-valued builtin results must be destructured with `let (...) = ...` before further use
-- the TA-Lib catalog is broader than the executable runtime surface; use [Builtins](builtins.md) and [TA-Lib Surface](ta-lib.md) for the exact status
+- the TA-Lib catalog is broader than the executable runtime surface; use [Builtins](builtins.md), [Indicators](indicators.md), and [TA-Lib Surface](ta-lib.md) for the exact status
 
 ## How To Read It
 
 - start with [Lexical Structure](lexical-structure.md) and [Grammar](grammar.md) for accepted syntax
 - use [Declarations and Scope](declarations-and-scope.md) for binding and visibility rules
 - use [Evaluation Semantics](evaluation-semantics.md) and [Intervals and Sources](intervals-and-sources.md) for runtime meaning
-- use [Builtins](builtins.md) and [Outputs](outputs.md) for callable/output behavior
+- use [Builtins](builtins.md), [Indicators](indicators.md), and [Outputs](outputs.md) for callable/output behavior
 
 Examples in this section illustrate the rules, but the normative text is the rule.

@@ -44,4 +44,5 @@ Related checked-in example: [`examples/strategies/cross_source_spread.palm`](htt
 - declarations and visibility: [Declarations and Scope](../reference/declarations-and-scope.md)
 - expressions and runtime meaning: [Evaluation Semantics](../reference/evaluation-semantics.md)
 - market series rules: [Intervals and Sources](../reference/intervals-and-sources.md)
+- indicators and helper builtins: [Indicators](../reference/indicators.md) and [Builtins](../reference/builtins.md)
 - outputs: [Outputs](../reference/outputs.md)

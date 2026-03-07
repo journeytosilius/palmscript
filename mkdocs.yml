@@ -71,6 +71,11 @@ nav:
       - Evaluation Semantics: reference/evaluation-semantics.md
       - Intervals and Sources: reference/intervals-and-sources.md
       - Builtins: reference/builtins.md
+      - Indicators:
+          - Overview: reference/indicators.md
+          - Trend and Overlap: reference/indicators-trend-and-overlap.md
+          - Momentum, Volume, and Volatility: reference/indicators-momentum-volume-volatility.md
+          - Math, Price, and Statistics: reference/indicators-math-price-statistics.md
       - TA-Lib Surface: reference/ta-lib.md
       - Outputs: reference/outputs.md
       - Diagnostics: reference/diagnostics.md

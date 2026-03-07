@@ -145,7 +145,7 @@ Consequences:
 
 ## Builtin Helper Semantics
 
-Builtin helper formulas, window rules, and `na` behavior are defined in [Builtins](builtins.md).
+Builtin helper formulas, indicator contracts, window rules, and `na` behavior are defined in [Builtins](builtins.md) and the [Indicators](indicators.md) section.
 
 Rules:
 
