@@ -6,14 +6,18 @@
 pub(crate) mod ema;
 pub(crate) mod event;
 pub(crate) mod extrema;
+pub(crate) mod macd;
 pub(crate) mod rsi;
 pub(crate) mod sma;
+pub(crate) mod wma;
 
 pub(crate) use ema::EmaState;
 pub(crate) use event::{BarsSinceState, ValueWhenState};
 pub(crate) use extrema::{FallingState, HighestState, LowestState, RisingState};
+pub(crate) use macd::MacdState;
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
+pub(crate) use wma::calculate as calculate_wma;
 
 #[derive(Clone, Debug)]
 pub(crate) enum IndicatorState {
@@ -26,4 +30,5 @@ pub(crate) enum IndicatorState {
     Falling(FallingState),
     BarsSince(BarsSinceState),
     ValueWhen(ValueWhenState),
+    Macd(MacdState),
 }

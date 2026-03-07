@@ -1,0 +1,9 @@
+interval 1m
+
+let basis = ma(close, 20, ma_type.ema)
+let (line, signal, hist) = macd(close, 12, 26, 9)
+
+plot(basis)
+plot(line)
+plot(signal)
+plot(hist)

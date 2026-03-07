@@ -11,6 +11,8 @@ pub enum BuiltinKind {
     MarketSeries,
     Plot,
     Indicator,
+    MovingAverage,
+    IndicatorTuple,
     Relation2,
     Relation3,
     Cross,
@@ -52,10 +54,12 @@ pub enum BuiltinId {
     Falling = 22,
     BarsSince = 23,
     ValueWhen = 24,
+    Ma = 25,
+    Macd = 26,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 25] = [
+    pub const RESERVED: [Self; 27] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -81,9 +85,11 @@ impl BuiltinId {
         Self::Falling,
         Self::BarsSince,
         Self::ValueWhen,
+        Self::Ma,
+        Self::Macd,
     ];
 
-    pub const CALLABLE: [Self; 19] = [
+    pub const CALLABLE: [Self; 21] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -103,6 +109,8 @@ impl BuiltinId {
         Self::Falling,
         Self::BarsSince,
         Self::ValueWhen,
+        Self::Ma,
+        Self::Macd,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -132,6 +140,8 @@ impl BuiltinId {
             "falling" => Some(Self::Falling),
             "barssince" => Some(Self::BarsSince),
             "valuewhen" => Some(Self::ValueWhen),
+            "ma" => Some(Self::Ma),
+            "macd" => Some(Self::Macd),
             _ => None,
         }
     }
@@ -163,6 +173,8 @@ impl BuiltinId {
             22 => Some(Self::Falling),
             23 => Some(Self::BarsSince),
             24 => Some(Self::ValueWhen),
+            25 => Some(Self::Ma),
+            26 => Some(Self::Macd),
             _ => None,
         }
     }
@@ -194,6 +206,8 @@ impl BuiltinId {
             Self::Falling => "falling",
             Self::BarsSince => "barssince",
             Self::ValueWhen => "valuewhen",
+            Self::Ma => "ma",
+            Self::Macd => "macd",
         }
     }
 
@@ -204,6 +218,8 @@ impl BuiltinId {
             }
             Self::Plot => BuiltinKind::Plot,
             Self::Sma | Self::Ema | Self::Rsi => BuiltinKind::Indicator,
+            Self::Ma => BuiltinKind::MovingAverage,
+            Self::Macd => BuiltinKind::IndicatorTuple,
             Self::Above | Self::Below => BuiltinKind::Relation2,
             Self::Between | Self::Outside => BuiltinKind::Relation3,
             Self::Cross | Self::Crossover | Self::Crossunder => BuiltinKind::Cross,
@@ -235,7 +251,8 @@ impl BuiltinId {
             | BuiltinKind::Lowest
             | BuiltinKind::Rising
             | BuiltinKind::Falling => Some(2),
-            BuiltinKind::Relation3 | BuiltinKind::ValueWhen => Some(3),
+            BuiltinKind::MovingAverage | BuiltinKind::Relation3 | BuiltinKind::ValueWhen => Some(3),
+            BuiltinKind::IndicatorTuple => Some(4),
         }
     }
 
@@ -266,6 +283,8 @@ impl BuiltinId {
             Self::Falling => "falling(series, length)",
             Self::BarsSince => "barssince(condition)",
             Self::ValueWhen => "valuewhen(condition, source, occurrence)",
+            Self::Ma => "ma(series, length, ma_type)",
+            Self::Macd => "macd(series, fast_length, slow_length, signal_length)",
         }
     }
 
@@ -296,6 +315,8 @@ impl BuiltinId {
             Self::Falling => "True when the current sample is strictly less than every prior sample in the trailing window.",
             Self::BarsSince => "Bars since the last true condition on the condition's update clock.",
             Self::ValueWhen => "Captured source value from the Nth most recent true condition.",
+            Self::Ma => "TA-Lib moving average with typed ma_type selection.",
+            Self::Macd => "Moving average convergence/divergence tuple (macd, signal, histogram).",
         }
     }
 }

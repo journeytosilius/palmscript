@@ -4,8 +4,8 @@
 //! parse diagnostics instead of emitting bytecode directly.
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl, NodeId,
-    SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
+    Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl,
+    NodeId, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -197,6 +197,9 @@ impl<'a> Parser<'a> {
 
     fn parse_let_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
+        if matches!(self.peek_kind(), TokenKind::LeftParen) {
+            return self.parse_let_tuple_stmt(start);
+        }
         let (name, name_span) = self.expect_ident("expected identifier after `let`")?;
         self.expect_assign()?;
         let expr = self.parse_expr(0)?;
@@ -209,6 +212,33 @@ impl<'a> Parser<'a> {
                 name_span,
                 expr,
             },
+        })
+    }
+
+    fn parse_let_tuple_stmt(&mut self, start: Span) -> Option<Stmt> {
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after `let`",
+        )?;
+        let mut names = Vec::new();
+        loop {
+            let (name, span) = self.expect_ident("expected identifier in tuple binding")?;
+            names.push(BindingName { name, span });
+            if !matches!(self.peek_kind(), TokenKind::Comma) {
+                break;
+            }
+            self.advance();
+        }
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after tuple binding",
+        )?;
+        self.expect_assign()?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span).merge(right.span),
+            kind: StmtKind::LetTuple { names, expr },
         })
     }
 
@@ -394,7 +424,7 @@ impl<'a> Parser<'a> {
                 TokenKind::LeftParen => self.parse_call(lhs)?,
                 TokenKind::LeftBracket => self.parse_index(lhs)?,
                 TokenKind::Dot if matches!(lhs.kind, ExprKind::Ident(_)) => {
-                    self.parse_source_series(lhs)?
+                    self.parse_dotted_ident(lhs)?
                 }
                 _ => {
                     let Some((left_bp, right_bp, op)) = self.infix_binding_power() else {
@@ -555,7 +585,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_source_series(&mut self, source: Expr) -> Option<Expr> {
+    fn parse_dotted_ident(&mut self, source: Expr) -> Option<Expr> {
         let (source_name, source_span) = match source.kind {
             ExprKind::Ident(name) => (name, source.span),
             _ => unreachable!(),
@@ -569,20 +599,29 @@ impl<'a> Parser<'a> {
                 kind: TokenKind::Ident(name),
                 span,
             } => {
-                let Some(field) = MarketField::parse(&name) else {
-                    self.push_diagnostic("expected market field after `.`", span);
-                    return None;
-                };
-                Some(Expr {
-                    id: self.alloc_id(),
-                    span: source_span.merge(span),
-                    kind: ExprKind::SourceSeries {
-                        source: source_name,
-                        source_span,
-                        interval: None,
-                        field,
-                    },
-                })
+                if let Some(field) = MarketField::parse(&name) {
+                    Some(Expr {
+                        id: self.alloc_id(),
+                        span: source_span.merge(span),
+                        kind: ExprKind::SourceSeries {
+                            source: source_name,
+                            source_span,
+                            interval: None,
+                            field,
+                        },
+                    })
+                } else {
+                    Some(Expr {
+                        id: self.alloc_id(),
+                        span: source_span.merge(span),
+                        kind: ExprKind::EnumVariant {
+                            namespace: source_name,
+                            namespace_span: source_span,
+                            variant: name,
+                            variant_span: span,
+                        },
+                    })
+                }
             }
             Token {
                 kind: TokenKind::Interval(interval),

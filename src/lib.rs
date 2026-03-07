@@ -20,6 +20,7 @@ pub mod output;
 pub mod parser;
 pub mod runtime;
 pub mod span;
+pub mod talib;
 pub mod token;
 pub mod types;
 pub mod vm;
@@ -46,5 +47,6 @@ pub use runtime::{
     SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 pub use span::{Position, Span};
+pub use talib::{MaType, TalibFlag, TalibFunctionMetadata, TalibGroup, TALIB_UPSTREAM_COMMIT};
 pub use token::{Token, TokenKind};
 pub use types::{Type, Value};

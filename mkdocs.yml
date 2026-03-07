@@ -72,6 +72,7 @@ nav:
       - Evaluation Semantics: reference/evaluation-semantics.md
       - Intervals and Sources: reference/intervals-and-sources.md
       - Builtins: reference/builtins.md
+      - TA-Lib Surface: reference/ta-lib.md
       - Outputs: reference/outputs.md
       - Diagnostics: reference/diagnostics.md
       - Interval Table: reference/intervals.md

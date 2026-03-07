@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 16] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 18] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -406,6 +406,22 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
                     "valuewhen occurrence must be a non-negative integer literal",
                 ),
             ],
+        ),
+        (
+            "type_ma_requires_typed_enum_argument",
+            with_interval("plot(ma(close, 3, 1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "ma requires ma_type as the third argument",
+            )],
+        ),
+        (
+            "type_tuple_builtin_requires_destructuring",
+            with_interval("let x = macd(close, 3, 5, 2)\nplot(1)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "tuple-valued expressions must be destructured with `let (...) = ...`",
+            )],
         ),
     ];
 

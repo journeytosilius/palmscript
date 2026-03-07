@@ -33,6 +33,7 @@ stmt                   ::= let_stmt
                          | expr_stmt
 
 let_stmt               ::= "let" ident "=" expr
+                         | "let" "(" ident ("," ident)+ ")" "=" expr
 export_stmt            ::= "export" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 if_stmt                ::= "if" expr block "else" else_tail
@@ -74,6 +75,7 @@ primary_expr           ::= number
                          | "na"
                          | string_literal
                          | ident
+                         | ident "." ident
                          | interval "." market_field
                          | "(" expr ")"
 ```
@@ -113,4 +115,6 @@ The grammar does not by itself make a program valid. The implementation addition
 - string literals are accepted lexically but are semantically valid only inside `source` declarations
 - only identifiers may be called
 - series indexing must use a non-negative integer literal
+- tuple-valued builtins must be bound with tuple destructuring before use
+- `ma_type.<variant>` is the first typed enum namespace and is reserved for TA-Lib moving-average selectors
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

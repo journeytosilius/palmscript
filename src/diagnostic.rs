@@ -108,6 +108,12 @@ pub enum RuntimeError {
     InvalidLocalSlot { slot: usize },
     #[error("invalid series slot {slot}")]
     InvalidSeriesSlot { slot: usize },
+    #[error("expected tuple of length {expected} at pc {pc}, found {found}")]
+    TupleArityMismatch {
+        pc: usize,
+        expected: usize,
+        found: &'static str,
+    },
     #[error("output `{name}` expected {expected}, found {found}")]
     OutputTypeMismatch {
         name: String,
@@ -148,6 +154,11 @@ pub enum RuntimeError {
         slot: usize,
         required: usize,
         limit: usize,
+    },
+    #[error("unsupported ma_type `{ma_type}` for builtin `{builtin}`")]
+    UnsupportedMaType {
+        builtin: &'static str,
+        ma_type: &'static str,
     },
 }
 

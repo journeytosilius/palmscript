@@ -229,6 +229,20 @@ fn supports_qualified_series_in_user_functions() {
 }
 
 #[test]
+fn parses_talib_enum_literals() {
+    compile(&with_interval("plot(ma(close, 3, ma_type.ema))"))
+        .expect("ma_type enum literal should compile");
+}
+
+#[test]
+fn parses_tuple_destructuring_from_builtin_calls() {
+    compile(&with_interval(
+        "let (macd_line, signal, hist) = macd(close, 3, 5, 2)\nplot(hist)",
+    ))
+    .expect("tuple destructuring should compile");
+}
+
+#[test]
 fn rejects_bare_interval_literals() {
     let message = compile_err(&with_interval("plot(1w)"));
     assert!(message.contains("expected `.` after interval literal"));

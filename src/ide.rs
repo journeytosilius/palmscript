@@ -460,6 +460,28 @@ fn resolve_stmt(
             );
             scope.insert(name.clone(), index);
         }
+        StmtKind::LetTuple { names, expr } => {
+            resolve_expr(context, expr, scope);
+            let detail = context
+                .expr_info
+                .get(&expr.id)
+                .map(render_expr_info)
+                .unwrap_or_else(|| "unknown".to_string());
+            for binding in names {
+                let index = push_definition(
+                    context,
+                    DefinitionTarget {
+                        name: binding.name.clone(),
+                        kind: SymbolKind::Let,
+                        span: stmt.span,
+                        selection_span: binding.span,
+                        detail: Some(format!("let {}: {}", binding.name, detail)),
+                        navigable: true,
+                    },
+                );
+                scope.insert(binding.name.clone(), index);
+            }
+        }
         StmtKind::Export {
             name,
             name_span,
@@ -590,6 +612,15 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                 hover: format!("`{label}`\n\nseries<float> for the declared source market field."),
             });
         }
+        ExprKind::EnumVariant {
+            namespace, variant, ..
+        } => {
+            context.references.push(Reference {
+                span: expr.span,
+                definition_index: None,
+                hover: format!("`{}.{}`\n\nTyped TA-Lib enum literal.", namespace, variant),
+            });
+        }
         ExprKind::Unary { expr: inner, .. } => resolve_expr(context, inner, scope),
         ExprKind::Binary { left, right, .. } => {
             resolve_expr(context, left, scope);
@@ -668,6 +699,19 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             detail: Some("series<bool>".to_string()),
             children: Vec::new(),
         }),
+        StmtKind::LetTuple { names, expr } => {
+            let detail = context.expr_info.get(&expr.id).map(render_expr_info);
+            for binding in names {
+                context.document_symbols.push(DocumentSymbolInfo {
+                    name: binding.name.clone(),
+                    kind: SymbolKind::Let,
+                    span: stmt.span,
+                    selection_span: binding.span,
+                    detail: detail.clone(),
+                    children: Vec::new(),
+                });
+            }
+        }
         StmtKind::If { .. } | StmtKind::Expr(_) => {}
     }
 }
@@ -743,6 +787,7 @@ fn render_output_type(expr: &Expr, context: &ResolutionContext<'_>, trigger: boo
         .get(&expr.id)
         .map(|info| match info.ty {
             InferredType::Concrete(Type::Bool | Type::SeriesBool) => "series<bool>".to_string(),
+            InferredType::Tuple2(_) | InferredType::Tuple3(_) => "tuple".to_string(),
             _ => "series<float>".to_string(),
         })
         .unwrap_or_else(|| "series<float>".to_string())
@@ -773,6 +818,15 @@ fn builtin_completions() -> Vec<CompletionEntry> {
 fn render_expr_info(info: &ExprInfo) -> String {
     match info.ty {
         InferredType::Concrete(ty) => render_type(ty).to_string(),
+        InferredType::Tuple2(items) => {
+            format!("({}, {})", render_type(items[0]), render_type(items[1]))
+        }
+        InferredType::Tuple3(items) => format!(
+            "({}, {}, {})",
+            render_type(items[0]),
+            render_type(items[1]),
+            render_type(items[2])
+        ),
         InferredType::Na => "float".to_string(),
     }
 }
@@ -781,6 +835,7 @@ fn render_type(ty: Type) -> &'static str {
     match ty {
         Type::F64 => "float",
         Type::Bool => "bool",
+        Type::MaType => "ma_type",
         Type::SeriesF64 => "series<float>",
         Type::SeriesBool => "series<bool>",
         Type::Void => "void",
@@ -904,6 +959,17 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Let { name, expr, .. } => {
             lines.push(format!("{prefix}let {name} = {}", format_expr(expr, 0)));
         }
+        StmtKind::LetTuple { names, expr } => {
+            let bindings = names
+                .iter()
+                .map(|binding| binding.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            lines.push(format!(
+                "{prefix}let ({bindings}) = {}",
+                format_expr(expr, 0)
+            ));
+        }
         StmtKind::Export { name, expr, .. } => {
             lines.push(format!("{prefix}export {name} = {}", format_expr(expr, 0)));
         }
@@ -1011,6 +1077,9 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
         ExprKind::Na => "na".to_string(),
         ExprKind::String(value) => format!("{:?}", value),
         ExprKind::Ident(name) => name.clone(),
+        ExprKind::EnumVariant {
+            namespace, variant, ..
+        } => format!("{namespace}.{variant}"),
         ExprKind::QualifiedSeries { interval, field } => {
             format!("{}.{}", interval.as_str(), render_market_field(*field))
         }

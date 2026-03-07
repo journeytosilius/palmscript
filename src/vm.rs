@@ -9,11 +9,12 @@ use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
-    BarsSinceState, EmaState, FallingState, HighestState, IndicatorState, LowestState, RisingState,
-    RsiState, SmaState, ValueWhenState,
+    calculate_wma, BarsSinceState, EmaState, FallingState, HighestState, IndicatorState,
+    LowestState, MacdState, RisingState, RsiState, SmaState, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
+use crate::talib::MaType;
 use crate::types::{SlotKind, Value};
 
 #[derive(Clone, Debug)]
@@ -159,6 +160,27 @@ impl<'a> Vm<'a> {
                     )?;
                     if !matches!(result, Value::Void) {
                         stack.push(result);
+                    }
+                }
+                OpCode::UnpackTuple => {
+                    let value = pop(&mut stack, pc, instruction.opcode)?;
+                    match value {
+                        Value::Tuple2(values) if instruction.a as usize == 2 => {
+                            stack.push(*values[0].clone());
+                            stack.push(*values[1].clone());
+                        }
+                        Value::Tuple3(values) if instruction.a as usize == 3 => {
+                            stack.push(*values[0].clone());
+                            stack.push(*values[1].clone());
+                            stack.push(*values[2].clone());
+                        }
+                        other => {
+                            return Err(RuntimeError::TupleArityMismatch {
+                                pc,
+                                expected: instruction.a as usize,
+                                found: other.type_name(),
+                            });
+                        }
                     }
                 }
                 OpCode::Return => {
@@ -403,6 +425,8 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Sma => self.call_sma(callsite, arity, args, pc),
             BuiltinId::Ema => self.call_ema(callsite, arity, args, pc),
             BuiltinId::Rsi => self.call_rsi(callsite, arity, args, pc),
+            BuiltinId::Ma => self.call_ma(callsite, arity, args, pc),
+            BuiltinId::Macd => self.call_macd(callsite, arity, args, pc),
             BuiltinId::Cross | BuiltinId::Crossover | BuiltinId::Crossunder => {
                 self.call_cross_builtin(builtin, arity, args, pc)
             }
@@ -537,6 +561,78 @@ impl<'a> VmEngine<'a> {
                     .get(series_slot)
                     .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
                 state.update(buffer)
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ma(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ma",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let ma_type = expect_ma_type(args[2].clone(), pc)?;
+        match ma_type {
+            MaType::Sma => self.call_sma(callsite, 2, vec![args[0].clone(), args[1].clone()], pc),
+            MaType::Ema => self.call_ema(callsite, 2, vec![args[0].clone(), args[1].clone()], pc),
+            MaType::Wma => {
+                let series_slot = series_ref(args[0].clone(), pc)?;
+                let window = expect_window(args[1].clone(), pc)?;
+                self.consume_steps(window, pc)?;
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                calculate_wma(buffer, window, pc)
+            }
+            other => Err(RuntimeError::UnsupportedMaType {
+                builtin: "ma",
+                ma_type: other.as_str(),
+            }),
+        }
+    }
+
+    fn call_macd(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "macd",
+                expected: 4,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let fast = expect_window(args[1].clone(), pc)?;
+        let slow = expect_window(args[2].clone(), pc)?;
+        let signal = expect_window(args[3].clone(), pc)?;
+        let key = (BuiltinId::Macd, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Macd(MacdState::new(fast, slow, signal)));
+        let result = match &mut state {
+            IndicatorState::Macd(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
             }
             _ => unreachable!(),
         };
@@ -821,6 +917,17 @@ fn expect_window(value: Value, pc: usize) -> Result<usize, RuntimeError> {
     Ok(value as usize)
 }
 
+fn expect_ma_type(value: Value, pc: usize) -> Result<MaType, RuntimeError> {
+    match value {
+        Value::MaType(value) => Ok(value),
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "ma-type",
+            found: other.type_name(),
+        }),
+    }
+}
+
 fn expect_numeric_like(value: &Value, pc: usize) -> Result<Option<f64>, RuntimeError> {
     match value {
         Value::F64(value) => Ok(Some(*value)),
@@ -925,8 +1032,17 @@ fn eq_values(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::F64(left), Value::F64(right)) => left == right,
         (Value::Bool(left), Value::Bool(right)) => left == right,
+        (Value::MaType(left), Value::MaType(right)) => left == right,
         (Value::Void, Value::Void) => true,
         (Value::SeriesRef(left), Value::SeriesRef(right)) => left == right,
+        (Value::Tuple2(left), Value::Tuple2(right)) => {
+            eq_values(&left[0], &right[0]) && eq_values(&left[1], &right[1])
+        }
+        (Value::Tuple3(left), Value::Tuple3(right)) => {
+            eq_values(&left[0], &right[0])
+                && eq_values(&left[1], &right[1])
+                && eq_values(&left[2], &right[2])
+        }
         _ => false,
     }
 }

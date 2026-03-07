@@ -78,10 +78,20 @@ pub struct FunctionParam {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BindingName {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
         name: String,
         name_span: Span,
+        expr: Expr,
+    },
+    LetTuple {
+        names: Vec<BindingName>,
         expr: Expr,
     },
     Export {
@@ -116,6 +126,12 @@ pub enum ExprKind {
     Na,
     String(String),
     Ident(String),
+    EnumVariant {
+        namespace: String,
+        namespace_span: Span,
+        variant: String,
+        variant_span: Span,
+    },
     QualifiedSeries {
         interval: Interval,
         field: MarketField,

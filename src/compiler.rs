@@ -17,6 +17,7 @@ use crate::interval::{
 use crate::lexer;
 use crate::parser;
 use crate::span::Span;
+use crate::talib::MaType;
 use crate::types::{SlotKind, Type, Value};
 
 const BASE_UPDATE_MASK: u32 = 1;
@@ -44,6 +45,9 @@ pub fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum InferredType {
     Concrete(Type),
+    #[allow(dead_code)]
+    Tuple2([Type; 2]),
+    Tuple3([Type; 3]),
     Na,
 }
 
@@ -52,6 +56,7 @@ impl InferredType {
         match self {
             Self::Concrete(ty) => Some(ty),
             Self::Na => None,
+            Self::Tuple2(_) | Self::Tuple3(_) => None,
         }
     }
 
@@ -72,6 +77,14 @@ impl InferredType {
 
     fn is_series_bool(self) -> bool {
         matches!(self, Self::Concrete(Type::SeriesBool))
+    }
+
+    fn tuple_len(self) -> Option<usize> {
+        match self {
+            Self::Tuple2(_) => Some(2),
+            Self::Tuple3(_) => Some(3),
+            _ => None,
+        }
     }
 }
 
@@ -148,6 +161,7 @@ struct Analysis {
     expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
     resolved_let_slots: HashMap<NodeId, u16>,
+    resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
@@ -567,7 +581,9 @@ impl<'a> Analyzer<'a> {
                     ));
                 }
             }
-            ExprKind::QualifiedSeries { .. } | ExprKind::SourceSeries { .. } => {}
+            ExprKind::QualifiedSeries { .. }
+            | ExprKind::SourceSeries { .. }
+            | ExprKind::EnumVariant { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
             ExprKind::Binary { left, right, .. } => {
                 self.validate_function_expr(left, params);
@@ -684,6 +700,13 @@ impl<'a> Analyzer<'a> {
         match &stmt.kind {
             StmtKind::Let { name, expr, .. } => {
                 let expr_info = self.analyze_expr(expr);
+                if expr_info.ty.tuple_len().is_some() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "tuple-valued expressions must be destructured with `let (...) = ...`",
+                        expr.span,
+                    ));
+                }
                 let concrete = expr_info.ty.concrete().unwrap_or(Type::F64);
                 if self.scopes.last().unwrap().contains_key(name) {
                     self.diagnostics.push(Diagnostic::new(
@@ -703,6 +726,50 @@ impl<'a> Analyzer<'a> {
                     None,
                 );
                 self.analysis.resolved_let_slots.insert(stmt.id, slot);
+            }
+            StmtKind::LetTuple { names, expr } => {
+                let expr_info = self.analyze_expr(expr);
+                let expected = names.len();
+                if expr_info.ty.tuple_len() != Some(expected) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "tuple binding expects {expected} value(s), found {}",
+                            expr_info.ty.tuple_len().unwrap_or(1)
+                        ),
+                        expr.span,
+                    ));
+                    return;
+                }
+                let item_types = match expr_info.ty {
+                    InferredType::Tuple2(types) => types.to_vec(),
+                    InferredType::Tuple3(types) => types.to_vec(),
+                    _ => unreachable!(),
+                };
+                let mut slots = Vec::with_capacity(names.len());
+                for (binding, ty) in names.iter().zip(item_types) {
+                    if self.scopes.last().unwrap().contains_key(&binding.name) {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!("duplicate binding `{}` in the same scope", binding.name),
+                            binding.span,
+                        ));
+                        return;
+                    }
+                    let slot = self.define_symbol(
+                        binding.name.clone(),
+                        ExprInfo {
+                            ty: InferredType::Concrete(ty),
+                            update_mask: expr_info.update_mask,
+                        },
+                        false,
+                        None,
+                    );
+                    slots.push(slot);
+                }
+                self.analysis
+                    .resolved_let_tuple_slots
+                    .insert(stmt.id, slots);
             }
             StmtKind::Export { name, expr, .. } => {
                 self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries);
@@ -811,6 +878,28 @@ impl<'a> Analyzer<'a> {
                 ));
                 ExprInfo::scalar(Type::F64)
             }
+            ExprKind::EnumVariant {
+                namespace,
+                variant,
+                variant_span,
+                ..
+            } => match resolve_enum_variant(namespace, variant) {
+                Some(ma_type) => {
+                    self.analysis
+                        .expr_info
+                        .insert(expr.id, ExprInfo::scalar(Type::MaType));
+                    let _ = ma_type;
+                    ExprInfo::scalar(Type::MaType)
+                }
+                None => {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("unknown enum variant `{}.{}`", namespace, variant),
+                        *variant_span,
+                    ));
+                    ExprInfo::scalar(Type::MaType)
+                }
+            },
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
                     if !self.analysis.declared_sources.is_empty() && is_predefined_series_name(name)
@@ -1185,6 +1274,22 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 ));
                 ExprInfo::scalar(Type::F64)
             }
+            ExprKind::EnumVariant {
+                namespace,
+                variant,
+                variant_span,
+                ..
+            } => match resolve_enum_variant(namespace, variant) {
+                Some(_) => ExprInfo::scalar(Type::MaType),
+                None => {
+                    self.parent.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("unknown enum variant `{}.{}`", namespace, variant),
+                        *variant_span,
+                    ));
+                    ExprInfo::scalar(Type::MaType)
+                }
+            },
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => symbol.info,
                 None => {
@@ -1384,6 +1489,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
 fn collect_qualified_series_stmt(stmt: &Stmt, refs: &mut BTreeSet<(Interval, MarketField)>) {
     match &stmt.kind {
         StmtKind::Let { expr, .. }
+        | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Expr(expr) => collect_qualified_series_refs(expr, refs),
@@ -1409,6 +1515,7 @@ fn collect_source_series_stmt(
 ) {
     match &stmt.kind {
         StmtKind::Let { expr, .. }
+        | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
@@ -1452,6 +1559,7 @@ fn collect_qualified_series_refs(expr: &Expr, refs: &mut BTreeSet<(Interval, Mar
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => {}
     }
 }
@@ -1488,6 +1596,7 @@ fn collect_source_series_refs(
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::EnumVariant { .. }
         | ExprKind::QualifiedSeries { .. } => {}
     }
 }
@@ -1509,6 +1618,7 @@ fn interval_ref_span(ast: &Ast, target: Interval) -> Option<Span> {
 fn stmt_interval_ref_span(stmt: &Stmt, target: Interval) -> Option<Span> {
     match &stmt.kind {
         StmtKind::Let { expr, .. }
+        | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Expr(expr) => expr_interval_ref_span(expr, target),
@@ -1553,6 +1663,7 @@ fn expr_interval_ref_span(expr: &Expr, target: Interval) -> Option<Span> {
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => None,
         ExprKind::QualifiedSeries { .. } => None,
     }
@@ -1575,6 +1686,7 @@ fn source_ref_span(ast: &Ast, source: &str, target: Option<Interval>) -> Option<
 fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> Option<Span> {
     match &stmt.kind {
         StmtKind::Let { expr, .. }
+        | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
@@ -1621,6 +1733,7 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::EnumVariant { .. }
         | ExprKind::QualifiedSeries { .. }
         | ExprKind::SourceSeries { .. } => None,
     }
@@ -1665,6 +1778,7 @@ fn collect_called_user_functions<'a>(
         | ExprKind::Na
         | ExprKind::String(_)
         | ExprKind::Ident(_)
+        | ExprKind::EnumVariant { .. }
         | ExprKind::QualifiedSeries { .. }
         | ExprKind::SourceSeries { .. } => {}
     }
@@ -1853,6 +1967,45 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::MovingAverage => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            validate_positive_window_literal(callee, &args[1], diagnostics);
+            if !matches!(arg_info[2].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the third argument"),
+                    args[2].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::IndicatorTuple => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            validate_positive_window_literal(callee, &args[1], diagnostics);
+            validate_positive_window_literal(callee, &args[2], diagnostics);
+            validate_positive_window_literal(callee, &args[3], diagnostics);
+            ExprInfo {
+                ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+                update_mask: series_info.update_mask,
+            }
+        }
         BuiltinKind::Relation2 => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
                 if !info.ty.is_numeric_like() {
@@ -1977,8 +2130,13 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId) -> ExprInfo {
             update_mask: 0,
         },
         BuiltinKind::ValueWhen => ExprInfo::series(0),
+        BuiltinKind::IndicatorTuple => ExprInfo {
+            ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+            update_mask: 0,
+        },
         BuiltinKind::BarsSince
         | BuiltinKind::Indicator
+        | BuiltinKind::MovingAverage
         | BuiltinKind::Change
         | BuiltinKind::Roc
         | BuiltinKind::Highest
@@ -2063,6 +2221,13 @@ fn literal_window(expr: &Expr) -> Option<usize> {
     }
 }
 
+fn resolve_enum_variant(namespace: &str, variant: &str) -> Option<Value> {
+    match namespace {
+        "ma_type" => MaType::from_variant(variant).map(Value::MaType),
+        _ => None,
+    }
+}
+
 fn param_binding(arg_shape: FunctionArgShape) -> FunctionParamBinding {
     match arg_shape.ty {
         InferredType::Concrete(ty) => FunctionParamBinding {
@@ -2072,6 +2237,11 @@ fn param_binding(arg_shape: FunctionArgShape) -> FunctionParamBinding {
             } else {
                 SlotKind::Scalar
             },
+            update_mask: arg_shape.update_mask,
+        },
+        InferredType::Tuple2(_) | InferredType::Tuple3(_) => FunctionParamBinding {
+            ty: Type::F64,
+            kind: SlotKind::Scalar,
             update_mask: arg_shape.update_mask,
         },
         InferredType::Na => FunctionParamBinding {
@@ -2094,7 +2264,10 @@ fn output_series_type(
                 Type::SeriesF64
             }
             InferredType::Concrete(Type::Bool | Type::SeriesBool) => Type::SeriesBool,
-            InferredType::Concrete(Type::Void) => {
+            InferredType::Concrete(Type::Void)
+            | InferredType::Concrete(Type::MaType)
+            | InferredType::Tuple2(_)
+            | InferredType::Tuple3(_) => {
                 diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     "export requires a numeric, bool, series numeric, series bool, or na value",
@@ -2199,6 +2372,30 @@ impl<'a> Compiler<'a> {
                     .unwrap()
                     .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
             }
+            StmtKind::LetTuple { names, expr } => {
+                self.emit_expr(expr, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::UnpackTuple)
+                        .with_a(names.len() as u16)
+                        .with_span(stmt.span),
+                );
+                let slots = self.analysis.resolved_let_tuple_slots[&stmt.id].clone();
+                for (binding, slot) in names.iter().zip(slots.iter()).rev() {
+                    self.emit(
+                        Instruction::new(OpCode::StoreLocal)
+                            .with_a(*slot)
+                            .with_span(stmt.span),
+                    );
+                    let local = &self.program.locals[*slot as usize];
+                    self.scopes.last_mut().unwrap().insert(
+                        binding.name.clone(),
+                        CompilerSymbol {
+                            slot: *slot,
+                            ty: local.ty,
+                        },
+                    );
+                }
+            }
             StmtKind::Export { name, expr, .. } | StmtKind::Trigger { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_output_slots[&stmt.id];
@@ -2281,6 +2478,26 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            ExprKind::EnumVariant {
+                namespace,
+                variant,
+                variant_span,
+                ..
+            } => match resolve_enum_variant(namespace, variant) {
+                Some(value) => {
+                    let index = self.push_constant(value);
+                    self.emit(
+                        Instruction::new(OpCode::LoadConst)
+                            .with_a(index)
+                            .with_span(expr.span),
+                    );
+                }
+                None => self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Compile,
+                    format!("unknown enum variant `{}.{}`", namespace, variant),
+                    *variant_span,
+                )),
+            },
             ExprKind::String(_) => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Compile,
@@ -2454,7 +2671,9 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Crossover
             | BuiltinId::Crossunder
             | BuiltinId::Change
-            | BuiltinId::Roc => {
+            | BuiltinId::Roc
+            | BuiltinId::Ma
+            | BuiltinId::Macd => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -2533,6 +2752,33 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(args.len() as u16)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::MovingAverage => {
+                let required_history = literal_window(&args[1]).unwrap_or(2);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::IndicatorTuple => {
+                let required_history = literal_window(&args[2]).unwrap_or(2) + 1;
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit_expr(&args[3], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

@@ -6,7 +6,7 @@
 
 PalmScript is a deterministic DSL and bytecode VM for financial time-series strategies.
 
-The language now includes indicator, signal-helper, and event-memory builtins such as `crossover`, `highest`, `barssince`, and `valuewhen` in addition to the core OHLCV series model.
+The language now includes indicator, signal-helper, event-memory, and early TA-Lib-style builtins such as `crossover`, `highest`, `barssince`, `valuewhen`, `ma`, and `macd` in addition to the core OHLCV series model.
 
 The repository currently ships:
 
@@ -37,6 +37,7 @@ Start here:
 cargo build --bin palmscript --bin palmscript-lsp
 target/debug/palmscript check examples/strategies/sma_cross.palm
 target/debug/palmscript run csv examples/strategies/sma_cross.palm --bars examples/data/minute_bars.csv
+target/debug/palmscript run csv examples/strategies/macd_tuple.palm --bars examples/data/minute_bars.csv
 target/debug/palmscript run market strategy.palm --from 1704067200000 --to 1704153600000
 mkdocs build --strict
 docker build -f Dockerfile.docs -t palmscript-docs .

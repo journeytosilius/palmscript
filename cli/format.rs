@@ -166,9 +166,17 @@ fn fmt_value(value: &Value) -> String {
     match value {
         Value::F64(value) => value.to_string(),
         Value::Bool(value) => value.to_string(),
+        Value::MaType(value) => format!("ma_type.{}", value.as_str()),
         Value::NA => "na".to_string(),
         Value::Void => "void".to_string(),
         Value::SeriesRef(slot) => format!("series-ref({slot})"),
+        Value::Tuple2(values) => format!("({}, {})", fmt_value(&values[0]), fmt_value(&values[1])),
+        Value::Tuple3(values) => format!(
+            "({}, {}, {})",
+            fmt_value(&values[0]),
+            fmt_value(&values[1]),
+            fmt_value(&values[2])
+        ),
     }
 }
 

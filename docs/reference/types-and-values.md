@@ -1,6 +1,6 @@
 # Types and Values
 
-PalmScript operates over scalar numbers, scalar booleans, series of those values, `na`, and `void`.
+PalmScript operates over scalar numbers, scalar booleans, typed enum literals, series of those values, `na`, and `void`.
 
 ## Concrete Types
 
@@ -8,6 +8,7 @@ The implementation distinguishes these concrete types:
 
 - `float`
 - `bool`
+- `ma_type`
 - `series<float>`
 - `series<bool>`
 - `void`
@@ -20,6 +21,7 @@ PalmScript values have the following runtime forms:
 
 - numeric values are `f64`
 - boolean values are `true` or `false`
+- `ma_type.<variant>` values are typed enum literals
 - `na` is the missing-value sentinel
 - `void` is not a user-writable literal
 
@@ -35,6 +37,15 @@ A series type:
 - may yield `na` at a given sample
 
 Market fields are series values. Indicator, signal-helper, and event-memory builtins may also return series values.
+
+Some builtins may also return fixed-size tuples of series values. In the current implementation, tuple results are only supported as immediate builtin results and must be destructured with `let (...) = ...`.
+
+Example:
+
+```palm
+let (line, signal, hist) = macd(close, 12, 26, 9)
+plot(hist)
+```
 
 ## `na`
 
@@ -71,6 +82,7 @@ Examples:
 - `export x = na` is valid
 - `trigger t = na` is valid
 - `if na { ... } else { ... }` is valid
+- `ma(close, 20, ma_type.ema)` is valid
 
 ## Boolean Logic
 

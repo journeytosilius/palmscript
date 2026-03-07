@@ -33,6 +33,7 @@ pub enum OpCode {
     Jump,
     JumpIfFalse,
     CallBuiltin,
+    UnpackTuple,
     Return,
 }
 

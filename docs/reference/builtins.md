@@ -9,6 +9,8 @@ PalmScript currently provides these callable builtins:
 - `sma(series, length)`
 - `ema(series, length)`
 - `rsi(series, length)`
+- `ma(series, length, ma_type)`
+- `macd(series, fast_length, slow_length, signal_length)`
 - `plot(value)`
 - `above(a, b)`
 - `below(a, b)`
@@ -79,6 +81,27 @@ Rules:
 - the second argument must be a positive integer literal
 - the result type is `series<float>`
 - the series returns `na` until enough history exists to seed the indicator state
+
+### `ma(series, length, ma_type)`
+
+Rules:
+
+- it requires exactly three arguments
+- the first argument must be `series<float>`
+- the second argument must be a positive integer literal
+- the third argument must be a typed `ma_type.<variant>` value
+- the result type is `series<float>`
+- `ma_type.sma`, `ma_type.ema`, and `ma_type.wma` are currently implemented
+
+### `macd(series, fast_length, slow_length, signal_length)`
+
+Rules:
+
+- it requires exactly four arguments
+- the first argument must be `series<float>`
+- the remaining arguments must be positive integer literals
+- the result type is a 3-tuple of series values in TA-Lib order: `(macd_line, signal, histogram)`
+- the result must be destructured before it can be used in `plot`, `export`, conditions, or further expressions
 
 ## Relational Helpers
 

@@ -258,6 +258,43 @@ fn golden_crossover_builtin_shape_matches() {
 }
 
 #[test]
+fn golden_ma_builtin_with_typed_enum_matches_weighted_window() {
+    let compiled =
+        compile(&with_interval("plot(ma(close, 3, ma_type.wma))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][2]["value"],
+        serde_json::json!(101.33333333333333)
+    );
+}
+
+#[test]
+fn golden_macd_tuple_destructuring_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (line, signal, hist) = macd(close, 3, 5, 2)\nplot(hist)",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["plots"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert!(json["plots"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(5)
+        .any(|point| point["value"].is_number()));
+}
+
+#[test]
 fn golden_extrema_builtin_shape_matches() {
     let compiled = compile(&with_interval("plot(highest(close, 5) - lowest(close, 5))"))
         .expect("script compiles");
