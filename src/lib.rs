@@ -6,6 +6,7 @@
 //! layers.
 
 pub mod ast;
+pub mod backtest;
 pub mod builtins;
 pub mod bytecode;
 pub mod compiler;
@@ -24,6 +25,10 @@ pub mod token;
 pub mod types;
 pub mod vm;
 
+pub use backtest::{
+    run_backtest_with_sources, BacktestConfig, BacktestError, BacktestResult, BacktestSummary,
+    EquityPoint, Fill, FillAction, PositionSide, PositionSnapshot, SignalContract, Trade,
+};
 pub use bytecode::{OutputDecl, OutputKind};
 pub use compiler::{compile, CompiledProgram};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};

@@ -85,6 +85,7 @@ nav:
   - Tooling:
       - CLI: tooling/cli.md
       - Market Mode: tooling/market-mode.md
+      - Backtesting: tooling/backtesting.md
       - Language Server: tooling/language-server.md
       - VS Code Extension: tooling/vscode.md
   - Internals:

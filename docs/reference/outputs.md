@@ -62,6 +62,30 @@ Runtime event rule:
 - a trigger event is emitted for a step only when the current trigger sample is `true`
 - `false` and `na` do not emit trigger events
 
+## Backtester Trigger Contract
+
+The PalmScript language does not attach trading semantics directly to `trigger`.
+
+The library backtester interprets trigger names externally. Its default signal
+contract is:
+
+- `trigger long_entry = ...`
+- `trigger long_exit = ...`
+- `trigger short_entry = ...`
+- `trigger short_exit = ...`
+
+Rules for that contract:
+
+- trigger names are matched by the backtester, not by the compiler or VM
+- scripts may still declare additional triggers for alerts or other consumers
+- if no configured trigger names match the compiled trigger outputs, the
+  backtester fails validation
+- trigger events are observed on the runtime step clock, then scheduled onto the
+  next eligible execution-source bar by the backtester
+
+See [Backtesting](../tooling/backtesting.md) for the Rust API and execution
+model.
+
 ## Runtime Output Collections
 
 Over a full run, the runtime accumulates:

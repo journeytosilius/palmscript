@@ -11,6 +11,7 @@ The language now includes indicator, signal-helper, event-memory, and early TA-L
 The repository currently ships:
 
 - the Rust library crate
+- a library-first backtester on top of runtime trigger outputs
 - the `palmscript` CLI
 - the `palmscript-lsp` language server
 - the first-party VS Code extension
@@ -28,6 +29,7 @@ PalmScript currently implements:
 - deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>` enum literals
 - a partially executable TA-Lib-style builtin surface, with additional reserved catalog names exposed through diagnostics and IDE metadata
 - exchange-backed execution through `palmscript run market`
+- signal-to-portfolio backtesting through `run_backtest_with_sources`
 
 Checked-in strategy examples live under [`examples/strategies/`](examples/strategies/).
 
@@ -45,6 +47,7 @@ Start here:
 - [Language Reference](docs/reference/overview.md)
 - [Indicators Reference](docs/reference/indicators.md)
 - [CLI](docs/tooling/cli.md)
+- [Backtesting](docs/tooling/backtesting.md)
 - [VS Code Extension](docs/tooling/vscode.md)
 
 ## Common Commands

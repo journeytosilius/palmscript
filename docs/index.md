@@ -9,6 +9,7 @@ This site is the canonical documentation source for the repository.
 - `Learn` teaches how to write and run PalmScript strategies.
 - `Reference` is the normative definition of PalmScript syntax and semantics.
 - `Tooling` explains the CLI, execution modes, and editor integrations.
+- `Tooling` also covers the library backtesting surface built on top of runtime outputs.
 - `Internals` documents compiler, bytecode, VM, and runtime architecture.
 - `Contributing` covers repository workflow, testing, releases, and docs maintenance.
 
@@ -19,6 +20,7 @@ This site is the canonical documentation source for the repository.
 - Need the formal language definition: [Reference Overview](reference/overview.md)
 - Looking for indicator contracts: [Indicators Overview](reference/indicators.md)
 - Running scripts from the CLI: [CLI](tooling/cli.md)
+- Integrating the library backtester: [Backtesting](tooling/backtesting.md)
 - Understanding the editor workflow: [VS Code Extension](tooling/vscode.md)
 
 ## Current Capabilities
@@ -37,6 +39,7 @@ PalmScript currently implements:
 - series indexing with literal offsets
 - builtins: indicators, signal helpers, event-memory helpers, `plot`, and a partially executable TA-Lib-style catalog
 - exchange-backed execution through market mode
+- library backtesting through `run_backtest_with_sources`
 - a CLI, language server, and first-party VS Code extension
 
 ## Reading Strategy
