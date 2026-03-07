@@ -12,7 +12,7 @@ use crate::ast::{
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
     Constant, Instruction, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
-    PositionFieldDecl, Program, SignalRole as CompiledSignalRole,
+    PositionEventFieldDecl, PositionFieldDecl, Program, SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -21,7 +21,7 @@ use crate::interval::{
 use crate::lexer;
 use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
 use crate::parser;
-use crate::position::PositionField;
+use crate::position::{PositionEventField, PositionField};
 use crate::span::Span;
 use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunctionMetadata};
 use crate::types::{SlotKind, Type, Value};
@@ -173,6 +173,8 @@ struct Analysis {
     order_fields: Vec<OrderFieldDecl>,
     position_fields: Vec<PositionFieldDecl>,
     position_field_slots: HashMap<PositionField, u16>,
+    position_event_fields: Vec<PositionEventFieldDecl>,
+    position_event_field_slots: HashMap<PositionEventField, u16>,
     orders: Vec<OrderDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
@@ -726,6 +728,7 @@ impl<'a> Analyzer<'a> {
             ExprKind::String(_)
             | ExprKind::SourceSeries { .. }
             | ExprKind::PositionField { .. }
+            | ExprKind::PositionEventField { .. }
             | ExprKind::Index { .. } => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
@@ -783,7 +786,9 @@ impl<'a> Analyzer<'a> {
                     *field_span,
                 ));
             }
-            ExprKind::SourceSeries { .. } | ExprKind::EnumVariant { .. } => {}
+            ExprKind::PositionEventField { .. }
+            | ExprKind::SourceSeries { .. }
+            | ExprKind::EnumVariant { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
             ExprKind::Binary { left, right, .. } => {
                 self.validate_function_expr(left, params);
@@ -1434,6 +1439,32 @@ impl<'a> Analyzer<'a> {
         slot
     }
 
+    fn position_event_field_slot(&mut self, field: PositionEventField) -> u16 {
+        if let Some(slot) = self
+            .analysis
+            .position_event_field_slots
+            .get(&field)
+            .copied()
+        {
+            return slot;
+        }
+        let name = format!("__position_event.{}", field.as_str());
+        let slot = self.define_symbol(
+            name,
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesBool),
+                update_mask: BASE_UPDATE_MASK,
+            },
+            true,
+            None,
+        );
+        self.analysis
+            .position_event_fields
+            .push(PositionEventFieldDecl { field, slot });
+        self.analysis.position_event_field_slots.insert(field, slot);
+        slot
+    }
+
     fn analyze_block(&mut self, block: &Block) {
         for stmt in &block.statements {
             self.analyze_stmt(stmt);
@@ -1489,6 +1520,13 @@ impl<'a> Analyzer<'a> {
                 let ty = position_field_type(*field);
                 self.position_field_slot(*field);
                 ExprInfo::scalar(ty)
+            }
+            ExprKind::PositionEventField { field, .. } => {
+                self.position_event_field_slot(*field);
+                ExprInfo {
+                    ty: InferredType::Concrete(Type::SeriesBool),
+                    update_mask: BASE_UPDATE_MASK,
+                }
             }
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
@@ -1923,6 +1961,10 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 ));
                 ExprInfo::scalar(Type::F64)
             }
+            ExprKind::PositionEventField { .. } => ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesBool),
+                update_mask: BASE_UPDATE_MASK,
+            },
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => symbol.info,
                 None => {
@@ -2253,6 +2295,7 @@ fn collect_source_series_refs(
         | ExprKind::String(_)
         | ExprKind::Ident(_)
         | ExprKind::PositionField { .. }
+        | ExprKind::PositionEventField { .. }
         | ExprKind::EnumVariant { .. } => {}
     }
 }
@@ -2362,6 +2405,7 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         | ExprKind::String(_)
         | ExprKind::Ident(_)
         | ExprKind::PositionField { .. }
+        | ExprKind::PositionEventField { .. }
         | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => None,
     }
@@ -2416,6 +2460,7 @@ fn collect_called_user_functions<'a>(
         | ExprKind::String(_)
         | ExprKind::Ident(_)
         | ExprKind::PositionField { .. }
+        | ExprKind::PositionEventField { .. }
         | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => {}
     }
@@ -3503,6 +3548,50 @@ fn analyze_helper_builtin(
                 update_mask: condition_info.update_mask,
             }
         }
+        BuiltinKind::SinceExtrema => {
+            let anchor_info = arg_info[0];
+            let source_info = arg_info[1];
+            if !anchor_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !source_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: anchor_info.update_mask | source_info.update_mask,
+            }
+        }
+        BuiltinKind::SinceOffset => {
+            let anchor_info = arg_info[0];
+            let source_info = arg_info[1];
+            if !anchor_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !source_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: anchor_info.update_mask | source_info.update_mask,
+            }
+        }
         BuiltinKind::NullCheck => ExprInfo {
             ty: if arg_info[0].concrete().is_some_and(Type::is_series) {
                 InferredType::Concrete(Type::SeriesBool)
@@ -3621,6 +3710,55 @@ fn analyze_helper_builtin(
                 update_mask: condition_info.update_mask | source_info.update_mask,
             }
         }
+        BuiltinKind::SinceValueWhen => {
+            let anchor_info = arg_info[0];
+            let condition_info = arg_info[1];
+            let source_info = arg_info[2];
+            if !anchor_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !condition_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if !matches!(
+                source_info.ty,
+                InferredType::Concrete(Type::SeriesF64 | Type::SeriesBool)
+            ) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "{callee} requires series<float> or series<bool> as the third argument"
+                    ),
+                    args[2].span,
+                ));
+            }
+            validate_non_negative_literal(
+                callee,
+                "occurrence",
+                &args[3],
+                immutable_values,
+                diagnostics,
+            );
+            ExprInfo {
+                ty: match source_info.ty {
+                    InferredType::Concrete(Type::SeriesBool) => {
+                        InferredType::Concrete(Type::SeriesBool)
+                    }
+                    _ => InferredType::Concrete(Type::SeriesF64),
+                },
+                update_mask: anchor_info.update_mask
+                    | condition_info.update_mask
+                    | source_info.update_mask,
+            }
+        }
         BuiltinKind::VolumeIndicator => {
             let price_info = arg_info[0];
             let volume_info = arg_info[1];
@@ -3695,7 +3833,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             let right = arg_info.get(1).copied().unwrap_or(left);
             coalesce_result(left, right)
         }
-        BuiltinKind::ValueWhen => ExprInfo::series(0),
+        BuiltinKind::ValueWhen | BuiltinKind::SinceExtrema | BuiltinKind::SinceOffset => {
+            ExprInfo::series(0)
+        }
+        BuiltinKind::SinceValueWhen => ExprInfo::series(0),
         BuiltinKind::IndicatorTuple => ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
@@ -3948,6 +4089,7 @@ fn eval_immutable_expr(expr: &Expr, values: &HashMap<String, Value>) -> Option<V
         ExprKind::String(_)
         | ExprKind::SourceSeries { .. }
         | ExprKind::PositionField { .. }
+        | ExprKind::PositionEventField { .. }
         | ExprKind::Index { .. } => None,
     }
 }
@@ -4389,6 +4531,7 @@ impl<'a> Compiler<'a> {
         self.program.outputs = self.analysis.outputs.clone();
         self.program.order_fields = self.analysis.order_fields.clone();
         self.program.position_fields = self.analysis.position_fields.clone();
+        self.program.position_event_fields = self.analysis.position_event_fields.clone();
         self.program.orders = self.analysis.orders.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
@@ -4672,6 +4815,25 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            ExprKind::PositionEventField { field, .. } => {
+                let Some(slot) = self.analysis.position_event_field_slots.get(field).copied()
+                else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        format!(
+                            "missing compiled position-event slot for `position_event.{}`",
+                            field.as_str()
+                        ),
+                        expr.span,
+                    ));
+                    return;
+                };
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
             ExprKind::String(_) => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Compile,
@@ -4866,6 +5028,11 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Falling
             | BuiltinId::BarsSince
             | BuiltinId::ValueWhen
+            | BuiltinId::HighestSince
+            | BuiltinId::LowestSince
+            | BuiltinId::HighestBarsSince
+            | BuiltinId::LowestBarsSince
+            | BuiltinId::ValueWhenSince
             | BuiltinId::Cross
             | BuiltinId::Crossover
             | BuiltinId::Crossunder
@@ -5936,6 +6103,17 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            BuiltinKind::SinceExtrema | BuiltinKind::SinceOffset => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinKind::ValueWhen => {
                 self.emit_series_ref(&args[0], 2, expr_info, user_calls);
                 self.emit_series_ref(&args[1], 2, expr_info, user_calls);
@@ -5944,6 +6122,19 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::SinceValueWhen => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[2], 2, expr_info, user_calls);
+                self.emit_expr(&args[3], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

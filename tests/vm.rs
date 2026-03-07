@@ -221,6 +221,7 @@ fn tiny_program_push_add_plot_executes() {
         outputs: vec![],
         order_fields: vec![],
         position_fields: vec![],
+        position_event_fields: vec![],
         orders: vec![],
         base_interval: Some(Interval::Min1),
         declared_sources: default_declared_sources(),
@@ -248,6 +249,7 @@ fn stack_underflow_is_reported() {
         outputs: vec![],
         order_fields: vec![],
         position_fields: vec![],
+        position_event_fields: vec![],
         orders: vec![],
         base_interval: Some(Interval::Min1),
         declared_sources: default_declared_sources(),
@@ -275,6 +277,7 @@ fn invalid_jump_is_reported() {
         outputs: vec![],
         order_fields: vec![],
         position_fields: vec![],
+        position_event_fields: vec![],
         orders: vec![],
         base_interval: Some(Interval::Min1),
         declared_sources: default_declared_sources(),
@@ -837,4 +840,27 @@ fn valuewhen_preserves_bool_source_type() {
         outputs.exports[0].points[1].value,
         palmscript::OutputValue::Bool(true)
     ));
+}
+
+#[test]
+fn position_event_namespace_is_false_outside_backtests() {
+    let compiled = palmscript::compile(&with_interval(
+        "export entry_fill = position_event.long_entry_fill
+export trail = highest_since(position_event.long_entry_fill, close)
+plot(0)",
+    ))
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 12.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    for point in &outputs.exports[0].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(false));
+    }
+    for point in &outputs.exports[1].points {
+        assert_eq!(point.value, palmscript::OutputValue::NA);
+    }
 }

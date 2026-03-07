@@ -618,6 +618,16 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                 ),
             });
         }
+        ExprKind::PositionEventField { field, .. } => {
+            context.references.push(Reference {
+                span: expr.span,
+                definition_index: None,
+                hover: format!(
+                    "`position_event.{}`\n\nBacktest-driven position fill event.",
+                    field.as_str()
+                ),
+            });
+        }
         ExprKind::Unary { expr: inner, .. } => resolve_expr(context, inner, scope),
         ExprKind::Binary { left, right, .. } => {
             resolve_expr(context, left, scope);
@@ -1276,6 +1286,9 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
             namespace, variant, ..
         } => format!("{namespace}.{variant}"),
         ExprKind::PositionField { field, .. } => format!("position.{}", field.as_str()),
+        ExprKind::PositionEventField { field, .. } => {
+            format!("position_event.{}", field.as_str())
+        }
         ExprKind::SourceSeries {
             source,
             interval,

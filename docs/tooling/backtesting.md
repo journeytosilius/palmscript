@@ -124,6 +124,13 @@ Attached position-aware exits:
 - `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
 - `position.*` is valid only inside `protect` and `target`
 
+Actual-fill anchor helpers:
+
+- `position_event.long_entry_fill`, `position_event.short_entry_fill`, `position_event.long_exit_fill`, and `position_event.short_exit_fill` expose real backtest fill events as `series<bool>`
+- anchored helpers such as `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, and `valuewhen_since` can use those events directly
+- example: `protect long = stop_market(highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
+- outside backtests, `position_event.*` stays deterministic by evaluating to `false` on every step
+
 Legacy compatibility bridge:
 
 - if no first-class signal declarations are present, the backtester falls back to trigger names `long_entry`, `long_exit`, `short_entry`, and `short_exit`

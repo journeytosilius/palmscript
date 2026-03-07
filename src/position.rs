@@ -80,3 +80,32 @@ impl PositionField {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PositionEventField {
+    LongEntryFill,
+    ShortEntryFill,
+    LongExitFill,
+    ShortExitFill,
+}
+
+impl PositionEventField {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LongEntryFill => "long_entry_fill",
+            Self::ShortEntryFill => "short_entry_fill",
+            Self::LongExitFill => "long_exit_fill",
+            Self::ShortExitFill => "short_exit_fill",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "long_entry_fill" => Some(Self::LongEntryFill),
+            "short_entry_fill" => Some(Self::ShortEntryFill),
+            "long_exit_fill" => Some(Self::LongExitFill),
+            "short_exit_fill" => Some(Self::ShortExitFill),
+            _ => None,
+        }
+    }
+}

@@ -179,6 +179,22 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_position_event_anchors_with_since_helpers() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+entry long = src.close > src.close[1]
+protect long = stop_market(
+    highest_since(position_event.long_entry_fill, src.high) - 2 * atr(src.high, src.low, src.close, 14),
+    trigger_ref.last
+)
+export armed = position_event.long_entry_fill
+plot(src.close)",
+    )
+    .expect("position event anchors should compile");
+}
+
+#[test]
 fn rejects_order_declarations_inside_blocks() {
     let message = compile_err(&with_interval(
         "if true { order entry long = market() } else { plot(0) }",

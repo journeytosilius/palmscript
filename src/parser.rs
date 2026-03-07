@@ -898,6 +898,20 @@ impl<'a> Parser<'a> {
                         },
                     });
                 }
+                if source_name == "position_event" {
+                    let Some(field) = crate::position::PositionEventField::parse(&name) else {
+                        self.push_diagnostic("unknown `position_event` field", span);
+                        return None;
+                    };
+                    return Some(Expr {
+                        id: self.alloc_id(),
+                        span: source_span.merge(span),
+                        kind: ExprKind::PositionEventField {
+                            field,
+                            field_span: span,
+                        },
+                    });
+                }
                 if let Some(field) = MarketField::parse(&name) {
                     Some(Expr {
                         id: self.alloc_id(),

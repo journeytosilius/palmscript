@@ -152,6 +152,8 @@ Rules:
 - at most one `protect` and one `target` declaration are allowed per side
 - if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
 - `position.*` is only available inside `protect` and `target` declarations
+- `position_event.*` is available anywhere a `series<bool>` is valid and is intended to anchor logic to actual backtest fills
+- current `position_event` fields are `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, and `short_exit_fill`
 - legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 
 ## Conditional Scope

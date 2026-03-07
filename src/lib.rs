@@ -50,7 +50,7 @@ pub use output::{
     Alert, OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,
     PlotPoint, PlotSeries, StepOutput, TriggerEvent,
 };
-pub use position::{PositionField, PositionSide};
+pub use position::{PositionEventField, PositionField, PositionSide};
 pub use runtime::{run_with_sources, Bar, Engine, SourceFeed, SourceRuntimeConfig, VmLimits};
 pub use span::{Position, Span};
 pub use talib::{MaType, TalibFlag, TalibFunctionMetadata, TalibGroup, TALIB_UPSTREAM_COMMIT};

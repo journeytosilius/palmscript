@@ -1006,11 +1006,13 @@ plot(spot.close)"
     let protect_order = result
         .orders
         .iter()
+        .rev()
         .find(|order| order.role == SignalRole::ProtectLong)
         .expect("protect order should exist");
     let target_order = result
         .orders
         .iter()
+        .rev()
         .find(|order| order.role == SignalRole::TargetLong)
         .expect("target order should exist");
     assert_eq!(protect_order.status, OrderStatus::Filled);
@@ -1066,24 +1068,96 @@ plot(spot.close)",
         result.diagnostics.trade_diagnostics[0].exit_classification,
         palmscript::TradeExitClassification::Signal
     );
-    let protect_order = result
-        .orders
+    assert!(result.orders.iter().any(|order| {
+        order.role == SignalRole::ProtectLong
+            && order.status == OrderStatus::Cancelled
+            && order.end_reason == Some(OrderEndReason::PositionClosed)
+    }));
+    assert!(result.orders.iter().any(|order| {
+        order.role == SignalRole::TargetLong
+            && order.status == OrderStatus::Cancelled
+            && order.end_reason == Some(OrderEndReason::PositionClosed)
+    }));
+}
+
+#[test]
+fn position_event_anchors_fire_on_fill_bar_and_drive_since_helpers() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0}
+export entry_fill = position_event.long_entry_fill
+export trail = highest_since(position_event.long_entry_fill, spot.high)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                Bar {
+                    open: 11.0,
+                    high: 13.0,
+                    low: 10.5,
+                    close: 12.0,
+                    volume: 1_000.0,
+                    time: (t0 + support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 12.0,
+                    high: 12.5,
+                    low: 11.5,
+                    close: 12.2,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 12.0,
+                    high: 14.0,
+                    low: 11.8,
+                    close: 13.5,
+                    volume: 1_000.0,
+                    time: (t0 + 3 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.outputs.exports.len(), 2);
+    let entry_fill_values: Vec<_> = result.outputs.exports[0]
+        .points
         .iter()
-        .find(|order| order.role == SignalRole::ProtectLong)
-        .expect("protect order should exist");
-    let target_order = result
-        .orders
-        .iter()
-        .find(|order| order.role == SignalRole::TargetLong)
-        .expect("target order should exist");
-    assert_eq!(protect_order.status, OrderStatus::Cancelled);
+        .map(|point| &point.value)
+        .collect();
     assert_eq!(
-        protect_order.end_reason,
-        Some(OrderEndReason::PositionClosed)
+        entry_fill_values,
+        vec![
+            &palmscript::OutputValue::Bool(false),
+            &palmscript::OutputValue::Bool(true),
+            &palmscript::OutputValue::Bool(false),
+            &palmscript::OutputValue::Bool(false)
+        ]
     );
-    assert_eq!(target_order.status, OrderStatus::Cancelled);
+
+    let trail_values: Vec<_> = result.outputs.exports[1]
+        .points
+        .iter()
+        .map(|point| &point.value)
+        .collect();
     assert_eq!(
-        target_order.end_reason,
-        Some(OrderEndReason::PositionClosed)
+        trail_values,
+        vec![
+            &palmscript::OutputValue::NA,
+            &palmscript::OutputValue::F64(13.0),
+            &palmscript::OutputValue::F64(13.0),
+            &palmscript::OutputValue::F64(14.0)
+        ]
     );
 }

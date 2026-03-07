@@ -12,10 +12,10 @@ use crate::backtest::{
     OrderEndReason, OrderKindDiagnosticSummary, OrderRecord, OrderStatus, PositionSnapshot,
     SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
 };
-use crate::bytecode::{PositionFieldDecl, SignalRole};
+use crate::bytecode::{PositionEventFieldDecl, PositionFieldDecl, SignalRole};
 use crate::order::OrderKind;
 use crate::output::StepOutput;
-use crate::position::{PositionField, PositionSide};
+use crate::position::{PositionEventField, PositionField, PositionSide};
 use crate::runtime::{Bar, RuntimeStep, RuntimeStepper};
 use crate::types::Value;
 
@@ -36,6 +36,14 @@ struct OrderDiagnosticContext {
     fill_snapshot: Option<FeatureSnapshot>,
     placed_position: Option<PositionSnapshot>,
     fill_position: Option<PositionSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PositionEventStep {
+    long_entry_fill: bool,
+    short_entry_fill: bool,
+    long_exit_fill: bool,
+    short_exit_fill: bool,
 }
 
 pub(crate) fn simulate_backtest(
@@ -67,27 +75,14 @@ pub(crate) fn simulate_backtest(
     let mut max_drawdown = 0.0_f64;
     let mut execution_cursor = 0usize;
     let mut last_mark_price = None::<f64>;
+    let mut last_snapshot = None::<FeatureSnapshot>;
 
     while let Some(open_time) = stepper.peek_open_time() {
         let next_execution = execution_bars.get(execution_cursor).copied();
         let current_execution =
             next_execution.filter(|bar| bar.time.is_finite() && bar.time == open_time as f64);
-        let overrides = build_position_overrides(
-            &prepared.position_fields,
-            position.as_ref(),
-            open_trade.as_ref(),
-            current_execution.map(|bar| bar.close).or(last_mark_price),
-            open_time as f64,
-            current_execution.map(|_| execution_cursor),
-        );
-        let RuntimeStep { output, .. } = stepper
-            .step_with_overrides(&overrides)
-            .map_err(BacktestError::Runtime)?
-            .expect("peeked runtime step should exist");
-        let step_time = open_time as f64;
-        let snapshot = snapshot_from_step(&output, step_time);
-
-        let position_before_step = position.clone();
+        let mut position_events = PositionEventStep::default();
+        let mut filled_record_indices = Vec::new();
         if let Some(bar) = current_execution {
             if let Some(open_trade) = open_trade.as_mut() {
                 update_open_trade_excursions(open_trade, bar.high, bar.low);
@@ -109,15 +104,12 @@ pub(crate) fn simulate_backtest(
                 &mut orders,
                 &mut order_contexts,
                 position.as_ref(),
-                snapshot.clone(),
-                current_position_snapshot(position.as_ref(), bar.close, bar.time),
+                last_snapshot.clone(),
+                current_position_snapshot(position.as_ref(), bar.open, bar.time),
                 execution_cursor,
                 bar.time,
             );
             pending_conflict_time = None;
-
-            let fill_snapshot = snapshot.clone();
-            let fill_position = current_position_snapshot(position.as_ref(), bar.close, bar.time);
             let mut filled_this_bar = false;
             for role in ROLE_PRIORITY {
                 if filled_this_bar {
@@ -179,8 +171,6 @@ pub(crate) fn simulate_backtest(
                         } else {
                             execution.price
                         };
-                        order_contexts[active.record_index].fill_snapshot = fill_snapshot.clone();
-                        order_contexts[active.record_index].fill_position = fill_position.clone();
 
                         let closed_side = position.as_ref().and_then(|state| {
                             if closes_existing_position(role, state.side) {
@@ -194,7 +184,7 @@ pub(crate) fn simulate_backtest(
                             role,
                             active.record_index,
                             active.request.kind,
-                            fill_snapshot.clone(),
+                            last_snapshot.clone(),
                             execution_cursor,
                             bar.time,
                             execution.raw_price,
@@ -210,6 +200,10 @@ pub(crate) fn simulate_backtest(
                         );
 
                         if let Some(side) = closed_side {
+                            match side {
+                                PositionSide::Long => position_events.long_exit_fill = true,
+                                PositionSide::Short => position_events.short_exit_fill = true,
+                            }
                             cancel_orders_for_closed_side(
                                 &mut active_orders,
                                 side,
@@ -231,13 +225,17 @@ pub(crate) fn simulate_backtest(
                                     order_id: active.record_index,
                                     role,
                                     kind: active.request.kind,
-                                    snapshot: fill_snapshot.clone(),
+                                    snapshot: last_snapshot.clone(),
                                 },
                                 fee_rate,
                                 &mut cash,
                             );
                             update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
                             fills.push(entry_fill);
+                            match next_side {
+                                PositionSide::Long => position_events.long_entry_fill = true,
+                                PositionSide::Short => position_events.short_entry_fill = true,
+                            }
                             position = Some(next_position);
                             open_trade = Some(next_trade);
                         }
@@ -254,6 +252,7 @@ pub(crate) fn simulate_backtest(
                                 end_reason: None,
                             },
                         );
+                        filled_record_indices.push(active.record_index);
 
                         invalidate_inapplicable_orders(
                             &mut active_orders,
@@ -264,7 +263,36 @@ pub(crate) fn simulate_backtest(
                     }
                 }
             }
+        }
 
+        let overrides = build_runtime_overrides(
+            &prepared.position_fields,
+            &prepared.position_event_fields,
+            position.as_ref(),
+            open_trade.as_ref(),
+            current_execution.map(|bar| bar.close).or(last_mark_price),
+            open_time as f64,
+            current_execution.map(|_| execution_cursor),
+            position_events,
+        );
+        let RuntimeStep { output, .. } = stepper
+            .step_with_overrides(&overrides)
+            .map_err(BacktestError::Runtime)?
+            .expect("peeked runtime step should exist");
+        let step_time = open_time as f64;
+        let snapshot = snapshot_from_step(&output, step_time);
+
+        if let Some(bar) = current_execution {
+            if position_events.long_entry_fill || position_events.short_entry_fill {
+                if let Some(open_trade) = open_trade.as_mut() {
+                    open_trade.entry_snapshot = snapshot.clone();
+                }
+            }
+            let fill_position = current_position_snapshot(position.as_ref(), bar.close, bar.time);
+            for record_index in filled_record_indices {
+                order_contexts[record_index].fill_snapshot = snapshot.clone();
+                order_contexts[record_index].fill_position = fill_position.clone();
+            }
             let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
             let gross_exposure = quantity.abs() * bar.close;
             max_gross_exposure = max_gross_exposure.max(gross_exposure);
@@ -298,12 +326,13 @@ pub(crate) fn simulate_backtest(
             step_time,
             &output,
             &prepared,
-            position_before_step.as_ref(),
+            position.as_ref(),
             position.as_ref(),
             &mut pending_requests,
             &mut pending_snapshots,
-            snapshot,
+            snapshot.clone(),
         );
+        last_snapshot = snapshot;
     }
 
     let outputs = stepper.finish();
@@ -370,15 +399,18 @@ pub(crate) fn simulate_backtest(
     })
 }
 
-fn build_position_overrides(
-    fields: &[PositionFieldDecl],
+#[allow(clippy::too_many_arguments)]
+fn build_runtime_overrides(
+    position_fields: &[PositionFieldDecl],
+    position_event_fields: &[PositionEventFieldDecl],
     position: Option<&PositionState>,
     open_trade: Option<&OpenTrade>,
     market_price: Option<f64>,
     _market_time: f64,
     current_bar_index: Option<usize>,
+    position_events: PositionEventStep,
 ) -> Vec<(u16, Value)> {
-    fields
+    let mut overrides: Vec<(u16, Value)> = position_fields
         .iter()
         .map(|decl| {
             let value = match (decl.field, position, open_trade) {
@@ -425,7 +457,17 @@ fn build_position_overrides(
             };
             (decl.slot, value)
         })
-        .collect()
+        .collect();
+    overrides.extend(position_event_fields.iter().map(|decl| {
+        let value = match decl.field {
+            PositionEventField::LongEntryFill => Value::Bool(position_events.long_entry_fill),
+            PositionEventField::ShortEntryFill => Value::Bool(position_events.short_entry_fill),
+            PositionEventField::LongExitFill => Value::Bool(position_events.long_exit_fill),
+            PositionEventField::ShortExitFill => Value::Bool(position_events.short_exit_fill),
+        };
+        (decl.slot, value)
+    }));
+    overrides
 }
 
 fn enqueue_signal_requests(

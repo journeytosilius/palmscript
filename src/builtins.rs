@@ -55,6 +55,9 @@ pub enum BuiltinKind {
     Falling,
     BarsSince,
     ValueWhen,
+    SinceExtrema,
+    SinceOffset,
+    SinceValueWhen,
     NullCheck,
     NullCoalesce,
     Cumulative,
@@ -203,10 +206,15 @@ pub enum BuiltinId {
     HtTrendline = 123,
     HtTrendmode = 124,
     Mama = 125,
+    HighestSince = 126,
+    LowestSince = 127,
+    HighestBarsSince = 128,
+    LowestBarsSince = 129,
+    ValueWhenSince = 130,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 126] = [
+    pub const RESERVED: [Self; 131] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -333,6 +341,11 @@ impl BuiltinId {
         Self::HtTrendline,
         Self::HtTrendmode,
         Self::Mama,
+        Self::HighestSince,
+        Self::LowestSince,
+        Self::HighestBarsSince,
+        Self::LowestBarsSince,
+        Self::ValueWhenSince,
     ];
 
     pub const CALLABLE: [Self; 120] = [
@@ -485,6 +498,11 @@ impl BuiltinId {
             "falling" => Some(Self::Falling),
             "barssince" => Some(Self::BarsSince),
             "valuewhen" => Some(Self::ValueWhen),
+            "highest_since" => Some(Self::HighestSince),
+            "lowest_since" => Some(Self::LowestSince),
+            "highestbars_since" => Some(Self::HighestBarsSince),
+            "lowestbars_since" => Some(Self::LowestBarsSince),
+            "valuewhen_since" => Some(Self::ValueWhenSince),
             "ma" => Some(Self::Ma),
             "macd" => Some(Self::Macd),
             "acos" => Some(Self::Acos),
@@ -718,6 +736,11 @@ impl BuiltinId {
             123 => Some(Self::HtTrendline),
             124 => Some(Self::HtTrendmode),
             125 => Some(Self::Mama),
+            126 => Some(Self::HighestSince),
+            127 => Some(Self::LowestSince),
+            128 => Some(Self::HighestBarsSince),
+            129 => Some(Self::LowestBarsSince),
+            130 => Some(Self::ValueWhenSince),
             _ => None,
         }
     }
@@ -749,6 +772,11 @@ impl BuiltinId {
             Self::Falling => "falling",
             Self::BarsSince => "barssince",
             Self::ValueWhen => "valuewhen",
+            Self::HighestSince => "highest_since",
+            Self::LowestSince => "lowest_since",
+            Self::HighestBarsSince => "highestbars_since",
+            Self::LowestBarsSince => "lowestbars_since",
+            Self::ValueWhenSince => "valuewhen_since",
             Self::Ma => "ma",
             Self::Macd => "macd",
             Self::Acos => "acos",
@@ -914,6 +942,9 @@ impl BuiltinId {
             Self::Falling => BuiltinKind::Falling,
             Self::BarsSince => BuiltinKind::BarsSince,
             Self::ValueWhen => BuiltinKind::ValueWhen,
+            Self::HighestSince | Self::LowestSince => BuiltinKind::SinceExtrema,
+            Self::HighestBarsSince | Self::LowestBarsSince => BuiltinKind::SinceOffset,
+            Self::ValueWhenSince => BuiltinKind::SinceValueWhen,
             Self::Nz => BuiltinKind::NullCoalesce,
             Self::NaFunc => BuiltinKind::NullCheck,
             Self::Coalesce => BuiltinKind::NullCoalesce,
@@ -1001,7 +1032,11 @@ impl BuiltinId {
             | Self::Mult
             | Self::Sub
             | Self::Medprice
-            | Self::Obv => BuiltinArity::Exact(2),
+            | Self::Obv
+            | Self::HighestSince
+            | Self::LowestSince
+            | Self::HighestBarsSince
+            | Self::LowestBarsSince => BuiltinArity::Exact(2),
             Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => {
                 BuiltinArity::Range { min: 1, max: 2 }
             }
@@ -1028,6 +1063,7 @@ impl BuiltinId {
             | Self::Outside
             | Self::ValueWhen
             | Self::Trange => BuiltinArity::Exact(3),
+            Self::ValueWhenSince => BuiltinArity::Exact(4),
             Self::Willr => BuiltinArity::Range { min: 3, max: 4 },
             Self::Macd => BuiltinArity::Exact(4),
             Self::Mfi => BuiltinArity::Range { min: 4, max: 5 },
@@ -1100,6 +1136,11 @@ impl BuiltinId {
             Self::Falling => "falling(series, length)",
             Self::BarsSince => "barssince(condition)",
             Self::ValueWhen => "valuewhen(condition, source, occurrence)",
+            Self::HighestSince => "highest_since(anchor, source)",
+            Self::LowestSince => "lowest_since(anchor, source)",
+            Self::HighestBarsSince => "highestbars_since(anchor, source)",
+            Self::LowestBarsSince => "lowestbars_since(anchor, source)",
+            Self::ValueWhenSince => "valuewhen_since(anchor, condition, source, occurrence)",
             Self::Nz => "nz(value[, fallback])",
             Self::NaFunc => "na(value)",
             Self::Coalesce => "coalesce(value, fallback)",
@@ -1237,6 +1278,11 @@ impl BuiltinId {
             Self::Falling => "True when the current sample is strictly less than every prior sample in the trailing window.",
             Self::BarsSince => "Bars since the last true condition on the condition's update clock.",
             Self::ValueWhen => "Captured source value from the Nth most recent true condition.",
+            Self::HighestSince => "Highest value since the most recent true anchor, including the anchor bar.",
+            Self::LowestSince => "Lowest value since the most recent true anchor, including the anchor bar.",
+            Self::HighestBarsSince => "Bars since the highest value inside the current anchored epoch.",
+            Self::LowestBarsSince => "Bars since the lowest value inside the current anchored epoch.",
+            Self::ValueWhenSince => "Captured source value from the current anchored epoch only.",
             Self::Nz => "Replace na with a fallback value.",
             Self::NaFunc => "True when the current sample is na.",
             Self::Coalesce => "Return the first non-na value.",

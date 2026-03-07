@@ -4,8 +4,8 @@
 //! between parsing and compilation.
 
 use crate::span::Span;
-use crate::PositionField;
 use crate::{Interval, MarketField, SourceTemplate};
+use crate::{PositionEventField, PositionField};
 use serde::{Deserialize, Serialize};
 
 pub type NodeId = u32;
@@ -205,6 +205,10 @@ pub enum ExprKind {
     },
     PositionField {
         field: PositionField,
+        field_span: Span,
+    },
+    PositionEventField {
+        field: PositionEventField,
         field_span: Span,
     },
     SourceSeries {

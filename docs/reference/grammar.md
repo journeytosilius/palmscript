@@ -141,6 +141,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - tuple-valued builtins must be bound with tuple destructuring before use
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, and `position_side.<variant>` are typed enum namespaces
 - `position.*` is valid only inside `protect` and `target` declarations
+- `position_event.*` is a backtest-driven `series<bool>` namespace
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

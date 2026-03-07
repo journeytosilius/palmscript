@@ -4,7 +4,7 @@
 //! fixed-layout instructions. The VM executes this representation directly.
 
 use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
-use crate::position::PositionField;
+use crate::position::{PositionEventField, PositionField};
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
 use crate::{DeclaredMarketSource, MarketBinding, SourceIntervalRef};
@@ -150,6 +150,12 @@ pub struct PositionFieldDecl {
     pub slot: u16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PositionEventFieldDecl {
+    pub field: PositionEventField,
+    pub slot: u16,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderDecl {
     pub role: SignalRole,
@@ -181,6 +187,7 @@ pub struct Program {
     pub outputs: Vec<OutputDecl>,
     pub order_fields: Vec<OrderFieldDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
+    pub position_event_fields: Vec<PositionEventFieldDecl>,
     pub orders: Vec<OrderDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,

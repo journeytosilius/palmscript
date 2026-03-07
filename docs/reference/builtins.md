@@ -23,7 +23,7 @@ PalmScript currently exposes these builtin categories:
 - crossing helpers: `cross`, `crossover`, `crossunder`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
-- event-memory helpers: `barssince`, `valuewhen`
+- event-memory helpers: `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`
 - outputs: `plot`
 
 Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `hl.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
@@ -226,6 +226,44 @@ Rules:
 - if the current condition sample is `na`, the current output is `na`
 - when the current condition sample is `true`, the current `source` sample is captured for future occurrences
 
+### `highest_since(anchor, source)` and `lowest_since(anchor, source)`
+
+Rules:
+
+- both require exactly two arguments
+- the first argument must be `series<bool>`
+- the second argument must be `series<float>`
+- when the current anchor sample is `true`, a new anchored epoch starts on the current bar
+- the current bar contributes immediately to the new epoch
+- before the first anchor, the result is `na`
+- later true anchors discard the prior anchored epoch and start a fresh one
+- the result type is `series<float>`
+
+### `highestbars_since(anchor, source)` and `lowestbars_since(anchor, source)`
+
+Rules:
+
+- both require exactly two arguments
+- the first argument must be `series<bool>`
+- the second argument must be `series<float>`
+- they follow the same anchored-epoch reset rules as `highest_since` / `lowest_since`
+- the result is the number of bars since the highest or lowest sample inside the current anchored epoch
+- before the first anchor, the result is `na`
+- the result type is `series<float>`
+
+### `valuewhen_since(anchor, condition, source, occurrence)`
+
+Rules:
+
+- it requires exactly four arguments
+- the first and second arguments must be `series<bool>`
+- the third argument must be `series<float>` or `series<bool>`
+- the fourth argument must be a non-negative integer literal
+- when the current anchor sample is `true`, prior `condition` matches are forgotten and a new anchored epoch starts on the current bar
+- occurrence `0` means the most recent matching event inside the current anchored epoch
+- before the first anchor, the result is `na`
+- the result type matches the third argument type
+
 ## `plot(value)`
 
 `plot` emits a plot point for the current step.
@@ -254,3 +292,4 @@ Examples:
 - `crossover(hl.close, bn.close)` advances when either referenced source series advances
 - `barssince(spot.close > spot.close[1])` advances on the clock of that condition series
 - `valuewhen(trigger_series, hl.1h.close, 0)` advances on the clock of `trigger_series`
+- `highest_since(position_event.long_entry_fill, spot.high)` advances on the clock shared by the anchor and source series

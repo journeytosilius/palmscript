@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::backtest::orders::CapturedOrderRequest;
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
 use crate::backtest::{BacktestError, OrderKind};
-use crate::bytecode::{OrderDecl, PositionFieldDecl, SignalRole};
+use crate::bytecode::{OrderDecl, PositionEventFieldDecl, PositionFieldDecl, SignalRole};
 use crate::compiler::CompiledProgram;
 use crate::interval::SourceTemplate;
 use crate::order::OrderFieldKind;
@@ -13,6 +13,7 @@ pub(crate) struct PreparedBacktest {
     pub signal_roles: HashMap<usize, SignalRole>,
     pub order_templates: HashMap<SignalRole, OrderDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
+    pub position_event_fields: Vec<PositionEventFieldDecl>,
 }
 
 pub(crate) struct ExecutionSource {
@@ -61,6 +62,7 @@ pub(crate) fn prepare_backtest(
         signal_roles,
         order_templates,
         position_fields: compiled.program.position_fields.clone(),
+        position_event_fields: compiled.program.position_event_fields.clone(),
     })
 }
 

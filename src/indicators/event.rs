@@ -18,6 +18,36 @@ pub(crate) struct BarsSinceState {
 pub(crate) struct ValueWhenState {
     occurrence: usize,
     last_seen_version: u64,
+    last_source_version: u64,
+    cached_output: Value,
+    matches: VecDeque<Value>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AnchoredExtremaMode {
+    Highest,
+    Lowest,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AnchoredExtremaState {
+    mode: AnchoredExtremaMode,
+    active: bool,
+    bars_in_epoch: usize,
+    extrema_offset: usize,
+    extrema_value: Option<f64>,
+    last_anchor_version: u64,
+    last_source_version: u64,
+    cached_output: Value,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AnchoredValueWhenState {
+    occurrence: usize,
+    active: bool,
+    last_anchor_version: u64,
+    last_condition_version: u64,
+    last_source_version: u64,
     cached_output: Value,
     matches: VecDeque<Value>,
 }
@@ -85,6 +115,7 @@ impl ValueWhenState {
         Self {
             occurrence,
             last_seen_version: 0,
+            last_source_version: 0,
             cached_output: Value::NA,
             matches: VecDeque::with_capacity(occurrence + 1),
         }
@@ -96,10 +127,226 @@ impl ValueWhenState {
         source: &SeriesBuffer,
         pc: usize,
     ) -> Result<Value, RuntimeError> {
-        if condition.version() == self.last_seen_version {
+        if condition.version() == self.last_seen_version
+            && source.version() == self.last_source_version
+        {
             return Ok(self.cached_output.clone());
         }
         self.last_seen_version = condition.version();
+        self.last_source_version = source.version();
+
+        match condition.get(0) {
+            Value::Bool(true) => {
+                let current = source.get(0);
+                match current {
+                    Value::F64(_) | Value::Bool(_) | Value::NA => {
+                        if self.matches.len() == self.occurrence + 1 {
+                            self.matches.pop_front();
+                        }
+                        self.matches.push_back(current);
+                        self.cached_output = self.lookup_occurrence();
+                    }
+                    other => {
+                        return Err(RuntimeError::TypeMismatch {
+                            pc,
+                            expected: "f64-or-bool",
+                            found: other.type_name(),
+                        });
+                    }
+                }
+            }
+            Value::Bool(false) => {
+                self.cached_output = self.lookup_occurrence();
+            }
+            Value::NA => {
+                self.cached_output = Value::NA;
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        }
+
+        Ok(self.cached_output.clone())
+    }
+
+    fn lookup_occurrence(&self) -> Value {
+        if self.matches.len() <= self.occurrence {
+            Value::NA
+        } else {
+            self.matches[self.matches.len() - 1 - self.occurrence].clone()
+        }
+    }
+}
+
+impl AnchoredExtremaState {
+    pub(crate) fn new(mode: AnchoredExtremaMode) -> Self {
+        Self {
+            mode,
+            active: false,
+            bars_in_epoch: 0,
+            extrema_offset: 0,
+            extrema_value: None,
+            last_anchor_version: 0,
+            last_source_version: 0,
+            cached_output: Value::NA,
+        }
+    }
+
+    pub(crate) fn update_value(
+        &mut self,
+        anchor: &SeriesBuffer,
+        source: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.update(anchor, source, pc, false)
+    }
+
+    pub(crate) fn update_offset(
+        &mut self,
+        anchor: &SeriesBuffer,
+        source: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.update(anchor, source, pc, true)
+    }
+
+    fn update(
+        &mut self,
+        anchor: &SeriesBuffer,
+        source: &SeriesBuffer,
+        pc: usize,
+        return_offset: bool,
+    ) -> Result<Value, RuntimeError> {
+        if anchor.version() == self.last_anchor_version
+            && source.version() == self.last_source_version
+        {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_anchor_version = anchor.version();
+        self.last_source_version = source.version();
+
+        let anchor_now = anchor.get(0);
+        match anchor_now {
+            Value::Bool(true) => {
+                self.active = true;
+                self.bars_in_epoch = 0;
+                self.extrema_offset = 0;
+                self.extrema_value = None;
+            }
+            Value::Bool(false) => {
+                if self.active {
+                    self.bars_in_epoch += 1;
+                }
+            }
+            Value::NA => {
+                self.cached_output = Value::NA;
+                return Ok(self.cached_output.clone());
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        }
+
+        if !self.active {
+            self.cached_output = Value::NA;
+            return Ok(self.cached_output.clone());
+        }
+
+        match source.get(0) {
+            Value::F64(value) => {
+                let replace = match self.extrema_value {
+                    None => true,
+                    Some(best) => match self.mode {
+                        AnchoredExtremaMode::Highest => value >= best,
+                        AnchoredExtremaMode::Lowest => value <= best,
+                    },
+                };
+                if replace {
+                    self.extrema_value = Some(value);
+                    self.extrema_offset = self.bars_in_epoch;
+                }
+                self.cached_output = if return_offset {
+                    Value::F64((self.bars_in_epoch - self.extrema_offset) as f64)
+                } else {
+                    Value::F64(self.extrema_value.expect("extrema value should exist"))
+                };
+            }
+            Value::NA => {
+                self.cached_output = Value::NA;
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+        Ok(self.cached_output.clone())
+    }
+}
+
+impl AnchoredValueWhenState {
+    pub(crate) fn new(occurrence: usize) -> Self {
+        Self {
+            occurrence,
+            active: false,
+            last_anchor_version: 0,
+            last_condition_version: 0,
+            last_source_version: 0,
+            cached_output: Value::NA,
+            matches: VecDeque::with_capacity(occurrence + 1),
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        anchor: &SeriesBuffer,
+        condition: &SeriesBuffer,
+        source: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if anchor.version() == self.last_anchor_version
+            && condition.version() == self.last_condition_version
+            && source.version() == self.last_source_version
+        {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_anchor_version = anchor.version();
+        self.last_condition_version = condition.version();
+        self.last_source_version = source.version();
+
+        match anchor.get(0) {
+            Value::Bool(true) => {
+                self.active = true;
+                self.matches.clear();
+            }
+            Value::Bool(false) => {}
+            Value::NA => {
+                self.cached_output = Value::NA;
+                return Ok(self.cached_output.clone());
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        }
+
+        if !self.active {
+            self.cached_output = Value::NA;
+            return Ok(self.cached_output.clone());
+        }
 
         match condition.get(0) {
             Value::Bool(true) => {
@@ -185,7 +432,10 @@ impl CumState {
 
 #[cfg(test)]
 mod tests {
-    use super::{BarsSinceState, CumState, ValueWhenState};
+    use super::{
+        AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState, BarsSinceState,
+        CumState, ValueWhenState,
+    };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -246,5 +496,63 @@ mod tests {
         assert_eq!(state.update(Value::F64(2.0), 0).unwrap(), Value::F64(2.0));
         assert_eq!(state.update(Value::NA, 0).unwrap(), Value::NA);
         assert_eq!(state.update(Value::F64(3.0), 0).unwrap(), Value::F64(5.0));
+    }
+
+    #[test]
+    fn anchored_extrema_resets_on_anchor_and_includes_anchor_bar() {
+        let mut state = AnchoredExtremaState::new(AnchoredExtremaMode::Highest);
+        let mut anchor = SeriesBuffer::new(8);
+        let mut source = SeriesBuffer::new(8);
+
+        anchor.push(Value::Bool(false));
+        source.push(Value::F64(1.0));
+        assert_eq!(state.update_value(&anchor, &source, 0).unwrap(), Value::NA);
+
+        anchor.push(Value::Bool(true));
+        source.push(Value::F64(2.0));
+        assert_eq!(
+            state.update_value(&anchor, &source, 0).unwrap(),
+            Value::F64(2.0)
+        );
+
+        anchor.push(Value::Bool(false));
+        source.push(Value::F64(1.5));
+        assert_eq!(
+            state.update_value(&anchor, &source, 0).unwrap(),
+            Value::F64(2.0)
+        );
+
+        anchor.push(Value::Bool(false));
+        source.push(Value::F64(3.0));
+        assert_eq!(
+            state.update_offset(&anchor, &source, 0).unwrap(),
+            Value::F64(0.0)
+        );
+    }
+
+    #[test]
+    fn anchored_valuewhen_forgets_pre_anchor_history() {
+        let mut state = AnchoredValueWhenState::new(0);
+        let mut anchor = SeriesBuffer::new(8);
+        let mut cond = SeriesBuffer::new(8);
+        let mut source = SeriesBuffer::new(8);
+
+        anchor.push(Value::Bool(false));
+        cond.push(Value::Bool(true));
+        source.push(Value::F64(1.0));
+        assert_eq!(state.update(&anchor, &cond, &source, 0).unwrap(), Value::NA);
+
+        anchor.push(Value::Bool(true));
+        cond.push(Value::Bool(false));
+        source.push(Value::F64(2.0));
+        assert_eq!(state.update(&anchor, &cond, &source, 0).unwrap(), Value::NA);
+
+        anchor.push(Value::Bool(false));
+        cond.push(Value::Bool(true));
+        source.push(Value::F64(3.0));
+        assert_eq!(
+            state.update(&anchor, &cond, &source, 0).unwrap(),
+            Value::F64(3.0)
+        );
     }
 }

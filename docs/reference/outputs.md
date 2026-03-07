@@ -111,7 +111,10 @@ PalmScript also exposes first-class attached exits that keep the discretionary `
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
 protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
-target long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+target long = take_profit_market(
+    highest_since(position_event.long_entry_fill, spot.high) + 4,
+    trigger_ref.last
+)
 ```
 
 Rules:
@@ -123,6 +126,8 @@ Rules:
 - `protect` and `target` for one side are OCO: if one fills, the other is cancelled
 - if both become fillable on the same execution bar, `protect` wins deterministically
 - `position.*` is available only inside `protect` and `target` declarations
+- `position_event.*` is a backtest-driven series namespace that exposes actual fill events such as `position_event.long_entry_fill`
+- outside backtests, `position_event.*` is defined but evaluates to `false` on every step
 
 ## Legacy Trigger Compatibility
 

@@ -463,17 +463,25 @@ impl Engine {
         Ok(())
     }
 
-    fn set_scalar_override(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
+    fn set_local_override(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
         let local = self
             .compiled
             .program
             .locals
             .get(slot)
             .ok_or(RuntimeError::InvalidLocalSlot { slot })?;
-        if !matches!(local.kind, SlotKind::Scalar) {
-            return Err(RuntimeError::InvalidLocalSlot { slot });
+        match local.kind {
+            SlotKind::Scalar => {
+                self.current_values[slot] = value;
+            }
+            SlotKind::Series => {
+                self.current_values[slot] = value.clone();
+                self.series_values
+                    .get_mut(slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot })?
+                    .push(value);
+            }
         }
-        self.current_values[slot] = value;
         Ok(())
     }
 }
@@ -510,9 +518,28 @@ impl RuntimeStepper {
             &mut self.base_cursors,
             &mut self.supplemental_cursors,
         )?;
+        let mut overridden_slots = std::collections::HashSet::with_capacity(overrides.len());
+        for (slot, _) in overrides {
+            overridden_slots.insert(*slot);
+        }
+        let default_event_slots: Vec<u16> = self
+            .engine
+            .compiled
+            .program
+            .position_event_fields
+            .iter()
+            .map(|decl| decl.slot)
+            .collect();
+        for slot in default_event_slots {
+            if overridden_slots.contains(&slot) {
+                continue;
+            }
+            self.engine
+                .set_local_override(slot as usize, Value::Bool(false))?;
+        }
         for (slot, value) in overrides {
             self.engine
-                .set_scalar_override(*slot as usize, value.clone())?;
+                .set_local_override(*slot as usize, value.clone())?;
         }
         let output = self.engine.execute_prepared_step(bar)?;
         self.next_index += 1;
