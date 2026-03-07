@@ -9,11 +9,12 @@ use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
-    apply_unary_math, calculate_avgdev, calculate_linear_regression, calculate_max_index,
-    calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
-    calculate_sum, calculate_trange, calculate_var, calculate_wma, BarsSinceState, EmaState,
-    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, RegressionOutput,
-    RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
+    apply_unary_math, calculate_avgdev, calculate_beta, calculate_correl,
+    calculate_linear_regression, calculate_max_index, calculate_min_index, calculate_min_max,
+    calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange, calculate_var,
+    calculate_wma, BarsSinceState, EmaState, FallingState, HighestState, IndicatorState,
+    LowestState, MacdState, ObvState, RegressionOutput, RisingState, RsiState, SmaState,
+    UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -472,6 +473,8 @@ impl<'a> VmEngine<'a> {
             BuiltinId::LinearRegIntercept => self.call_linearreg_intercept(arity, args, pc),
             BuiltinId::LinearRegSlope => self.call_linearreg_slope(arity, args, pc),
             BuiltinId::Tsf => self.call_tsf(arity, args, pc),
+            BuiltinId::Beta => self.call_beta(arity, args, pc),
+            BuiltinId::Correl => self.call_correl(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -956,6 +959,24 @@ impl<'a> VmEngine<'a> {
         })
     }
 
+    fn call_beta(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_double_window_builtin("beta", arity, args, pc, 1, calculate_beta)
+    }
+
+    fn call_correl(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_double_window_builtin("correl", arity, args, pc, 0, calculate_correl)
+    }
+
     fn call_highest(
         &mut self,
         callsite: u16,
@@ -1243,6 +1264,40 @@ impl<'a> VmEngine<'a> {
             .get(series_slot)
             .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
         calculate(buffer, window, factor, pc)
+    }
+
+    fn call_stateless_double_window_builtin<F>(
+        &mut self,
+        builtin: &'static str,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        extra_history: usize,
+        calculate: F,
+    ) -> Result<Value, RuntimeError>
+    where
+        F: FnOnce(&SeriesBuffer, &SeriesBuffer, usize, usize) -> Result<Value, RuntimeError>,
+    {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin,
+                expected: 3,
+                found: arity,
+            });
+        }
+        let left_slot = series_ref(args[0].clone(), pc)?;
+        let right_slot = series_ref(args[1].clone(), pc)?;
+        let window = expect_window(args[2].clone(), pc)?;
+        self.consume_steps((window + extra_history).max(1), pc)?;
+        let left = self
+            .series_values
+            .get(left_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: left_slot })?;
+        let right = self
+            .series_values
+            .get(right_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: right_slot })?;
+        calculate(left, right, window, pc)
     }
 }
 

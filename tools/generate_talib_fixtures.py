@@ -192,6 +192,8 @@ class TalibOracle:
             return [self.call_window_factor(function, inputs[0], int_options[0], float_options[0])]
         if family == "window_high_low":
             return [self.call_window_high_low(function, inputs[0], inputs[1], int_options[0])]
+        if family == "window_double":
+            return [self.call_window_double(function, inputs[0], inputs[1], int_options[0])]
         if family == "window_index":
             return [self.call_window_index(function, inputs[0], int_options[0])]
         if family == "window_tuple":
@@ -264,6 +266,12 @@ class TalibOracle:
     ) -> list[float | None]:
         c_name = function.upper()
         return self._call_2in_1out_1int(c_name, high, low, time_period)
+
+    def call_window_double(
+        self, function: str, input0: list[float], input1: list[float], time_period: int
+    ) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_2in_1out_1int(c_name, input0, input1, time_period)
 
     def call_ma(self, input0: list[float], time_period: int, ma_type: str) -> list[float | None]:
         c_name = "MA"
@@ -752,6 +760,8 @@ def fixture_cases() -> list[Case]:
             Case("linearreg_intercept_default", script_for_single_export("value", "linearreg_intercept(close)"), ("value",), "window", "linearreg_intercept", input_fields=("close",), int_options=(14,)),
             Case("linearreg_slope_default", script_for_single_export("value", "linearreg_slope(close)"), ("value",), "window", "linearreg_slope", input_fields=("close",), int_options=(14,)),
             Case("tsf_default", script_for_single_export("value", "tsf(close)"), ("value",), "window", "tsf", input_fields=("close",), int_options=(14,)),
+            Case("beta_open_close_default", script_for_single_export("value", "beta(open, close)"), ("value",), "window_double", "beta", input_fields=("open", "close"), int_options=(5,)),
+            Case("correl_open_close_default", script_for_single_export("value", "correl(open, close)"), ("value",), "window_double", "correl", input_fields=("open", "close"), int_options=(30,)),
             Case(
                 "minmax_default",
                 "interval 1m\nlet (lo, hi) = minmax(close)\nexport min_value = lo\nexport max_value = hi\nplot(0)",

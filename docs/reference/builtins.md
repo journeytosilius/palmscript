@@ -52,6 +52,8 @@ PalmScript currently provides these callable builtins:
 - `linearreg_intercept(series[, length=14])`
 - `linearreg_slope(series[, length=14])`
 - `tsf(series[, length=14])`
+- `beta(series0, series1[, length=5])`
+- `correl(series0, series1[, length=30])`
 - `obv(series, volume)`
 - `trange(high, low, close)`
 - `plot(value)`
@@ -210,10 +212,13 @@ These builtins are currently executable:
 - `linearreg_intercept(series[, length=14])`
 - `linearreg_slope(series[, length=14])`
 - `tsf(series[, length=14])`
+- `beta(series0, series1[, length=5])`
+- `correl(series0, series1[, length=30])`
 
 Rules:
 
 - the first argument must be `series<float>`
+- `beta` and `correl` require `series<float>` as both inputs
 - the optional `length` must be an integer literal that satisfies the TA-Lib minimum for that builtin
 - omitted `length` uses the TA-Lib default for that builtin
 - `wma` and `avgdev` return `series<float>`
@@ -233,6 +238,8 @@ Additional statistics rules:
 - `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, and `tsf` default to `length=14`
 - `linearreg` returns the fitted value at the current bar
 - `tsf` returns the one-step-ahead forecast
+- `beta` defaults to `length=5` and follows TA-Lib's return-ratio formulation, so it first yields output after `length + 1` source samples
+- `correl` defaults to `length=30` and returns the Pearson correlation of the paired raw input series
 
 ## Relational Helpers
 

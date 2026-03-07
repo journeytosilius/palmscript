@@ -28,7 +28,8 @@ pub(crate) use math::{
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
 pub(crate) use statistics::{
-    calculate_linear_regression, calculate_stddev, calculate_var, RegressionOutput,
+    calculate_beta, calculate_correl, calculate_linear_regression, calculate_stddev, calculate_var,
+    RegressionOutput,
 };
 pub(crate) use volatility::calculate_trange;
 pub(crate) use volume::ObvState;

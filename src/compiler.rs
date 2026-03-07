@@ -2120,6 +2120,31 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::RollingDoubleInput => {
+            let left_info = arg_info[0];
+            let right_info = arg_info[1];
+            if !left_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !right_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if args.len() == 3 {
+                validate_min_window_literal(callee, &args[2], 1, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: left_info.update_mask | right_info.update_mask,
+            }
+        }
         BuiltinKind::RollingHighLow => {
             let high_info = arg_info[0];
             let low_info = arg_info[1];
@@ -2341,6 +2366,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::Lowest
         | BuiltinKind::RollingSingleInput
         | BuiltinKind::RollingSingleInputFactor
+        | BuiltinKind::RollingDoubleInput
         | BuiltinKind::RollingHighLow
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
@@ -2999,7 +3025,9 @@ impl<'a> Compiler<'a> {
             | BuiltinId::LinearRegAngle
             | BuiltinId::LinearRegIntercept
             | BuiltinId::LinearRegSlope
-            | BuiltinId::Tsf => {
+            | BuiltinId::Tsf
+            | BuiltinId::Beta
+            | BuiltinId::Correl => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3289,6 +3317,36 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingDoubleInput => {
+                let default_window = match builtin {
+                    BuiltinId::Beta => 5usize,
+                    BuiltinId::Correl => 30usize,
+                    _ => unreachable!(),
+                };
+                let required_history = args
+                    .get(2)
+                    .and_then(literal_window)
+                    .unwrap_or(default_window);
+                let required_steps = match builtin {
+                    BuiltinId::Beta => required_history + 1,
+                    BuiltinId::Correl => required_history,
+                    _ => unreachable!(),
+                };
+                self.emit_series_ref(&args[0], required_steps.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_steps.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(2) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(default_window as f64, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

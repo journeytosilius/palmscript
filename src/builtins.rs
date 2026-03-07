@@ -36,6 +36,7 @@ pub enum BuiltinKind {
     RollingSingleInput,
     RollingSingleInputFactor,
     RollingSingleInputTuple,
+    RollingDoubleInput,
     RollingHighLow,
     VolumeIndicator,
     VolatilityIndicator,
@@ -125,10 +126,12 @@ pub enum BuiltinId {
     LinearRegIntercept = 67,
     LinearRegSlope = 68,
     Tsf = 69,
+    Beta = 70,
+    Correl = 71,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 70] = [
+    pub const RESERVED: [Self; 72] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -199,9 +202,11 @@ impl BuiltinId {
         Self::LinearRegIntercept,
         Self::LinearRegSlope,
         Self::Tsf,
+        Self::Beta,
+        Self::Correl,
     ];
 
-    pub const CALLABLE: [Self; 64] = [
+    pub const CALLABLE: [Self; 66] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -266,6 +271,8 @@ impl BuiltinId {
         Self::LinearRegIntercept,
         Self::LinearRegSlope,
         Self::Tsf,
+        Self::Beta,
+        Self::Correl,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -340,6 +347,8 @@ impl BuiltinId {
             "linearreg_intercept" => Some(Self::LinearRegIntercept),
             "linearreg_slope" => Some(Self::LinearRegSlope),
             "tsf" => Some(Self::Tsf),
+            "beta" => Some(Self::Beta),
+            "correl" => Some(Self::Correl),
             _ => None,
         }
     }
@@ -416,6 +425,8 @@ impl BuiltinId {
             67 => Some(Self::LinearRegIntercept),
             68 => Some(Self::LinearRegSlope),
             69 => Some(Self::Tsf),
+            70 => Some(Self::Beta),
+            71 => Some(Self::Correl),
             _ => None,
         }
     }
@@ -492,6 +503,8 @@ impl BuiltinId {
             Self::LinearRegIntercept => "linearreg_intercept",
             Self::LinearRegSlope => "linearreg_slope",
             Self::Tsf => "tsf",
+            Self::Beta => "beta",
+            Self::Correl => "correl",
         }
     }
 
@@ -534,6 +547,7 @@ impl BuiltinId {
             | Self::LinearRegIntercept
             | Self::LinearRegSlope
             | Self::Tsf => BuiltinKind::RollingSingleInput,
+            Self::Beta | Self::Correl => BuiltinKind::RollingDoubleInput,
             Self::Midprice => BuiltinKind::RollingHighLow,
             Self::Obv => BuiltinKind::VolumeIndicator,
             Self::Trange => BuiltinKind::VolatilityIndicator,
@@ -621,6 +635,7 @@ impl BuiltinId {
             | Self::LinearRegIntercept
             | Self::LinearRegSlope
             | Self::Tsf => BuiltinArity::Range { min: 1, max: 2 },
+            Self::Beta | Self::Correl => BuiltinArity::Range { min: 2, max: 3 },
             Self::Stddev | Self::Var => BuiltinArity::Range { min: 1, max: 3 },
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
         }
@@ -698,6 +713,8 @@ impl BuiltinId {
             Self::LinearRegIntercept => "linearreg_intercept(series[, length=14])",
             Self::LinearRegSlope => "linearreg_slope(series[, length=14])",
             Self::Tsf => "tsf(series[, length=14])",
+            Self::Beta => "beta(series0, series1[, length=5])",
+            Self::Correl => "correl(series0, series1[, length=30])",
         }
     }
 
@@ -773,6 +790,8 @@ impl BuiltinId {
             Self::LinearRegIntercept => "Linear regression intercept.",
             Self::LinearRegSlope => "Linear regression slope.",
             Self::Tsf => "Time series forecast for the next bar.",
+            Self::Beta => "Beta over paired trailing series returns.",
+            Self::Correl => "Pearson correlation over paired trailing series values.",
         }
     }
 }

@@ -258,6 +258,45 @@ fn golden_crossover_builtin_shape_matches() {
 }
 
 #[test]
+fn golden_correl_identical_series_matches_one_after_warmup() {
+    let compiled =
+        compile(&with_interval("plot(correl(close, close, 5))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::json!(1.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_beta_identical_series_matches_one_after_warmup() {
+    let compiled = compile(&with_interval("plot(beta(close, close, 5))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][5]["value"],
+        serde_json::json!(1.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
 fn golden_ma_builtin_with_typed_enum_matches_weighted_window() {
     let compiled =
         compile(&with_interval("plot(ma(close, 3, ma_type.wma))")).expect("script compiles");

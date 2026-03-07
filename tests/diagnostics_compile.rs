@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 25] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 27] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -445,6 +445,22 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "stddev deviations must be a numeric scalar value",
+            )],
+        ),
+        (
+            "type_beta_requires_series_second_argument",
+            with_interval("plot(beta(close, 1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "beta requires series<float> as the second argument",
+            )],
+        ),
+        (
+            "type_correl_requires_minimum_window",
+            with_interval("plot(correl(close, open, 0))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "correl length must be greater than or equal to 1",
             )],
         ),
         (
