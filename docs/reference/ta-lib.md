@@ -15,6 +15,7 @@ Current metadata-driven surface behavior:
 - all 161 TA-Lib function names are reserved as builtin names
 - IDE completion and hover can show the generated TA-Lib signatures and summaries
 - calling a catalog function that is not implemented yet produces a deterministic compile diagnostic instead of being treated as an unknown identifier
+- committed oracle fixtures under `tests/data/ta_lib/` now validate the implemented subset against the upstream C library
 
 Implemented TA-Lib-style builtins in this change:
 
@@ -44,6 +45,13 @@ Current TA-Lib defaults now honored in the executable surface:
 
 - `max`, `min`, and `sum` default to a window of `30`
 - `midpoint` and `midprice` default to a window of `14`
+
+Oracle fixture refresh for the implemented subset:
+
+```bash
+python3 tools/generate_talib_fixtures.py
+cargo test --test ta_lib_parity
+```
 
 Tuple-return example:
 
