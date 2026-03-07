@@ -1203,3 +1203,203 @@ plot(spot.close)"
         ]
     );
 }
+
+#[test]
+fn exit_outcome_events_and_last_exit_snapshot_are_visible_on_fill_bar() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0}
+target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+export exit_fill = position_event.long_exit_fill
+export target_fill = position_event.long_target_fill
+export signal_fill = position_event.long_signal_exit_fill
+export was_target = last_long_exit.kind == exit_kind.target
+export global_long = last_exit.side == position_side.long
+export exit_price = last_long_exit.price
+export realized_return = last_long_exit.realized_return
+export bars_held = last_long_exit.bars_held
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 12.0,
+                    high: 14.0,
+                    low: 11.5,
+                    close: 13.0,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        palmscript::TradeExitClassification::Target
+    );
+
+    let exports = &result.outputs.exports;
+    assert_eq!(
+        exports[0].points[2].value,
+        palmscript::OutputValue::Bool(true)
+    );
+    assert_eq!(
+        exports[1].points[2].value,
+        palmscript::OutputValue::Bool(true)
+    );
+    assert_eq!(
+        exports[2].points[2].value,
+        palmscript::OutputValue::Bool(false)
+    );
+    assert_eq!(
+        exports[3].points[2].value,
+        palmscript::OutputValue::Bool(true)
+    );
+    assert_eq!(
+        exports[4].points[2].value,
+        palmscript::OutputValue::Bool(true)
+    );
+    assert_eq!(
+        exports[5].points[2].value,
+        palmscript::OutputValue::F64(13.0)
+    );
+    match exports[6].points[2].value {
+        palmscript::OutputValue::F64(value) => approx_eq(value, 2.0 / 11.0),
+        ref other => panic!("expected realized return f64, found {other:?}"),
+    }
+    assert_eq!(
+        exports[7].points[2].value,
+        palmscript::OutputValue::F64(1.0)
+    );
+}
+
+#[test]
+fn same_side_reentry_can_branch_on_target_exit_state() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0} or (
+    last_long_exit.kind == exit_kind.target
+    and barssince(position_event.long_target_fill) == 1
+)
+protect long = stop_market(position.entry_price - 5, trigger_ref.last)
+target long = take_profit_market(position.entry_price + 1, trigger_ref.last)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 11.5,
+                    high: 12.5,
+                    low: 11.0,
+                    close: 12.0,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+                bar(t0 + 3 * support::MINUTE_MS, 12.0, 12.2),
+                bar(t0 + 4 * support::MINUTE_MS, 13.0, 13.0),
+                Bar {
+                    open: 13.2,
+                    high: 14.5,
+                    low: 13.0,
+                    close: 14.0,
+                    volume: 1_000.0,
+                    time: (t0 + 5 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 2);
+    assert_eq!(result.trades[0].entry.bar_index, 1);
+    assert_eq!(result.trades[1].entry.bar_index, 4);
+    assert!(result
+        .diagnostics
+        .trade_diagnostics
+        .iter()
+        .all(|diag| diag.exit_classification == palmscript::TradeExitClassification::Target));
+}
+
+#[test]
+fn last_exit_global_alias_tracks_most_recent_closed_side() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0}
+target long = take_profit_market(position.entry_price + 1, trigger_ref.last)
+entry short = last_long_exit.kind == exit_kind.target and barssince(position_event.long_target_fill) == 1
+target short = take_profit_market(position.entry_price - 1, trigger_ref.last)
+export last_exit_is_short = last_exit.side == position_side.short
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 11.5,
+                    high: 12.5,
+                    low: 11.0,
+                    close: 12.0,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+                bar(t0 + 3 * support::MINUTE_MS, 11.8, 11.0),
+                bar(t0 + 4 * support::MINUTE_MS, 10.5, 9.5),
+                Bar {
+                    open: 9.6,
+                    high: 9.8,
+                    low: 8.8,
+                    close: 9.0,
+                    volume: 1_000.0,
+                    time: (t0 + 5 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 2);
+    assert_eq!(result.trades[1].side, palmscript::PositionSide::Short);
+    assert_eq!(
+        result.outputs.exports[0]
+            .points
+            .last()
+            .expect("final export point should exist")
+            .value,
+        palmscript::OutputValue::Bool(true)
+    );
+}

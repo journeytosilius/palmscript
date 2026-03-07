@@ -122,7 +122,7 @@ Rules:
 
 - both forms are top-level only
 - duplicate names in the same scope are rejected
-- both forms are scalar-only in v1: `float`, `bool`, `ma_type`, `tif`, `trigger_ref`, or `na`
+- both forms are scalar-only in v1: `float`, `bool`, `ma_type`, `tif`, `trigger_ref`, `position_side`, `exit_kind`, or `na`
 - `input` is compile-time only in v1 and does not yet accept CLI overrides
 - `input` values must be scalar literals or enum literals
 - `const` values may reference previously declared `const` / `input` bindings and pure scalar builtins
@@ -153,7 +153,12 @@ Rules:
 - if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
 - `position.*` is only available inside `protect` and `target` declarations
 - `position_event.*` is available anywhere a `series<bool>` is valid and is intended to anchor logic to actual backtest fills
-- current `position_event` fields are `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, and `short_exit_fill`
+- current `position_event` fields are:
+  `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, `short_exit_fill`,
+  `long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
+  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`, and `short_reversal_exit_fill`
+- `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are available anywhere ordinary expressions are valid
+- current `last_*_exit` fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
 - legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 
 ## Conditional Scope

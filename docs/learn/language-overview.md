@@ -12,7 +12,7 @@ Common building blocks:
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
 - helper builtins such as `crossover`, `highest`, `barssince`, and `valuewhen`
-- typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals
+- typed `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` enum literals
 
 ## Script Shape
 

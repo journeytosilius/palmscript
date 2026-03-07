@@ -139,9 +139,10 @@ The grammar does not by itself make a program valid. The implementation addition
 - only identifiers may be called
 - series indexing must use a non-negative integer literal or a top-level immutable numeric binding
 - tuple-valued builtins must be bound with tuple destructuring before use
-- `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, and `position_side.<variant>` are typed enum namespaces
+- `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` are typed enum namespaces
 - `position.*` is valid only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven `series<bool>` namespace
+- `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are backtest-driven latest-closed-trade namespaces
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

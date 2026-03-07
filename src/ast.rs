@@ -5,7 +5,7 @@
 
 use crate::span::Span;
 use crate::{Interval, MarketField, SourceTemplate};
-use crate::{PositionEventField, PositionField};
+use crate::{LastExitField, LastExitScope, PositionEventField, PositionField};
 use serde::{Deserialize, Serialize};
 
 pub type NodeId = u32;
@@ -209,6 +209,11 @@ pub enum ExprKind {
     },
     PositionEventField {
         field: PositionEventField,
+        field_span: Span,
+    },
+    LastExitField {
+        scope: LastExitScope,
+        field: LastExitField,
         field_span: Span,
     },
     SourceSeries {

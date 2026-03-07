@@ -15,10 +15,12 @@ use crate::backtest::{
     EquityPoint, FeatureSnapshot, Fill, OpportunityEventKind, OrderEndReason, OrderRecord,
     OrderStatus, PositionSnapshot, Trade, TradeDiagnostic, TradeExitClassification,
 };
-use crate::bytecode::{PositionEventFieldDecl, PositionFieldDecl, SignalRole};
+use crate::bytecode::{LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, SignalRole};
 use crate::order::OrderKind;
 use crate::output::StepOutput;
-use crate::position::{PositionEventField, PositionField, PositionSide};
+use crate::position::{
+    ExitKind, LastExitField, LastExitScope, PositionEventField, PositionField, PositionSide,
+};
 use crate::runtime::{Bar, RuntimeStep, RuntimeStepper};
 use crate::types::Value;
 
@@ -38,6 +40,26 @@ struct PositionEventStep {
     short_entry_fill: bool,
     long_exit_fill: bool,
     short_exit_fill: bool,
+    long_protect_fill: bool,
+    short_protect_fill: bool,
+    long_target_fill: bool,
+    short_target_fill: bool,
+    long_signal_exit_fill: bool,
+    short_signal_exit_fill: bool,
+    long_reversal_exit_fill: bool,
+    short_reversal_exit_fill: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LastExitSnapshot {
+    kind: ExitKind,
+    side: PositionSide,
+    price: f64,
+    time: f64,
+    bar_index: usize,
+    realized_pnl: f64,
+    realized_return: f64,
+    bars_held: usize,
 }
 
 pub(crate) fn simulate_backtest(
@@ -71,6 +93,9 @@ pub(crate) fn simulate_backtest(
     let mut execution_cursor = 0usize;
     let mut last_mark_price = None::<f64>;
     let mut last_snapshot = None::<FeatureSnapshot>;
+    let mut last_exit = None::<LastExitSnapshot>;
+    let mut last_long_exit = None::<LastExitSnapshot>;
+    let mut last_short_exit = None::<LastExitSnapshot>;
     let mut diagnostics = DiagnosticsAccumulator::new(&prepared.exports);
 
     while let Some(open_time) = stepper.peek_open_time() {
@@ -178,7 +203,7 @@ pub(crate) fn simulate_backtest(
                             }
                         });
 
-                        maybe_close_position_for_role(
+                        let closed_trade_snapshot = maybe_close_position_for_role(
                             role,
                             active.record_index,
                             active.request.kind,
@@ -197,11 +222,17 @@ pub(crate) fn simulate_backtest(
                             &mut total_realized_pnl,
                         );
 
+                        if let Some(snapshot) = closed_trade_snapshot {
+                            set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                            update_last_exit_snapshots(
+                                &mut last_exit,
+                                &mut last_long_exit,
+                                &mut last_short_exit,
+                                snapshot,
+                            );
+                        }
+
                         if let Some(side) = closed_side {
-                            match side {
-                                PositionSide::Long => position_events.long_exit_fill = true,
-                                PositionSide::Short => position_events.short_exit_fill = true,
-                            }
                             cancel_orders_for_closed_side(
                                 &mut active_orders,
                                 side,
@@ -266,8 +297,12 @@ pub(crate) fn simulate_backtest(
         let overrides = build_runtime_overrides(
             &prepared.position_fields,
             &prepared.position_event_fields,
+            &prepared.last_exit_fields,
             position.as_ref(),
             open_trade.as_ref(),
+            last_exit.as_ref(),
+            last_long_exit.as_ref(),
+            last_short_exit.as_ref(),
             current_execution.map(|bar| bar.close).or(last_mark_price),
             open_time as f64,
             current_execution.map(|_| execution_cursor),
@@ -445,8 +480,12 @@ pub(crate) fn simulate_backtest(
 fn build_runtime_overrides(
     position_fields: &[PositionFieldDecl],
     position_event_fields: &[PositionEventFieldDecl],
+    last_exit_fields: &[LastExitFieldDecl],
     position: Option<&PositionState>,
     open_trade: Option<&OpenTrade>,
+    last_exit: Option<&LastExitSnapshot>,
+    last_long_exit: Option<&LastExitSnapshot>,
+    last_short_exit: Option<&LastExitSnapshot>,
     market_price: Option<f64>,
     _market_time: f64,
     current_bar_index: Option<usize>,
@@ -506,10 +545,86 @@ fn build_runtime_overrides(
             PositionEventField::ShortEntryFill => Value::Bool(position_events.short_entry_fill),
             PositionEventField::LongExitFill => Value::Bool(position_events.long_exit_fill),
             PositionEventField::ShortExitFill => Value::Bool(position_events.short_exit_fill),
+            PositionEventField::LongProtectFill => Value::Bool(position_events.long_protect_fill),
+            PositionEventField::ShortProtectFill => Value::Bool(position_events.short_protect_fill),
+            PositionEventField::LongTargetFill => Value::Bool(position_events.long_target_fill),
+            PositionEventField::ShortTargetFill => Value::Bool(position_events.short_target_fill),
+            PositionEventField::LongSignalExitFill => {
+                Value::Bool(position_events.long_signal_exit_fill)
+            }
+            PositionEventField::ShortSignalExitFill => {
+                Value::Bool(position_events.short_signal_exit_fill)
+            }
+            PositionEventField::LongReversalExitFill => {
+                Value::Bool(position_events.long_reversal_exit_fill)
+            }
+            PositionEventField::ShortReversalExitFill => {
+                Value::Bool(position_events.short_reversal_exit_fill)
+            }
         };
         (decl.slot, value)
     }));
+    overrides.extend(last_exit_fields.iter().map(|decl| {
+        let snapshot = match decl.scope {
+            LastExitScope::Global => last_exit,
+            LastExitScope::Long => last_long_exit,
+            LastExitScope::Short => last_short_exit,
+        };
+        (decl.slot, last_exit_value(snapshot, decl.field))
+    }));
     overrides
+}
+
+fn last_exit_value(snapshot: Option<&LastExitSnapshot>, field: LastExitField) -> Value {
+    let Some(snapshot) = snapshot else {
+        return Value::NA;
+    };
+    match field {
+        LastExitField::Kind => Value::ExitKind(snapshot.kind),
+        LastExitField::Side => Value::PositionSide(snapshot.side),
+        LastExitField::Price => Value::F64(snapshot.price),
+        LastExitField::Time => Value::F64(snapshot.time),
+        LastExitField::BarIndex => Value::F64(snapshot.bar_index as f64),
+        LastExitField::RealizedPnl => Value::F64(snapshot.realized_pnl),
+        LastExitField::RealizedReturn => Value::F64(snapshot.realized_return),
+        LastExitField::BarsHeld => Value::F64(snapshot.bars_held as f64),
+    }
+}
+
+fn set_exit_events(position_events: &mut PositionEventStep, side: PositionSide, kind: ExitKind) {
+    match side {
+        PositionSide::Long => {
+            position_events.long_exit_fill = true;
+            match kind {
+                ExitKind::Protect => position_events.long_protect_fill = true,
+                ExitKind::Target => position_events.long_target_fill = true,
+                ExitKind::Signal => position_events.long_signal_exit_fill = true,
+                ExitKind::Reversal => position_events.long_reversal_exit_fill = true,
+            }
+        }
+        PositionSide::Short => {
+            position_events.short_exit_fill = true;
+            match kind {
+                ExitKind::Protect => position_events.short_protect_fill = true,
+                ExitKind::Target => position_events.short_target_fill = true,
+                ExitKind::Signal => position_events.short_signal_exit_fill = true,
+                ExitKind::Reversal => position_events.short_reversal_exit_fill = true,
+            }
+        }
+    }
+}
+
+fn update_last_exit_snapshots(
+    last_exit: &mut Option<LastExitSnapshot>,
+    last_long_exit: &mut Option<LastExitSnapshot>,
+    last_short_exit: &mut Option<LastExitSnapshot>,
+    snapshot: LastExitSnapshot,
+) {
+    match snapshot.side {
+        PositionSide::Long => *last_long_exit = Some(snapshot),
+        PositionSide::Short => *last_short_exit = Some(snapshot),
+    }
+    *last_exit = Some(snapshot);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -830,7 +945,7 @@ fn maybe_close_position_for_role(
     trades: &mut Vec<Trade>,
     trade_diagnostics: &mut Vec<TradeDiagnostic>,
     total_realized_pnl: &mut f64,
-) {
+) -> Option<LastExitSnapshot> {
     let should_close = matches!(
         (position.as_ref().map(|state| state.side), role),
         (
@@ -848,7 +963,7 @@ fn maybe_close_position_for_role(
         )
     );
     if !should_close {
-        return;
+        return None;
     }
 
     let closed_position = position.take().expect("open position should exist");
@@ -863,7 +978,17 @@ fn maybe_close_position_for_role(
     );
     let open_trade = open_trade.take().expect("open trade should exist");
     let trade = close_trade(open_trade.clone(), exit_fill.clone());
-    *total_realized_pnl += trade.realized_pnl;
+    let bars_held = exit_fill
+        .bar_index
+        .saturating_sub(open_trade.entry.bar_index);
+    let entry_notional = trade.entry.notional.abs();
+    let realized_pnl = trade.realized_pnl;
+    let realized_return = if entry_notional.abs() < crate::backtest::EPSILON {
+        0.0
+    } else {
+        realized_pnl / entry_notional
+    };
+    *total_realized_pnl += realized_pnl;
     fills.push(exit_fill.clone());
     trade_diagnostics.push(TradeDiagnostic {
         trade_id: trades.len(),
@@ -877,17 +1002,25 @@ fn maybe_close_position_for_role(
         exit_classification: classify_exit(role),
         entry_snapshot: open_trade.entry_snapshot,
         exit_snapshot,
-        bars_held: exit_fill
-            .bar_index
-            .saturating_sub(open_trade.entry.bar_index),
+        bars_held,
         duration_ms: exit_fill.time - open_trade.entry.time,
-        realized_pnl: trade.realized_pnl,
+        realized_pnl,
         mae_price_delta: open_trade.mae_price_delta,
         mfe_price_delta: open_trade.mfe_price_delta,
         mae_pct: pct_delta(open_trade.mae_price_delta, open_trade.entry.price),
         mfe_pct: pct_delta(open_trade.mfe_price_delta, open_trade.entry.price),
     });
     trades.push(trade);
+    Some(LastExitSnapshot {
+        kind: exit_kind_for_role(role),
+        side: open_trade.side,
+        price: exit_fill.price,
+        time: exit_fill.time,
+        bar_index: exit_fill.bar_index,
+        realized_pnl,
+        realized_return,
+        bars_held,
+    })
 }
 
 fn invalidate_inapplicable_orders(
@@ -942,6 +1075,15 @@ fn classify_exit(role: SignalRole) -> TradeExitClassification {
         SignalRole::ProtectLong | SignalRole::ProtectShort => TradeExitClassification::Protect,
         SignalRole::TargetLong | SignalRole::TargetShort => TradeExitClassification::Target,
         SignalRole::LongExit | SignalRole::ShortExit => TradeExitClassification::Signal,
+    }
+}
+
+fn exit_kind_for_role(role: SignalRole) -> ExitKind {
+    match classify_exit(role) {
+        TradeExitClassification::Signal => ExitKind::Signal,
+        TradeExitClassification::Protect => ExitKind::Protect,
+        TradeExitClassification::Target => ExitKind::Target,
+        TradeExitClassification::Reversal => ExitKind::Reversal,
     }
 }
 

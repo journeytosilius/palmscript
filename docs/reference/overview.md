@@ -30,7 +30,7 @@ The current PalmScript surface includes:
 - top-level expression-bodied `fn` declarations
 - `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, first-class `entry` / `exit`, and `order`
 - `if / else if / else`, with `else` required
-- literal-only series indexing, typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals, and deterministic three-valued boolean logic
+- literal-only series indexing, typed `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` enum literals, and deterministic three-valued boolean logic
 - a TA-Lib-style builtin surface where some names are executable today and additional reserved names are exposed through diagnostics and IDE metadata
 
 ## Current Boundaries

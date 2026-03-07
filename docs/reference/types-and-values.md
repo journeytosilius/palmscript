@@ -12,6 +12,7 @@ The implementation distinguishes these concrete types:
 - `tif`
 - `trigger_ref`
 - `position_side`
+- `exit_kind`
 - `series<float>`
 - `series<bool>`
 - `void`
@@ -28,6 +29,7 @@ PalmScript values have the following runtime forms:
 - `tif.<variant>` values are typed enum literals
 - `trigger_ref.<variant>` values are typed enum literals
 - `position_side.<variant>` values are typed enum literals
+- `exit_kind.<variant>` values are typed enum literals
 - `na` is the missing-value sentinel
 - `void` is not a user-writable literal
 
@@ -51,8 +53,12 @@ Current typed enum surface:
 - `trigger_ref.index`
 - `position_side.long`
 - `position_side.short`
+- `exit_kind.protect`
+- `exit_kind.target`
+- `exit_kind.signal`
+- `exit_kind.reversal`
 
-All current `ma_type` variants are executable through the TA-Lib-style moving-average builtins; see [TA-Lib Surface](ta-lib.md). `tif`, `trigger_ref`, and `position_side` values currently exist to parameterize backtest order declarations and attached exits.
+All current `ma_type` variants are executable through the TA-Lib-style moving-average builtins; see [TA-Lib Surface](ta-lib.md). `tif`, `trigger_ref`, `position_side`, and `exit_kind` values currently exist to parameterize backtest order declarations and backtest-driven position/exit state.
 
 ## Series Types
 

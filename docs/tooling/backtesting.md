@@ -138,10 +138,21 @@ Attached position-aware exits:
 
 Actual-fill anchor helpers:
 
-- `position_event.long_entry_fill`, `position_event.short_entry_fill`, `position_event.long_exit_fill`, and `position_event.short_exit_fill` expose real backtest fill events as `series<bool>`
+- `position_event.long_entry_fill`, `position_event.short_entry_fill`, `position_event.long_exit_fill`, and `position_event.short_exit_fill` expose aggregate real backtest fill events as `series<bool>`
+- exit-kind-specific events are also available:
+  `position_event.long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
+  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`, and `short_reversal_exit_fill`
 - anchored helpers such as `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, and `valuewhen_since` can use those events directly
 - example: `protect long = stop_market(highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
 - outside backtests, `position_event.*` stays deterministic by evaluating to `false` on every step
+
+Latest closed-trade state:
+
+- `last_exit.*` exposes the most recent closed trade regardless of side
+- `last_long_exit.*` and `last_short_exit.*` keep side-specific latest-closed-trade snapshots
+- available fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
+- `last_*_exit.kind` compares against `exit_kind.protect`, `exit_kind.target`, `exit_kind.signal`, and `exit_kind.reversal`
+- outside backtests, `last_*_exit.*` evaluates to `na`
 
 Legacy compatibility bridge:
 

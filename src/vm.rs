@@ -3241,6 +3241,7 @@ fn eq_values(left: &Value, right: &Value) -> bool {
         (Value::TimeInForce(left), Value::TimeInForce(right)) => left == right,
         (Value::TriggerReference(left), Value::TriggerReference(right)) => left == right,
         (Value::PositionSide(left), Value::PositionSide(right)) => left == right,
+        (Value::ExitKind(left), Value::ExitKind(right)) => left == right,
         (Value::Void, Value::Void) => true,
         (Value::SeriesRef(left), Value::SeriesRef(right)) => left == right,
         (Value::Tuple2(left), Value::Tuple2(right)) => {

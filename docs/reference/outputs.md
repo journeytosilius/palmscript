@@ -127,7 +127,11 @@ Rules:
 - if both become fillable on the same execution bar, `protect` wins deterministically
 - `position.*` is available only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven series namespace that exposes actual fill events such as `position_event.long_entry_fill`
+- `position_event.*` also exposes exit-kind-specific fill events such as `position_event.long_target_fill` and `position_event.long_protect_fill`
+- `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` expose the most recent closed-trade snapshot globally or per side
+- `last_*_exit.kind` is compared against typed enum literals such as `exit_kind.target`
 - outside backtests, `position_event.*` is defined but evaluates to `false` on every step
+- outside backtests, `last_*_exit.*` is defined but evaluates to `na`
 
 ## Legacy Trigger Compatibility
 

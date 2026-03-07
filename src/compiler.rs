@@ -11,8 +11,9 @@ use crate::ast::{
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
-    Constant, Instruction, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
-    PositionEventFieldDecl, PositionFieldDecl, Program, SignalRole as CompiledSignalRole,
+    Constant, Instruction, LastExitFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl,
+    OutputDecl, OutputKind, PositionEventFieldDecl, PositionFieldDecl, Program,
+    SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -21,7 +22,7 @@ use crate::interval::{
 use crate::lexer;
 use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
 use crate::parser;
-use crate::position::{PositionEventField, PositionField};
+use crate::position::{ExitKind, LastExitField, LastExitScope, PositionEventField, PositionField};
 use crate::span::Span;
 use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunctionMetadata};
 use crate::types::{SlotKind, Type, Value};
@@ -175,6 +176,8 @@ struct Analysis {
     position_field_slots: HashMap<PositionField, u16>,
     position_event_fields: Vec<PositionEventFieldDecl>,
     position_event_field_slots: HashMap<PositionEventField, u16>,
+    last_exit_fields: Vec<LastExitFieldDecl>,
+    last_exit_field_slots: HashMap<(LastExitScope, LastExitField), u16>,
     orders: Vec<OrderDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
@@ -729,6 +732,7 @@ impl<'a> Analyzer<'a> {
             | ExprKind::SourceSeries { .. }
             | ExprKind::PositionField { .. }
             | ExprKind::PositionEventField { .. }
+            | ExprKind::LastExitField { .. }
             | ExprKind::Index { .. } => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
@@ -787,6 +791,7 @@ impl<'a> Analyzer<'a> {
                 ));
             }
             ExprKind::PositionEventField { .. }
+            | ExprKind::LastExitField { .. }
             | ExprKind::SourceSeries { .. }
             | ExprKind::EnumVariant { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
@@ -1465,6 +1470,31 @@ impl<'a> Analyzer<'a> {
         slot
     }
 
+    fn last_exit_field_slot(&mut self, scope: LastExitScope, field: LastExitField) -> u16 {
+        if let Some(slot) = self
+            .analysis
+            .last_exit_field_slots
+            .get(&(scope, field))
+            .copied()
+        {
+            return slot;
+        }
+        let name = format!("__{}.{}", scope.namespace(), field.as_str());
+        let slot = self.define_symbol(
+            name,
+            ExprInfo::scalar(last_exit_field_type(field)),
+            true,
+            None,
+        );
+        self.analysis
+            .last_exit_fields
+            .push(LastExitFieldDecl { scope, field, slot });
+        self.analysis
+            .last_exit_field_slots
+            .insert((scope, field), slot);
+        slot
+    }
+
     fn analyze_block(&mut self, block: &Block) {
         for stmt in &block.statements {
             self.analyze_stmt(stmt);
@@ -1527,6 +1557,10 @@ impl<'a> Analyzer<'a> {
                     ty: InferredType::Concrete(Type::SeriesBool),
                     update_mask: BASE_UPDATE_MASK,
                 }
+            }
+            ExprKind::LastExitField { scope, field, .. } => {
+                self.last_exit_field_slot(*scope, *field);
+                ExprInfo::scalar(last_exit_field_type(*field))
             }
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
@@ -1965,6 +1999,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 ty: InferredType::Concrete(Type::SeriesBool),
                 update_mask: BASE_UPDATE_MASK,
             },
+            ExprKind::LastExitField { field, .. } => ExprInfo::scalar(last_exit_field_type(*field)),
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => symbol.info,
                 None => {
@@ -2296,6 +2331,7 @@ fn collect_source_series_refs(
         | ExprKind::Ident(_)
         | ExprKind::PositionField { .. }
         | ExprKind::PositionEventField { .. }
+        | ExprKind::LastExitField { .. }
         | ExprKind::EnumVariant { .. } => {}
     }
 }
@@ -2406,6 +2442,7 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         | ExprKind::Ident(_)
         | ExprKind::PositionField { .. }
         | ExprKind::PositionEventField { .. }
+        | ExprKind::LastExitField { .. }
         | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => None,
     }
@@ -2461,6 +2498,7 @@ fn collect_called_user_functions<'a>(
         | ExprKind::Ident(_)
         | ExprKind::PositionField { .. }
         | ExprKind::PositionEventField { .. }
+        | ExprKind::LastExitField { .. }
         | ExprKind::EnumVariant { .. }
         | ExprKind::SourceSeries { .. } => {}
     }
@@ -2652,6 +2690,9 @@ fn infer_conditional(
             InferredType::Concrete(Type::PositionSide),
             InferredType::Concrete(Type::PositionSide),
         ) => InferredType::Concrete(Type::PositionSide),
+        (InferredType::Concrete(Type::ExitKind), InferredType::Concrete(Type::ExitKind)) => {
+            InferredType::Concrete(Type::ExitKind)
+        }
         (InferredType::Tuple2(left), InferredType::Tuple2(right)) if left == right => {
             InferredType::Tuple2(left)
         }
@@ -4090,6 +4131,7 @@ fn eval_immutable_expr(expr: &Expr, values: &HashMap<String, Value>) -> Option<V
         | ExprKind::SourceSeries { .. }
         | ExprKind::PositionField { .. }
         | ExprKind::PositionEventField { .. }
+        | ExprKind::LastExitField { .. }
         | ExprKind::Index { .. } => None,
     }
 }
@@ -4205,6 +4247,7 @@ fn eq_values_const(left: &Value, right: &Value) -> Option<bool> {
         (Value::TimeInForce(left), Value::TimeInForce(right)) => Some(left == right),
         (Value::TriggerReference(left), Value::TriggerReference(right)) => Some(left == right),
         (Value::PositionSide(left), Value::PositionSide(right)) => Some(left == right),
+        (Value::ExitKind(left), Value::ExitKind(right)) => Some(left == right),
         (Value::NA, Value::NA) => Some(true),
         _ => None,
     }
@@ -4403,6 +4446,7 @@ fn resolve_enum_variant(namespace: &str, variant: &str) -> Option<Value> {
         "position_side" => {
             crate::position::PositionSide::from_variant(variant).map(Value::PositionSide)
         }
+        "exit_kind" => ExitKind::from_variant(variant).map(Value::ExitKind),
         _ => None,
     }
 }
@@ -4415,6 +4459,7 @@ fn scalar_type_for_value(value: &Value) -> Type {
         Value::TimeInForce(_) => Type::TimeInForce,
         Value::TriggerReference(_) => Type::TriggerReference,
         Value::PositionSide(_) => Type::PositionSide,
+        Value::ExitKind(_) => Type::ExitKind,
         Value::NA => Type::F64,
         Value::Void | Value::SeriesRef(_) | Value::Tuple2(_) | Value::Tuple3(_) => Type::F64,
     }
@@ -4433,6 +4478,19 @@ fn position_field_type(field: PositionField) -> Type {
         | PositionField::UnrealizedReturn
         | PositionField::Mae
         | PositionField::Mfe => Type::F64,
+    }
+}
+
+fn last_exit_field_type(field: LastExitField) -> Type {
+    match field {
+        LastExitField::Kind => Type::ExitKind,
+        LastExitField::Side => Type::PositionSide,
+        LastExitField::Price
+        | LastExitField::Time
+        | LastExitField::BarIndex
+        | LastExitField::RealizedPnl
+        | LastExitField::RealizedReturn
+        | LastExitField::BarsHeld => Type::F64,
     }
 }
 
@@ -4477,6 +4535,7 @@ fn output_series_type(
             | InferredType::Concrete(Type::TimeInForce)
             | InferredType::Concrete(Type::TriggerReference)
             | InferredType::Concrete(Type::PositionSide)
+            | InferredType::Concrete(Type::ExitKind)
             | InferredType::Tuple2(_)
             | InferredType::Tuple3(_) => {
                 diagnostics.push(Diagnostic::new(
@@ -4532,6 +4591,7 @@ impl<'a> Compiler<'a> {
         self.program.order_fields = self.analysis.order_fields.clone();
         self.program.position_fields = self.analysis.position_fields.clone();
         self.program.position_event_fields = self.analysis.position_event_fields.clone();
+        self.program.last_exit_fields = self.analysis.last_exit_fields.clone();
         self.program.orders = self.analysis.orders.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
@@ -4822,6 +4882,30 @@ impl<'a> Compiler<'a> {
                         DiagnosticKind::Compile,
                         format!(
                             "missing compiled position-event slot for `position_event.{}`",
+                            field.as_str()
+                        ),
+                        expr.span,
+                    ));
+                    return;
+                };
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
+            ExprKind::LastExitField { scope, field, .. } => {
+                let Some(slot) = self
+                    .analysis
+                    .last_exit_field_slots
+                    .get(&(*scope, *field))
+                    .copied()
+                else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        format!(
+                            "missing compiled last-exit slot for `{}.{}`",
+                            scope.namespace(),
                             field.as_str()
                         ),
                         expr.span,

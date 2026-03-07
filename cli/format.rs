@@ -391,6 +391,7 @@ fn fmt_value(value: &Value) -> String {
         Value::TimeInForce(value) => format!("tif.{}", value.as_str()),
         Value::TriggerReference(value) => format!("trigger_ref.{}", value.as_str()),
         Value::PositionSide(value) => format!("position_side.{}", value.as_str()),
+        Value::ExitKind(value) => format!("exit_kind.{}", value.as_str()),
         Value::NA => "na".to_string(),
         Value::Void => "void".to_string(),
         Value::SeriesRef(slot) => format!("series-ref({slot})"),

@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::order::{TimeInForce, TriggerReference};
-use crate::position::PositionSide;
+use crate::position::{ExitKind, PositionSide};
 use crate::talib::MaType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -17,6 +17,7 @@ pub enum Type {
     TimeInForce,
     TriggerReference,
     PositionSide,
+    ExitKind,
     SeriesF64,
     SeriesBool,
     Void,
@@ -37,6 +38,7 @@ impl Type {
             | Self::TimeInForce
             | Self::TriggerReference
             | Self::PositionSide
+            | Self::ExitKind
             | Self::Void => Some(self),
         }
     }
@@ -56,6 +58,7 @@ pub enum Value {
     TimeInForce(TimeInForce),
     TriggerReference(TriggerReference),
     PositionSide(PositionSide),
+    ExitKind(ExitKind),
     NA,
     Void,
     SeriesRef(usize),
@@ -72,6 +75,7 @@ impl Value {
             Self::TimeInForce(_) => "time-in-force",
             Self::TriggerReference(_) => "trigger-reference",
             Self::PositionSide(_) => "position-side",
+            Self::ExitKind(_) => "exit-kind",
             Self::NA => "na",
             Self::Void => "void",
             Self::SeriesRef(_) => "series-ref",
@@ -111,6 +115,7 @@ impl Value {
 mod tests {
     use super::{Type, Value};
     use crate::order::{TimeInForce, TriggerReference};
+    use crate::position::ExitKind;
     use crate::talib::MaType;
 
     #[test]
@@ -127,6 +132,7 @@ mod tests {
             Type::TriggerReference.scalar(),
             Some(Type::TriggerReference)
         );
+        assert_eq!(Type::ExitKind.scalar(), Some(Type::ExitKind));
         assert_eq!(Type::Void.scalar(), Some(Type::Void));
     }
 
@@ -143,6 +149,7 @@ mod tests {
             Value::TriggerReference(TriggerReference::Last).type_name(),
             "trigger-reference"
         );
+        assert_eq!(Value::ExitKind(ExitKind::Target).type_name(), "exit-kind");
         assert_eq!(Value::NA.type_name(), "na");
         assert_eq!(Value::Void.type_name(), "void");
         assert_eq!(Value::SeriesRef(3).type_name(), "series-ref");

@@ -605,7 +605,7 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
             context.references.push(Reference {
                 span: expr.span,
                 definition_index: None,
-                hover: format!("`{}.{}`\n\nTyped TA-Lib enum literal.", namespace, variant),
+                hover: format!("`{}.{}`\n\nTyped enum literal.", namespace, variant),
             });
         }
         ExprKind::PositionField { field, .. } => {
@@ -624,6 +624,17 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                 definition_index: None,
                 hover: format!(
                     "`position_event.{}`\n\nBacktest-driven position fill event.",
+                    field.as_str()
+                ),
+            });
+        }
+        ExprKind::LastExitField { scope, field, .. } => {
+            context.references.push(Reference {
+                span: expr.span,
+                definition_index: None,
+                hover: format!(
+                    "`{}.{}`\n\nBacktest-driven latest closed-trade field.",
+                    scope.namespace(),
                     field.as_str()
                 ),
             });
@@ -895,6 +906,7 @@ fn render_type(ty: Type) -> &'static str {
         Type::TimeInForce => "tif",
         Type::TriggerReference => "trigger_ref",
         Type::PositionSide => "position_side",
+        Type::ExitKind => "exit_kind",
         Type::SeriesF64 => "series<float>",
         Type::SeriesBool => "series<bool>",
         Type::Void => "void",
@@ -1288,6 +1300,9 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
         ExprKind::PositionField { field, .. } => format!("position.{}", field.as_str()),
         ExprKind::PositionEventField { field, .. } => {
             format!("position_event.{}", field.as_str())
+        }
+        ExprKind::LastExitField { scope, field, .. } => {
+            format!("{}.{}", scope.namespace(), field.as_str())
         }
         ExprKind::SourceSeries {
             source,

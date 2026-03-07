@@ -222,6 +222,7 @@ fn tiny_program_push_add_plot_executes() {
         order_fields: vec![],
         position_fields: vec![],
         position_event_fields: vec![],
+        last_exit_fields: vec![],
         orders: vec![],
         base_interval: Some(Interval::Min1),
         declared_sources: default_declared_sources(),
@@ -250,6 +251,7 @@ fn stack_underflow_is_reported() {
         order_fields: vec![],
         position_fields: vec![],
         position_event_fields: vec![],
+        last_exit_fields: vec![],
         orders: vec![],
         base_interval: Some(Interval::Min1),
         declared_sources: default_declared_sources(),
@@ -278,6 +280,7 @@ fn invalid_jump_is_reported() {
         order_fields: vec![],
         position_fields: vec![],
         position_event_fields: vec![],
+        last_exit_fields: vec![],
         orders: vec![],
         base_interval: Some(Interval::Min1),
         declared_sources: default_declared_sources(),
@@ -861,6 +864,33 @@ plot(0)",
         assert_eq!(point.value, palmscript::OutputValue::Bool(false));
     }
     for point in &outputs.exports[1].points {
+        assert_eq!(point.value, palmscript::OutputValue::NA);
+    }
+}
+
+#[test]
+fn last_exit_namespace_is_na_outside_backtests() {
+    let compiled = palmscript::compile(&with_interval(
+        "export target_fill = position_event.long_target_fill
+export last_exit_price = last_long_exit.price
+export was_target = last_long_exit.kind == exit_kind.target
+plot(0)",
+    ))
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 12.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    for point in &outputs.exports[0].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(false));
+    }
+    for point in &outputs.exports[1].points {
+        assert_eq!(point.value, palmscript::OutputValue::NA);
+    }
+    for point in &outputs.exports[2].points {
         assert_eq!(point.value, palmscript::OutputValue::NA);
     }
 }

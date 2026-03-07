@@ -195,6 +195,32 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_last_exit_namespaces_and_exit_kind_literals() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+entry long = last_long_exit.kind == exit_kind.target or last_exit.side == position_side.long
+export last_short_price = last_short_exit.price
+plot(src.close)",
+    )
+    .expect("last-exit namespaces should compile");
+}
+
+#[test]
+fn rejects_unknown_last_exit_field() {
+    let message = compile_err(&with_interval("plot(last_exit.foo)"));
+    assert!(message.contains("unknown last-exit field"));
+}
+
+#[test]
+fn rejects_unknown_exit_kind_variant() {
+    let message = compile_err(&with_interval(
+        "if last_exit.kind == exit_kind.foo { plot(1) } else { plot(0) }",
+    ));
+    assert!(message.contains("unknown enum variant `exit_kind.foo`"));
+}
+
+#[test]
 fn rejects_order_declarations_inside_blocks() {
     let message = compile_err(&with_interval(
         "if true { order entry long = market() } else { plot(0) }",

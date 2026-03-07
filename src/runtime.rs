@@ -537,6 +537,20 @@ impl RuntimeStepper {
             self.engine
                 .set_local_override(slot as usize, Value::Bool(false))?;
         }
+        let default_last_exit_slots: Vec<u16> = self
+            .engine
+            .compiled
+            .program
+            .last_exit_fields
+            .iter()
+            .map(|decl| decl.slot)
+            .collect();
+        for slot in default_last_exit_slots {
+            if overridden_slots.contains(&slot) {
+                continue;
+            }
+            self.engine.set_local_override(slot as usize, Value::NA)?;
+        }
         for (slot, value) in overrides {
             self.engine
                 .set_local_override(*slot as usize, value.clone())?;

@@ -912,6 +912,22 @@ impl<'a> Parser<'a> {
                         },
                     });
                 }
+                if let Some(scope) = crate::position::LastExitScope::from_namespace(&source_name) {
+                    let Some(field) = crate::position::LastExitField::parse(&name) else {
+                        let _ = scope;
+                        self.push_diagnostic("unknown last-exit field", span);
+                        return None;
+                    };
+                    return Some(Expr {
+                        id: self.alloc_id(),
+                        span: source_span.merge(span),
+                        kind: ExprKind::LastExitField {
+                            scope,
+                            field,
+                            field_span: span,
+                        },
+                    });
+                }
                 if let Some(field) = MarketField::parse(&name) {
                     Some(Expr {
                         id: self.alloc_id(),
@@ -943,10 +959,20 @@ impl<'a> Parser<'a> {
             | Token {
                 kind: TokenKind::Short,
                 span,
+            }
+            | Token {
+                kind: TokenKind::Protect,
+                span,
+            }
+            | Token {
+                kind: TokenKind::Target,
+                span,
             } => {
                 let name = match self.previous().kind {
                     TokenKind::Long => "long".to_string(),
                     TokenKind::Short => "short".to_string(),
+                    TokenKind::Protect => "protect".to_string(),
+                    TokenKind::Target => "target".to_string(),
                     _ => unreachable!(),
                 };
                 Some(Expr {
