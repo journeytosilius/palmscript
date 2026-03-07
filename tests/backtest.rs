@@ -266,6 +266,36 @@ plot(spot.close)",
     assert!(trade_diag.mfe_pct > 0.0);
     assert!(trade_diag.mae_pct < 0.0);
     assert_eq!(trade_diag.entry_snapshot, order_diag.fill_snapshot);
+    assert_eq!(result.diagnostics.capture_summary.flat_bar_count, 3);
+    assert_eq!(result.diagnostics.capture_summary.long_bar_count, 2);
+    assert_eq!(result.diagnostics.capture_summary.in_market_bar_count, 2);
+    let export_summary = result
+        .diagnostics
+        .export_summaries
+        .iter()
+        .find_map(|summary| match summary {
+            palmscript::ExportDiagnosticSummary::Bool(summary) if summary.name == "trend_state" => {
+                Some(summary)
+            }
+            _ => None,
+        })
+        .expect("bool export summary should exist");
+    assert_eq!(export_summary.true_count, 2);
+    assert_eq!(export_summary.false_count, 2);
+    assert_eq!(export_summary.rising_edge_count, 1);
+    assert_eq!(export_summary.trade_count, 1);
+    let activation = result
+        .diagnostics
+        .opportunity_events
+        .iter()
+        .find(|event| {
+            matches!(
+                event.kind,
+                palmscript::OpportunityEventKind::ExportActivated
+            ) && event.name == "trend_state"
+        })
+        .expect("export activation event should exist");
+    assert_eq!(activation.forward_returns[0].horizon_bars, 1);
 }
 
 #[test]
@@ -438,6 +468,12 @@ plot(spot.close)",
     assert_eq!(result.fills.len(), 1);
     assert_eq!(result.trades.len(), 0);
     assert!(result.open_position.is_some());
+    assert!(result.diagnostics.opportunity_events.iter().any(|event| {
+        matches!(
+            event.kind,
+            palmscript::OpportunityEventKind::SignalIgnoredSameSide
+        ) && event.role == Some(SignalRole::LongEntry)
+    }));
 }
 
 #[test]
@@ -871,6 +907,12 @@ plot(spot.close)",
     assert_eq!(result.orders[1].status, OrderStatus::Filled);
     approx_eq(result.orders[1].limit_price.expect("limit"), 11.0);
     approx_eq(result.orders[1].fill_price.expect("fill"), 11.0);
+    assert!(result.diagnostics.opportunity_events.iter().any(|event| {
+        matches!(
+            event.kind,
+            palmscript::OpportunityEventKind::SignalReplacedPendingOrder
+        ) && event.role == Some(SignalRole::LongEntry)
+    }));
 }
 
 #[test]

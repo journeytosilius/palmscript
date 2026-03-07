@@ -74,3 +74,32 @@ The owning layer for a failure is part of the contract:
 - prepared-feed consistency and bytecode execution belong to runtime
 
 PalmScript fails explicitly instead of silently degrading semantics.
+
+## 4. Backtest Diagnostics
+
+Successful backtests also return a structured diagnostics payload intended for
+machine analysis and strategy iteration.
+
+The backtest diagnostics surface includes:
+
+- `order_diagnostics`: per-order snapshots at signal, placement, and fill time
+- `trade_diagnostics`: per-trade entry/exit context, MAE, MFE, and exit classification
+- `summary`: aggregate order and trade statistics
+- `capture_summary`: execution-asset return, time spent flat or in market, and opportunity-cost return while flat
+- `export_summaries`: one summary per exported series
+- `opportunity_events`: bounded activation and signal-decision events with forward-return context
+
+Export summaries use all named `export` series automatically:
+
+- numeric exports report `min`, `max`, `mean`, `entry_mean`, and `exit_mean`
+- bool exports report true/false counts, rising and falling edges, time spent true while flat or in market, and trade stats for entries taken while that export was true
+
+Opportunity events are bounded and deterministic:
+
+- every exported bool series emits an activation event on `false/na -> true`
+- consumed backtest signals emit decision events such as queued, ignored same-side, ignored while flat, conflict, or replacement
+- each event includes fixed forward-return horizons over `1`, `6`, and `24` execution bars
+
+Backtest diagnostics are not compile failures or runtime errors. They are part
+of the successful result surface returned by `palmscript run backtest` and
+`run_backtest_with_sources`.

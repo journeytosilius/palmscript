@@ -5,6 +5,7 @@
 //! for one configured execution source.
 
 mod bridge;
+mod diagnostics;
 mod engine;
 mod orders;
 mod venue;
@@ -159,6 +160,102 @@ pub struct FeatureSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExportValueType {
+    Numeric,
+    Bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NumericExportDiagnosticSummary {
+    pub name: String,
+    pub sample_count: usize,
+    pub na_count: usize,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub mean: Option<f64>,
+    pub entry_mean: Option<f64>,
+    pub exit_mean: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BoolExportDiagnosticSummary {
+    pub name: String,
+    pub sample_count: usize,
+    pub na_count: usize,
+    pub true_count: usize,
+    pub false_count: usize,
+    pub rising_edge_count: usize,
+    pub falling_edge_count: usize,
+    pub true_while_flat_count: usize,
+    pub true_while_in_market_count: usize,
+    pub true_while_long_count: usize,
+    pub true_while_short_count: usize,
+    pub execution_return_while_true: f64,
+    pub execution_return_while_true_and_flat: f64,
+    pub trade_count: usize,
+    pub win_rate: f64,
+    pub average_realized_pnl: f64,
+    pub average_mae_pct: f64,
+    pub average_mfe_pct: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "summary_kind", rename_all = "snake_case")]
+pub enum ExportDiagnosticSummary {
+    Numeric(NumericExportDiagnosticSummary),
+    Bool(BoolExportDiagnosticSummary),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BacktestCaptureSummary {
+    pub execution_asset_return: f64,
+    pub strategy_total_return: f64,
+    pub flat_bar_count: usize,
+    pub long_bar_count: usize,
+    pub short_bar_count: usize,
+    pub in_market_bar_count: usize,
+    pub flat_bar_pct: f64,
+    pub long_bar_pct: f64,
+    pub short_bar_pct: f64,
+    pub in_market_bar_pct: f64,
+    pub execution_return_while_flat: f64,
+    pub execution_return_while_long: f64,
+    pub execution_return_while_short: f64,
+    pub opportunity_cost_return: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OpportunityEventKind {
+    ExportActivated,
+    SignalQueued,
+    SignalIgnoredSameSide,
+    SignalIgnoredNoPosition,
+    SignalConflicted,
+    SignalReplacedPendingOrder,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ForwardReturnMetric {
+    pub horizon_bars: usize,
+    pub return_pct: f64,
+    pub complete_window: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OpportunityEvent {
+    pub kind: OpportunityEventKind,
+    pub name: String,
+    pub role: Option<SignalRole>,
+    pub bar_index: usize,
+    pub time: f64,
+    pub position_snapshot: Option<PositionSnapshot>,
+    pub feature_snapshot: Option<FeatureSnapshot>,
+    pub forward_returns: Vec<ForwardReturnMetric>,
+    pub forward_max_favorable_pct: Option<f64>,
+    pub forward_max_adverse_pct: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TradeExitClassification {
     Signal,
     Protect,
@@ -247,6 +344,9 @@ pub struct BacktestDiagnostics {
     pub order_diagnostics: Vec<OrderDiagnostic>,
     pub trade_diagnostics: Vec<TradeDiagnostic>,
     pub summary: BacktestDiagnosticSummary,
+    pub capture_summary: BacktestCaptureSummary,
+    pub export_summaries: Vec<ExportDiagnosticSummary>,
+    pub opportunity_events: Vec<OpportunityEvent>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -345,4 +445,26 @@ fn execution_bars(
         .ok_or_else(|| BacktestError::MissingExecutionBaseFeed {
             alias: alias.to_string(),
         })
+}
+
+pub(crate) fn average(values: impl IntoIterator<Item = f64>) -> f64 {
+    let mut count = 0usize;
+    let mut sum = 0.0;
+    for value in values {
+        sum += value;
+        count += 1;
+    }
+    if count == 0 {
+        0.0
+    } else {
+        sum / count as f64
+    }
+}
+
+pub(crate) fn ratio(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
 }

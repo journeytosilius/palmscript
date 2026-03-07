@@ -2,8 +2,8 @@ use std::fmt::Write;
 
 use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::{
-    BacktestResult, CompiledProgram, OrderStatus, OutputKind, OutputValue, Outputs, PositionSide,
-    SignalRole, Value,
+    BacktestResult, CompiledProgram, ExportDiagnosticSummary, OrderStatus, OutputKind, OutputValue,
+    Outputs, PositionSide, SignalRole, Value,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -211,6 +211,89 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         "reversal_exit_count={}",
         result.diagnostics.summary.reversal_exit_count
     );
+    let _ = writeln!(
+        out,
+        "execution_asset_return_pct={:.2}",
+        result.diagnostics.capture_summary.execution_asset_return * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "flat_bar_pct={:.2}",
+        result.diagnostics.capture_summary.flat_bar_pct * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "long_bar_pct={:.2}",
+        result.diagnostics.capture_summary.long_bar_pct * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "short_bar_pct={:.2}",
+        result.diagnostics.capture_summary.short_bar_pct * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "opportunity_cost_return_pct={:.2}",
+        result.diagnostics.capture_summary.opportunity_cost_return * 100.0
+    );
+
+    if !result.diagnostics.export_summaries.is_empty() {
+        out.push_str("Top Export States\n");
+        for summary in result.diagnostics.export_summaries.iter().take(3) {
+            match summary {
+                ExportDiagnosticSummary::Bool(summary) => {
+                    let _ = writeln!(
+                        out,
+                        "name={} kind=bool rising_edge_count={} true_count={} true_while_flat_count={} trade_count={} win_rate_pct={:.2}",
+                        summary.name,
+                        summary.rising_edge_count,
+                        summary.true_count,
+                        summary.true_while_flat_count,
+                        summary.trade_count,
+                        summary.win_rate * 100.0
+                    );
+                }
+                ExportDiagnosticSummary::Numeric(summary) => {
+                    let _ = writeln!(
+                        out,
+                        "name={} kind=numeric mean={} entry_mean={} exit_mean={}",
+                        summary.name,
+                        fmt_opt_f64(summary.mean),
+                        fmt_opt_f64(summary.entry_mean),
+                        fmt_opt_f64(summary.exit_mean)
+                    );
+                }
+            }
+        }
+    }
+
+    if !result.diagnostics.opportunity_events.is_empty() {
+        out.push_str("Recent Opportunity Events\n");
+        for event in result
+            .diagnostics
+            .opportunity_events
+            .iter()
+            .rev()
+            .take(5)
+            .rev()
+        {
+            let _ = writeln!(
+                out,
+                "kind={:?} name={} role={} bar={} time={} forward_1bar_pct={}",
+                event.kind,
+                event.name,
+                event.role.map(fmt_signal_role).unwrap_or("na"),
+                event.bar_index,
+                event.time,
+                event
+                    .forward_returns
+                    .iter()
+                    .find(|metric| metric.horizon_bars == 1)
+                    .map(|metric| format!("{:.2}", metric.return_pct * 100.0))
+                    .unwrap_or_else(|| "na".to_string())
+            );
+        }
+    }
 
     out.push_str("Recent Orders\n");
     let recent_orders = result.orders.iter().rev().take(5).collect::<Vec<_>>();
@@ -387,9 +470,9 @@ mod tests {
     use palmscript::span::{Position, Span};
     use palmscript::types::Type;
     use palmscript::{
-        BacktestResult, BacktestSummary, CompiledProgram, EquityPoint, Fill, FillAction, OrderKind,
-        OrderRecord, OrderStatus, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint,
-        PlotSeries, PositionSide, SignalRole, Trade,
+        BacktestResult, BacktestSummary, CompiledProgram, EquityPoint, ExportDiagnosticSummary,
+        Fill, FillAction, OrderKind, OrderRecord, OrderStatus, OutputSample, OutputSeries,
+        OutputValue, Outputs, PlotPoint, PlotSeries, PositionSide, SignalRole, Trade,
     };
 
     #[test]
@@ -573,6 +656,60 @@ mod tests {
                     by_order_kind: vec![],
                     by_side: vec![],
                 },
+                capture_summary: palmscript::BacktestCaptureSummary {
+                    execution_asset_return: 0.10,
+                    strategy_total_return: 0.012,
+                    flat_bar_count: 1,
+                    long_bar_count: 0,
+                    short_bar_count: 0,
+                    in_market_bar_count: 0,
+                    flat_bar_pct: 1.0,
+                    long_bar_pct: 0.0,
+                    short_bar_pct: 0.0,
+                    in_market_bar_pct: 0.0,
+                    execution_return_while_flat: 0.10,
+                    execution_return_while_long: 0.0,
+                    execution_return_while_short: 0.0,
+                    opportunity_cost_return: 0.10,
+                },
+                export_summaries: vec![ExportDiagnosticSummary::Bool(
+                    palmscript::BoolExportDiagnosticSummary {
+                        name: "trend_state".to_string(),
+                        sample_count: 3,
+                        na_count: 0,
+                        true_count: 2,
+                        false_count: 1,
+                        rising_edge_count: 1,
+                        falling_edge_count: 1,
+                        true_while_flat_count: 1,
+                        true_while_in_market_count: 1,
+                        true_while_long_count: 1,
+                        true_while_short_count: 0,
+                        execution_return_while_true: 0.05,
+                        execution_return_while_true_and_flat: 0.03,
+                        trade_count: 1,
+                        win_rate: 1.0,
+                        average_realized_pnl: 12.0,
+                        average_mae_pct: -0.02,
+                        average_mfe_pct: 0.05,
+                    },
+                )],
+                opportunity_events: vec![palmscript::OpportunityEvent {
+                    kind: palmscript::OpportunityEventKind::ExportActivated,
+                    name: "trend_state".to_string(),
+                    role: None,
+                    bar_index: 1,
+                    time: 10.0,
+                    position_snapshot: None,
+                    feature_snapshot: None,
+                    forward_returns: vec![palmscript::ForwardReturnMetric {
+                        horizon_bars: 1,
+                        return_pct: 0.1,
+                        complete_window: true,
+                    }],
+                    forward_max_favorable_pct: Some(0.12),
+                    forward_max_adverse_pct: Some(-0.02),
+                }],
             },
             open_position: None,
         };
@@ -584,6 +721,9 @@ mod tests {
         assert!(rendered.contains("placed_count=1"));
         assert!(rendered.contains("Diagnostics Summary"));
         assert!(rendered.contains("order_fill_rate_pct=100.00"));
+        assert!(rendered.contains("execution_asset_return_pct=10.00"));
+        assert!(rendered.contains("Top Export States"));
+        assert!(rendered.contains("Recent Opportunity Events"));
         assert!(rendered.contains("Recent Orders"));
         assert!(rendered.contains("role=long_entry"));
         assert!(rendered.contains("Recent Trades"));

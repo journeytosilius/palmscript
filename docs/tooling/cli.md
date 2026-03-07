@@ -72,8 +72,8 @@ Market mode supports:
 Backtest mode supports the same output formats.
 
 - JSON output includes order lifecycle records in `orders`
-- JSON output also includes event diagnostics in `diagnostics`
-- text output includes diagnostics, order, and trade summaries
+- JSON output also includes backtest diagnostics in `diagnostics`, including order/trade context, capture summaries, export summaries, and opportunity events
+- text output includes compact diagnostics, order, and trade summaries plus short export/opportunity sections when available
 
 ## Execution Limits
 

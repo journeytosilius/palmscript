@@ -86,6 +86,9 @@ iteration. It currently includes:
 - per-order position snapshots at placement and fill time for attached exits and other order paths
 - per-trade diagnostics with entry and exit snapshots, MAE, MFE, holding time, and exit classification
 - aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, protect, target, and reversal exits
+- capture summaries that compare strategy return with execution-asset return, time spent flat or in market, and opportunity cost while flat
+- export summaries for every named `export`, including numeric distribution stats and bool regime/setup activation counts
+- bounded opportunity events for bool-export activations and backtest-consumed signal decisions, each with forward-return context over `1`, `6`, and `24` execution bars
 
 To make regime and setup context available to diagnostics, export those fields
 explicitly in the strategy:
@@ -97,6 +100,15 @@ export breakout_long_state = breakout_long
 ```
 
 Those exported values are then snapshotted automatically around backtest events.
+All exported series also feed the higher-level diagnostics summaries automatically.
+
+Backtest text output keeps those additions compact:
+
+- `Diagnostics Summary` now includes execution-asset return, flat/long/short bar percentages, and opportunity-cost return
+- `Top Export States` shows a short summary of the first few export aggregates
+- `Recent Opportunity Events` shows the latest bounded export-activation and signal-decision events
+
+The full diagnostics payload remains JSON-first and is returned in the normal `BacktestResult`.
 
 ## Signal Resolution
 

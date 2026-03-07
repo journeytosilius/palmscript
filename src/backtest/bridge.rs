@@ -3,17 +3,28 @@ use std::collections::HashMap;
 use crate::backtest::orders::CapturedOrderRequest;
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
 use crate::backtest::{BacktestError, OrderKind};
-use crate::bytecode::{OrderDecl, PositionEventFieldDecl, PositionFieldDecl, SignalRole};
+use crate::bytecode::{
+    OrderDecl, OutputKind, PositionEventFieldDecl, PositionFieldDecl, SignalRole,
+};
 use crate::compiler::CompiledProgram;
 use crate::interval::SourceTemplate;
 use crate::order::OrderFieldKind;
 use crate::output::{OrderFieldSample, OutputValue, StepOutput};
+use crate::types::Type;
+
+#[derive(Clone, Debug)]
+pub(crate) struct PreparedExport {
+    pub output_id: usize,
+    pub name: String,
+    pub value_type: crate::backtest::ExportValueType,
+}
 
 pub(crate) struct PreparedBacktest {
     pub signal_roles: HashMap<usize, SignalRole>,
     pub order_templates: HashMap<SignalRole, OrderDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
     pub position_event_fields: Vec<PositionEventFieldDecl>,
+    pub exports: Vec<PreparedExport>,
 }
 
 pub(crate) struct ExecutionSource {
@@ -63,6 +74,7 @@ pub(crate) fn prepare_backtest(
         order_templates,
         position_fields: compiled.program.position_fields.clone(),
         position_event_fields: compiled.program.position_event_fields.clone(),
+        exports: collect_exports(compiled),
     })
 }
 
@@ -181,4 +193,27 @@ fn legacy_signal_role(name: &str) -> Option<SignalRole> {
         "short_exit" => Some(SignalRole::ShortExit),
         _ => None,
     }
+}
+
+fn collect_exports(compiled: &CompiledProgram) -> Vec<PreparedExport> {
+    compiled
+        .program
+        .outputs
+        .iter()
+        .enumerate()
+        .filter_map(|(output_id, decl)| {
+            if !matches!(decl.kind, OutputKind::ExportSeries) {
+                return None;
+            }
+            let value_type = match decl.ty.scalar() {
+                Some(Type::Bool) => crate::backtest::ExportValueType::Bool,
+                _ => crate::backtest::ExportValueType::Numeric,
+            };
+            Some(PreparedExport {
+                output_id,
+                name: decl.name.clone(),
+                value_type,
+            })
+        })
+        .collect()
 }

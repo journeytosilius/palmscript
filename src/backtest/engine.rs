@@ -1,4 +1,8 @@
 use crate::backtest::bridge::{capture_request, PreparedBacktest};
+use crate::backtest::diagnostics::{
+    build_diagnostics_summary, build_order_diagnostics, snapshot_from_step, DiagnosticsAccumulator,
+    OrderDiagnosticContext,
+};
 use crate::backtest::orders::{
     adjusted_price, close_position, close_trade, empty_request_slots, evaluate_active_order,
     fill_action_for_role, is_attached_exit_role, missing_field_reason, open_position,
@@ -7,10 +11,9 @@ use crate::backtest::orders::{
     OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
-    BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
-    BacktestSummary, EquityPoint, FeatureSnapshot, FeatureValue, Fill, OrderDiagnostic,
-    OrderEndReason, OrderKindDiagnosticSummary, OrderRecord, OrderStatus, PositionSnapshot,
-    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
+    BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
+    EquityPoint, FeatureSnapshot, Fill, OpportunityEventKind, OrderEndReason, OrderRecord,
+    OrderStatus, PositionSnapshot, Trade, TradeDiagnostic, TradeExitClassification,
 };
 use crate::bytecode::{PositionEventFieldDecl, PositionFieldDecl, SignalRole};
 use crate::order::OrderKind;
@@ -27,15 +30,6 @@ pub(crate) struct OrderRecordUpdate {
     pub fill_price: Option<f64>,
     pub status: OrderStatus,
     pub end_reason: Option<OrderEndReason>,
-}
-
-#[derive(Clone, Debug, Default)]
-struct OrderDiagnosticContext {
-    signal_snapshot: Option<FeatureSnapshot>,
-    placed_snapshot: Option<FeatureSnapshot>,
-    fill_snapshot: Option<FeatureSnapshot>,
-    placed_position: Option<PositionSnapshot>,
-    fill_position: Option<PositionSnapshot>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -68,6 +62,7 @@ pub(crate) fn simulate_backtest(
     let mut pending_requests = empty_request_slots();
     let mut pending_snapshots: [Option<FeatureSnapshot>; ROLE_COUNT] =
         [None, None, None, None, None, None, None, None];
+    let mut pending_signal_names: [Option<String>; ROLE_COUNT] = std::array::from_fn(|_| None);
     let mut pending_conflict_time = None::<f64>;
     let mut total_realized_pnl = 0.0;
     let mut max_gross_exposure = 0.0_f64;
@@ -76,6 +71,7 @@ pub(crate) fn simulate_backtest(
     let mut execution_cursor = 0usize;
     let mut last_mark_price = None::<f64>;
     let mut last_snapshot = None::<FeatureSnapshot>;
+    let mut diagnostics = DiagnosticsAccumulator::new(&prepared.exports);
 
     while let Some(open_time) = stepper.peek_open_time() {
         let next_execution = execution_bars.get(execution_cursor).copied();
@@ -100,9 +96,11 @@ pub(crate) fn simulate_backtest(
             place_pending_requests(
                 &mut pending_requests,
                 &mut pending_snapshots,
+                &mut pending_signal_names,
                 &mut active_orders,
                 &mut orders,
                 &mut order_contexts,
+                &mut diagnostics,
                 position.as_ref(),
                 last_snapshot.clone(),
                 current_position_snapshot(position.as_ref(), bar.open, bar.time),
@@ -281,6 +279,13 @@ pub(crate) fn simulate_backtest(
             .expect("peeked runtime step should exist");
         let step_time = open_time as f64;
         let snapshot = snapshot_from_step(&output, step_time);
+        let step_bar_index = snapshot
+            .as_ref()
+            .map_or(execution_cursor, |feature_snapshot| {
+                feature_snapshot.bar_index
+            });
+        let decision_position_snapshot = current_execution
+            .and_then(|bar| current_position_snapshot(position.as_ref(), bar.close, bar.time));
 
         if let Some(bar) = current_execution {
             if position_events.long_entry_fill || position_events.short_entry_fill {
@@ -293,6 +298,17 @@ pub(crate) fn simulate_backtest(
                 order_contexts[record_index].fill_snapshot = snapshot.clone();
                 order_contexts[record_index].fill_position = fill_position.clone();
             }
+            let bar_return = diagnostics
+                .observe_execution_bar(bar.close, position.as_ref().map(|state| state.side));
+            diagnostics.observe_exports(
+                &output,
+                snapshot.as_ref(),
+                fill_position.as_ref(),
+                execution_cursor,
+                step_time,
+                bar_return,
+                position.as_ref().map(|state| state.side),
+            );
             let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
             let gross_exposure = quantity.abs() * bar.close;
             max_gross_exposure = max_gross_exposure.max(gross_exposure);
@@ -311,6 +327,16 @@ pub(crate) fn simulate_backtest(
             });
             last_mark_price = Some(bar.close);
             execution_cursor += 1;
+        } else {
+            diagnostics.observe_exports(
+                &output,
+                snapshot.as_ref(),
+                None,
+                step_bar_index,
+                step_time,
+                None,
+                position.as_ref().map(|state| state.side),
+            );
         }
 
         enqueue_signal_requests(
@@ -319,8 +345,12 @@ pub(crate) fn simulate_backtest(
             &prepared,
             &mut pending_requests,
             &mut pending_snapshots,
+            &mut pending_signal_names,
             &mut pending_conflict_time,
-            snapshot.clone(),
+            &mut diagnostics,
+            decision_position_snapshot.as_ref(),
+            snapshot.as_ref(),
+            step_bar_index,
         );
         enqueue_attached_requests(
             step_time,
@@ -330,7 +360,11 @@ pub(crate) fn simulate_backtest(
             position.as_ref(),
             &mut pending_requests,
             &mut pending_snapshots,
-            snapshot.clone(),
+            &mut pending_signal_names,
+            &mut diagnostics,
+            decision_position_snapshot.as_ref(),
+            snapshot.as_ref(),
+            step_bar_index,
         );
         last_snapshot = snapshot;
     }
@@ -370,6 +404,11 @@ pub(crate) fn simulate_backtest(
         }),
         _ => None,
     };
+    let (capture_summary, export_summaries, opportunity_events) = diagnostics.finalize(
+        &execution_bars,
+        &trade_diagnostics,
+        (ending_equity - config.initial_capital) / config.initial_capital,
+    );
 
     Ok(BacktestResult {
         outputs,
@@ -380,6 +419,9 @@ pub(crate) fn simulate_backtest(
             order_diagnostics,
             trade_diagnostics,
             summary: diagnostics_summary,
+            capture_summary,
+            export_summaries,
+            opportunity_events,
         },
         equity_curve,
         summary: BacktestSummary {
@@ -470,14 +512,19 @@ fn build_runtime_overrides(
     overrides
 }
 
+#[allow(clippy::too_many_arguments)]
 fn enqueue_signal_requests(
     output: &StepOutput,
     signal_time: f64,
     prepared: &PreparedBacktest,
     pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
     pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
+    pending_signal_names: &mut [Option<String>; ROLE_COUNT],
     pending_conflict_time: &mut Option<f64>,
-    snapshot: Option<FeatureSnapshot>,
+    diagnostics: &mut DiagnosticsAccumulator,
+    position_snapshot: Option<&PositionSnapshot>,
+    snapshot: Option<&FeatureSnapshot>,
+    bar_index: usize,
 ) {
     for event in &output.trigger_events {
         let Some(role) = prepared.signal_roles.get(&event.output_id).copied() else {
@@ -487,8 +534,27 @@ fn enqueue_signal_requests(
             continue;
         };
         let slot = role_index(role);
+        let event_kind = if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry)
+            && pending_requests[role_index(opposite_entry_role(role))].is_some()
+        {
+            OpportunityEventKind::SignalConflicted
+        } else if pending_requests[slot].is_some() {
+            OpportunityEventKind::SignalReplacedPendingOrder
+        } else {
+            OpportunityEventKind::SignalQueued
+        };
+        diagnostics.record_signal_event(
+            event_kind,
+            &event.name,
+            role,
+            bar_index,
+            signal_time,
+            position_snapshot,
+            snapshot,
+        );
         pending_requests[slot] = Some(capture_request(template, signal_time, output));
-        pending_snapshots[slot] = snapshot.clone();
+        pending_snapshots[slot] = snapshot.cloned();
+        pending_signal_names[slot] = Some(event.name.clone());
         if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry) {
             *pending_conflict_time = Some(signal_time);
         }
@@ -504,7 +570,11 @@ fn enqueue_attached_requests(
     position_after_step: Option<&PositionState>,
     pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
     pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
-    snapshot: Option<FeatureSnapshot>,
+    pending_signal_names: &mut [Option<String>; ROLE_COUNT],
+    diagnostics: &mut DiagnosticsAccumulator,
+    position_snapshot: Option<&PositionSnapshot>,
+    snapshot: Option<&FeatureSnapshot>,
+    bar_index: usize,
 ) {
     let (Some(before), Some(after)) = (position_before_step, position_after_step) else {
         return;
@@ -522,8 +592,22 @@ fn enqueue_attached_requests(
             continue;
         };
         let slot = role_index(role);
+        diagnostics.record_signal_event(
+            if pending_requests[slot].is_some() {
+                OpportunityEventKind::SignalReplacedPendingOrder
+            } else {
+                OpportunityEventKind::SignalQueued
+            },
+            role.canonical_name(),
+            role,
+            bar_index,
+            signal_time,
+            position_snapshot,
+            snapshot,
+        );
         pending_requests[slot] = Some(capture_request(template, signal_time, output));
-        pending_snapshots[slot] = snapshot.clone();
+        pending_snapshots[slot] = snapshot.cloned();
+        pending_signal_names[slot] = Some(role.canonical_name().to_string());
     }
 }
 
@@ -531,9 +615,11 @@ fn enqueue_attached_requests(
 fn place_pending_requests(
     pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
     pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
+    pending_signal_names: &mut [Option<String>; ROLE_COUNT],
     active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
     orders: &mut Vec<OrderRecord>,
     order_contexts: &mut Vec<OrderDiagnosticContext>,
+    diagnostics: &mut DiagnosticsAccumulator,
     position: Option<&PositionState>,
     placed_snapshot: Option<FeatureSnapshot>,
     placed_position: Option<PositionSnapshot>,
@@ -546,11 +632,38 @@ fn place_pending_requests(
             continue;
         };
         let signal_snapshot = pending_snapshots[slot].take();
+        let signal_name = pending_signal_names[slot].take();
         if !role_applicable(role, position) {
+            diagnostics.record_signal_event(
+                if matches!(
+                    (role, position.map(|state| state.side)),
+                    (SignalRole::LongEntry, Some(PositionSide::Long))
+                        | (SignalRole::ShortEntry, Some(PositionSide::Short))
+                ) {
+                    OpportunityEventKind::SignalIgnoredSameSide
+                } else {
+                    OpportunityEventKind::SignalIgnoredNoPosition
+                },
+                signal_name.as_deref().unwrap_or(role.canonical_name()),
+                role,
+                bar_index,
+                time,
+                placed_position.as_ref(),
+                placed_snapshot.as_ref(),
+            );
             continue;
         }
 
         if let Some(existing) = active_orders[slot].take() {
+            diagnostics.record_signal_event(
+                OpportunityEventKind::SignalReplacedPendingOrder,
+                signal_name.as_deref().unwrap_or(role.canonical_name()),
+                role,
+                bar_index,
+                time,
+                placed_position.as_ref(),
+                placed_snapshot.as_ref(),
+            );
             update_order_record(
                 &mut orders[existing.record_index],
                 OrderRecordUpdate {
@@ -823,194 +936,6 @@ fn update_order_record(record: &mut OrderRecord, update: OrderRecordUpdate) {
     record.end_reason = update.end_reason;
 }
 
-fn build_order_diagnostics(
-    orders: &[OrderRecord],
-    contexts: &[OrderDiagnosticContext],
-) -> Vec<OrderDiagnostic> {
-    orders
-        .iter()
-        .zip(contexts)
-        .map(|(order, context)| OrderDiagnostic {
-            order_id: order.id,
-            role: order.role,
-            kind: order.kind,
-            status: order.status,
-            end_reason: order.end_reason,
-            signal_snapshot: context.signal_snapshot.clone(),
-            placed_snapshot: context.placed_snapshot.clone(),
-            fill_snapshot: context.fill_snapshot.clone(),
-            placed_position: context.placed_position.clone(),
-            fill_position: context.fill_position.clone(),
-            bars_to_fill: order
-                .fill_bar_index
-                .map(|fill_bar_index| fill_bar_index.saturating_sub(order.placed_bar_index)),
-            time_to_fill_ms: order
-                .fill_time
-                .map(|fill_time| fill_time - order.placed_time),
-        })
-        .collect()
-}
-
-fn build_diagnostics_summary(
-    order_diagnostics: &[OrderDiagnostic],
-    trade_diagnostics: &[TradeDiagnostic],
-) -> BacktestDiagnosticSummary {
-    let order_fill_rate = ratio(
-        order_diagnostics
-            .iter()
-            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Filled))
-            .count(),
-        order_diagnostics.len(),
-    );
-    let average_bars_to_fill = average(
-        order_diagnostics
-            .iter()
-            .filter_map(|diagnostic| diagnostic.bars_to_fill.map(|bars| bars as f64)),
-    );
-    let average_bars_held = average(
-        trade_diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.bars_held as f64),
-    );
-    let average_mae_pct = average(
-        trade_diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.mae_pct),
-    );
-    let average_mfe_pct = average(
-        trade_diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.mfe_pct),
-    );
-
-    let mut by_order_kind = Vec::new();
-    for kind in [
-        OrderKind::Market,
-        OrderKind::Limit,
-        OrderKind::StopMarket,
-        OrderKind::StopLimit,
-        OrderKind::TakeProfitMarket,
-        OrderKind::TakeProfitLimit,
-    ] {
-        let matching = order_diagnostics
-            .iter()
-            .filter(|diagnostic| diagnostic.kind == kind)
-            .collect::<Vec<_>>();
-        if matching.is_empty() {
-            continue;
-        }
-        let placed_count = matching.len();
-        let filled_count = matching
-            .iter()
-            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Filled))
-            .count();
-        let cancelled_count = matching
-            .iter()
-            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Cancelled))
-            .count();
-        let rejected_count = matching
-            .iter()
-            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Rejected))
-            .count();
-        let expired_count = matching
-            .iter()
-            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Expired))
-            .count();
-        by_order_kind.push(OrderKindDiagnosticSummary {
-            kind,
-            placed_count,
-            filled_count,
-            cancelled_count,
-            rejected_count,
-            expired_count,
-            fill_rate: ratio(filled_count, placed_count),
-            average_bars_to_fill: average(
-                matching
-                    .iter()
-                    .filter_map(|diagnostic| diagnostic.bars_to_fill.map(|bars| bars as f64)),
-            ),
-        });
-    }
-
-    let mut by_side = Vec::new();
-    for side in [PositionSide::Long, PositionSide::Short] {
-        let matching = trade_diagnostics
-            .iter()
-            .filter(|diagnostic| diagnostic.side == side)
-            .collect::<Vec<_>>();
-        if matching.is_empty() {
-            continue;
-        }
-        by_side.push(SideDiagnosticSummary {
-            side,
-            trade_count: matching.len(),
-            win_rate: ratio(
-                matching
-                    .iter()
-                    .filter(|diagnostic| diagnostic.realized_pnl > 0.0)
-                    .count(),
-                matching.len(),
-            ),
-            average_realized_pnl: average(
-                matching.iter().map(|diagnostic| diagnostic.realized_pnl),
-            ),
-            average_bars_held: average(
-                matching
-                    .iter()
-                    .map(|diagnostic| diagnostic.bars_held as f64),
-            ),
-            average_mae_pct: average(matching.iter().map(|diagnostic| diagnostic.mae_pct)),
-            average_mfe_pct: average(matching.iter().map(|diagnostic| diagnostic.mfe_pct)),
-        });
-    }
-
-    BacktestDiagnosticSummary {
-        order_fill_rate,
-        average_bars_to_fill,
-        average_bars_held,
-        average_mae_pct,
-        average_mfe_pct,
-        signal_exit_count: trade_diagnostics
-            .iter()
-            .filter(|diagnostic| {
-                matches!(
-                    diagnostic.exit_classification,
-                    TradeExitClassification::Signal
-                )
-            })
-            .count(),
-        protect_exit_count: trade_diagnostics
-            .iter()
-            .filter(|diagnostic| {
-                matches!(
-                    diagnostic.exit_classification,
-                    TradeExitClassification::Protect
-                )
-            })
-            .count(),
-        target_exit_count: trade_diagnostics
-            .iter()
-            .filter(|diagnostic| {
-                matches!(
-                    diagnostic.exit_classification,
-                    TradeExitClassification::Target
-                )
-            })
-            .count(),
-        reversal_exit_count: trade_diagnostics
-            .iter()
-            .filter(|diagnostic| {
-                matches!(
-                    diagnostic.exit_classification,
-                    TradeExitClassification::Reversal
-                )
-            })
-            .count(),
-        by_order_kind,
-        by_side,
-    }
-}
-
 fn classify_exit(role: SignalRole) -> TradeExitClassification {
     match role {
         SignalRole::LongEntry | SignalRole::ShortEntry => TradeExitClassification::Reversal,
@@ -1020,28 +945,11 @@ fn classify_exit(role: SignalRole) -> TradeExitClassification {
     }
 }
 
-fn snapshot_from_step(step: &StepOutput, time: f64) -> Option<FeatureSnapshot> {
-    let bar_index = step
-        .exports
-        .first()
-        .map(|sample| sample.bar_index)
-        .unwrap_or_default();
-    let values = step
-        .exports
-        .iter()
-        .map(|sample| FeatureValue {
-            name: sample.name.clone(),
-            value: sample.value.clone(),
-        })
-        .collect::<Vec<_>>();
-    if values.is_empty() {
-        None
-    } else {
-        Some(FeatureSnapshot {
-            bar_index,
-            time,
-            values,
-        })
+fn opposite_entry_role(role: SignalRole) -> SignalRole {
+    match role {
+        SignalRole::LongEntry => SignalRole::ShortEntry,
+        SignalRole::ShortEntry => SignalRole::LongEntry,
+        _ => role,
     }
 }
 
@@ -1067,27 +975,5 @@ fn pct_delta(delta: f64, price: f64) -> f64 {
         0.0
     } else {
         delta / price
-    }
-}
-
-fn average(values: impl IntoIterator<Item = f64>) -> f64 {
-    let mut count = 0usize;
-    let mut sum = 0.0;
-    for value in values {
-        sum += value;
-        count += 1;
-    }
-    if count == 0 {
-        0.0
-    } else {
-        sum / count as f64
-    }
-}
-
-fn ratio(numerator: usize, denominator: usize) -> f64 {
-    if denominator == 0 {
-        0.0
-    } else {
-        numerator as f64 / denominator as f64
     }
 }

@@ -599,6 +599,9 @@ fn run_backtest_executes_single_source_script_with_default_execution_source() {
     assert!(json["orders"].is_array());
     assert!(json["diagnostics"]["order_diagnostics"].is_array());
     assert!(json["diagnostics"]["trade_diagnostics"].is_array());
+    assert!(json["diagnostics"]["capture_summary"].is_object());
+    assert!(json["diagnostics"]["export_summaries"].is_array());
+    assert!(json["diagnostics"]["opportunity_events"].is_array());
     assert_eq!(json["orders"][0]["kind"], Value::from("Market"));
     let ending_equity = json["summary"]["ending_equity"]
         .as_f64()
@@ -651,6 +654,8 @@ fn run_backtest_supports_text_output() {
         .stdout(predicate::str::contains("Backtest Summary"))
         .stdout(predicate::str::contains("Order Summary"))
         .stdout(predicate::str::contains("Diagnostics Summary"))
+        .stdout(predicate::str::contains("execution_asset_return_pct"))
+        .stdout(predicate::str::contains("Recent Opportunity Events"))
         .stdout(predicate::str::contains("Recent Orders"))
         .stdout(predicate::str::contains("Recent Trades"))
         .stdout(predicate::str::contains("Open Position"));

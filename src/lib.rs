@@ -28,10 +28,13 @@ pub mod types;
 pub mod vm;
 
 pub use backtest::{
-    run_backtest_with_sources, BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics,
-    BacktestError, BacktestResult, BacktestSummary, EquityPoint, FeatureSnapshot, FeatureValue,
-    Fill, FillAction, OrderDiagnostic, OrderEndReason, OrderRecord, OrderStatus, PositionSnapshot,
-    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
+    run_backtest_with_sources, BacktestCaptureSummary, BacktestConfig, BacktestDiagnosticSummary,
+    BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
+    BoolExportDiagnosticSummary, EquityPoint, ExportDiagnosticSummary, ExportValueType,
+    FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric,
+    NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind, OrderDiagnostic,
+    OrderEndReason, OrderRecord, OrderStatus, PositionSnapshot, SideDiagnosticSummary, Trade,
+    TradeDiagnostic, TradeExitClassification,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, CompiledProgram};
