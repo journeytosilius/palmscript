@@ -111,10 +111,13 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - `interval`, `source`, `use`, `fn`, `export`, and `trigger` must appear only at the top level
+- once a script declares any `source`, bare market identifiers such as `close` are rejected and market series must be source-qualified
+- higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
 - string literals are accepted lexically but are semantically valid only inside `source` declarations
 - only identifiers may be called
 - series indexing must use a non-negative integer literal
 - tuple-valued builtins must be bound with tuple destructuring before use
 - `ma_type.<variant>` is the first typed enum namespace and is reserved for TA-Lib moving-average selectors
+- user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

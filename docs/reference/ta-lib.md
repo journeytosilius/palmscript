@@ -17,6 +17,12 @@ Current metadata-driven surface behavior:
 - calling a catalog function that is not implemented yet produces a deterministic compile diagnostic instead of being treated as an unknown identifier
 - committed oracle fixtures under `tests/data/ta_lib/` now validate the implemented subset against the upstream C library
 
+In other words:
+
+- reserved name coverage is broader than runtime execution coverage
+- IDE/catalog visibility does not imply that a function is executable yet
+- [Builtins](builtins.md) is the authoritative page for the executable subset
+
 Implemented TA-Lib-style builtins in this change:
 
 - `ma(series, length, ma_type)`
@@ -79,3 +85,5 @@ plot(line)
 plot(signal)
 plot(hist)
 ```
+
+Checked-in example: [`examples/strategies/macd_tuple.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/macd_tuple.palm)

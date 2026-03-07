@@ -32,7 +32,7 @@ Use CSV mode when:
 
 - the strategy is source-less
 - you already have canonical OHLCV bars in a file
-- you want strict roll-up behavior from one raw feed
+- you want strict roll-up behavior from one raw feed into the declared base interval and any supplemental `use <interval>` feeds
 
 CSV mode compiles the script, loads the raw file, infers the raw interval, prepares required feeds, runs the VM, and prints outputs.
 
@@ -51,7 +51,7 @@ Use market mode when:
 - the script declares one or more `source` directives
 - you want PalmScript to fetch exchange candles directly
 
-Market mode compiles the script, resolves the required source feeds, validates venue-specific guardrails, fetches candles for each required `(source, interval)`, constructs the source-aware runtime inputs, runs the VM, and prints outputs.
+Market mode compiles the script, resolves the required source-qualified feeds, validates venue-specific guardrails, fetches candles for each required `(source, interval)`, constructs the source-aware runtime inputs, runs the VM on the union of base timestamps, and prints outputs.
 
 See [Market Mode](market-mode.md) for supported templates and fetch behavior.
 

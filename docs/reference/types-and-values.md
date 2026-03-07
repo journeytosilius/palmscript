@@ -25,6 +25,20 @@ PalmScript values have the following runtime forms:
 - `na` is the missing-value sentinel
 - `void` is not a user-writable literal
 
+Current typed enum surface:
+
+- `ma_type.sma`
+- `ma_type.ema`
+- `ma_type.wma`
+- `ma_type.dema`
+- `ma_type.tema`
+- `ma_type.trima`
+- `ma_type.kama`
+- `ma_type.mama`
+- `ma_type.t3`
+
+Only part of that enum surface is executable today through TA-Lib-style builtins; see [TA-Lib Surface](ta-lib.md).
+
 ## Series Types
 
 Series values are time-indexed streams.
@@ -46,6 +60,13 @@ Example:
 let (line, signal, hist) = macd(close, 12, 26, 9)
 plot(hist)
 ```
+
+Current tuple support limits:
+
+- tuple values are produced only by specific builtins
+- tuple values cannot be stored as ordinary reusable values
+- tuple-valued expressions cannot be passed directly into `plot`, `export`, `trigger`, conditions, or further expressions
+- tuple destructuring is the only supported way to consume a tuple result
 
 ## `na`
 

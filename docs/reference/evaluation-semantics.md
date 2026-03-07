@@ -79,7 +79,7 @@ Rules:
 
 `and` and `or` require `bool`, `series<bool>`, or `na`.
 
-They use three-valued logic:
+They use deterministic three-valued logic:
 
 ### `and`
 
@@ -109,7 +109,7 @@ They use three-valued logic:
 | `na` | `false` | `na` |
 | `na` | `na` | `na` |
 
-PalmScript evaluates both operands before applying the logical operator. The language does not specify short-circuit evaluation.
+PalmScript evaluates both operands before applying the logical operator. The language does not guarantee short-circuit evaluation, so logical expressions are analyzed and executed eagerly within the language's normal rules.
 
 ## `if` Semantics
 

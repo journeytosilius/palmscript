@@ -12,7 +12,7 @@ Typical workflow:
 
 1. write a `.palm` strategy
 2. declare a base `interval`
-3. use either CSV-backed data or exchange-backed `source` declarations
+3. choose either a source-less CSV-backed script or a source-aware script with exchange-backed `source` declarations
 4. validate with `palmscript check`
 5. run with `palmscript run csv ...` or `palmscript run market ...`
 

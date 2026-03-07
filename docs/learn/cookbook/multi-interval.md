@@ -15,6 +15,8 @@ if close > weekly_basis {
 }
 ```
 
+Related checked-in example: [`examples/strategies/weekly_bias.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/weekly_bias.palm)
+
 ## Run It
 
 ```bash

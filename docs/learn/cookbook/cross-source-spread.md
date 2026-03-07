@@ -12,6 +12,8 @@ let spread = spot.close - perp.close
 plot(spread)
 ```
 
+Checked-in example: [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
+
 ## Why It Matters
 
 Source-aware execution builds the base clock from the union of declared-source base timestamps.

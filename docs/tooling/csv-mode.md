@@ -28,7 +28,7 @@ Rules:
 CSV mode uses one raw file to prepare:
 
 - the base feed required by `interval <...>`
-- each additional legacy interval declared with `use <...>`
+- each supplemental source-less interval declared with `use <...>`
 
 It does not read `source` declarations or fetch exchange data.
 

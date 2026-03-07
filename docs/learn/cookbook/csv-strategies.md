@@ -11,6 +11,8 @@ Use this when you want a minimal example of:
 - `trigger`
 - indicator comparison on one base interval
 
+Example file: [`examples/strategies/sma_cross.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/sma_cross.palm)
+
 ```bash
 palmscript run csv examples/strategies/sma_cross.palm \
   --bars examples/data/minute_bars.csv
@@ -23,6 +25,8 @@ Use this when you want an example of:
 - breakout-style conditions
 - trigger output
 - text rendering from the CLI
+
+Example file: [`examples/strategies/volume_breakout.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/volume_breakout.palm)
 
 ```bash
 palmscript run csv examples/strategies/volume_breakout.palm \
@@ -38,6 +42,8 @@ Use this when you want a checked-in example of:
 - directional helpers such as `rising`
 - combining helper builtins with `export` and `trigger`
 
+Example file: [`examples/strategies/signal_helpers.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/signal_helpers.palm)
+
 ```bash
 palmscript run csv examples/strategies/signal_helpers.palm \
   --bars examples/data/minute_bars.csv
@@ -50,6 +56,8 @@ Use this when you want a checked-in example of:
 - `barssince`
 - `valuewhen`
 - event-style breakout tracking without user-defined helper functions
+
+Example file: [`examples/strategies/event_memory.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/event_memory.palm)
 
 ```bash
 palmscript run csv examples/strategies/event_memory.palm \

@@ -6,12 +6,7 @@ The canonical documentation for the editor stack now lives in the MkDocs site:
 - [Language Server](../../docs/tooling/language-server.md)
 - [Release Workflows](../../docs/contributing/releases.md)
 
-This file remains the short repository-local development note.
-
-The extension recognizes:
-
-1. PalmScript sources: `.palm`
-2. top-level `interval`, `source`, and `use` directives
+This file remains the short repository-local development note. The language semantics and user workflow live in the MkDocs site, not in this file.
 
 ## Development
 

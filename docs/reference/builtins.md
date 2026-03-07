@@ -2,6 +2,16 @@
 
 This page defines the builtin functions and predefined market names implemented by PalmScript.
 
+## Executable Builtins vs Reserved Names
+
+PalmScript exposes three related surfaces:
+
+- executable builtins documented on this page
+- predefined market series identifiers such as `close`
+- a broader reserved TA-Lib catalog described in [TA-Lib Surface](ta-lib.md)
+
+Not every reserved TA-Lib name is executable today. Reserved-but-not-yet-executable names produce deterministic compile diagnostics instead of being treated as unknown identifiers.
+
 ## Builtin Function Set
 
 PalmScript currently provides these callable builtins:
@@ -95,6 +105,17 @@ PalmScript also reserves these predefined market names:
 - `time`
 
 The predefined market names are identifiers, not callable functions. `close()` is rejected.
+
+## Tuple-Valued Builtins
+
+The current executable tuple-valued builtins are:
+
+- `macd(series, fast_length, slow_length, signal_length)`
+- `minmax(series[, length=30])`
+- `minmaxindex(series[, length=30])`
+- `aroon(high, low[, length=14])`
+
+All tuple-valued builtin results must be destructured immediately with `let (...) = ...` before further use.
 
 ## Common Builtin Rules
 

@@ -49,6 +49,7 @@ Rules:
 - each declared source contributes a base feed on the script base interval
 - `use <alias> <interval>` declares additional intervals for that source
 - `<alias>.<interval>.<field>` is valid without `use` when `<interval>` equals the base interval
+- bare market identifiers such as `close` or `volume` are invalid as soon as any `source` is declared
 - lower-than-base interval references are rejected
 
 ## Supported Source Templates

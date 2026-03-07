@@ -6,12 +6,13 @@ Common building blocks:
 
 - `interval <...>` for the base execution clock
 - optional `source` declarations for exchange-backed markets
-- optional `use` declarations for higher or equal intervals
+- optional supplemental `use` declarations for higher or equal intervals
 - top-level functions
-- `let`, `export`, and `trigger`
+- `let`, tuple destructuring, `export`, and `trigger`
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
 - helper builtins such as `crossover`, `highest`, `barssince`, and `valuewhen`
+- typed `ma_type.<variant>` enum literals for part of the TA-Lib-style surface
 
 ## Two Script Styles
 
@@ -25,6 +26,8 @@ let basis = ema(close, 20)
 plot(close - basis)
 ```
 
+Related checked-in example: [`examples/strategies/sma_cross.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/sma_cross.palm)
+
 ### Source-Aware Scripts
 
 These name exchange-backed markets explicitly:
@@ -37,9 +40,12 @@ source hl = hyperliquid.perps("BTC")
 plot(bn.close - hl.close)
 ```
 
+Related checked-in example: [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
+
 ## Mental Model
 
 - the script always has exactly one base interval
+- source-less and source-aware scripts use different market-series forms
 - series values evolve over time
 - higher intervals update only when those candles fully close
 - missing history or missing aligned source data appears as `na`

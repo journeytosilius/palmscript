@@ -29,8 +29,21 @@ Update documentation whenever a change affects:
 - language behavior changes must update `Reference` first
 - guide pages may teach or summarize, but they must not override `Reference`
 - command or flag changes must update both the CLI guide and the CLI command reference when both are affected
-- examples belong inline unless they are full recipes suitable for the cookbook
+- for non-trivial language examples that represent contracts, prefer checked-in files under `examples/strategies/` and link to them from docs
 - extend an existing page before creating a near-duplicate page
+
+## Language-Doc Audit Checklist
+
+When a change touches language behavior, audit the docs against these implementation truth sources before you finish:
+
+- `src/token.rs` for reserved keywords and token-level surface
+- `src/ast.rs` for source-level nodes and binding forms
+- `src/builtins.rs` for reserved names, signatures, and builtin categories
+- `tests/parser.rs` for accepted syntax and parser-facing restrictions
+- `tests/diagnostics_compile.rs` for public compile-time diagnostic contracts
+- `tests/vm.rs` for runtime truth tables and VM-visible semantics
+
+The goal is to keep the docs aligned with what the parser, compiler, and VM actually enforce today.
 
 ## Information Architecture Mapping
 

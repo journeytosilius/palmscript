@@ -17,6 +17,8 @@ if trend {
 }
 ```
 
+Related checked-in example: [`examples/strategies/sma_cross.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/sma_cross.palm)
+
 ## What This Introduces
 
 - `interval 1m` sets the base execution clock
@@ -43,6 +45,8 @@ let weekly_basis = ema(1w.close, 8)
 export bullish = close > weekly_basis
 plot(close)
 ```
+
+Related checked-in example: [`examples/strategies/weekly_bias.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/weekly_bias.palm)
 
 For the exact rules behind `1w.close`, indexing, and no-lookahead behavior, see:
 

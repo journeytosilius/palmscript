@@ -25,15 +25,17 @@ This site is the canonical documentation source for the repository.
 PalmScript currently implements:
 
 - a mandatory base `interval <...>` declaration
-- legacy global `use <interval>` declarations for source-less scripts
-- named exchange-backed `source` declarations
-- source-scoped `use <alias> <interval>` declarations
+- source-less scripts with bare OHLCV series such as `close`
+- source-aware scripts with named exchange-backed `source` declarations
+- legacy global `use <interval>` declarations for source-less supplemental intervals
+- source-scoped `use <alias> <interval>` declarations for source-aware supplemental intervals
 - numeric, boolean, string-in-source-declaration, and `na` literals
-- `let`, `export`, and `trigger`
+- top-level expression-bodied `fn` declarations
+- `let`, tuple destructuring, `export`, and `trigger`
 - `if / else if / else`
 - arithmetic, comparisons, unary operators, `and`, and `or`
 - series indexing with literal offsets
-- builtins: indicators, signal helpers, event-memory helpers, and `plot`
+- builtins: indicators, signal helpers, event-memory helpers, `plot`, and a partially executable TA-Lib-style catalog
 - CSV-backed and exchange-backed execution modes
 - a CLI, language server, and first-party VS Code extension
 
@@ -44,3 +46,5 @@ If you want to learn PalmScript, start in `Learn`.
 If you need exact rules for what the compiler accepts or what the runtime does, use `Reference`.
 
 If you are changing the implementation, use `Internals` and `Contributing`.
+
+Checked-in example strategies live under `examples/strategies/` and are referenced throughout the Learn and Reference sections.

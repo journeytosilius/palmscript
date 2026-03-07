@@ -93,6 +93,7 @@ Rules:
 - a function name must not collide with a builtin name
 - a function name must not collide with a predefined market binding such as `close`
 - parameter names within one function must be unique
+- functions are top-level only
 - recursive and cyclic function graphs are rejected
 - function bodies may reference only:
   - their parameters
@@ -117,6 +118,19 @@ Rules:
 - inner scopes may shadow outer bindings
 - the bound value may be scalar or series
 - `na` is permitted and is treated as a numeric-like placeholder during compilation
+
+PalmScript also supports tuple destructuring for immediate tuple-valued builtin results:
+
+```palmscript
+let (line, signal, hist) = macd(close, 12, 26, 9)
+```
+
+Additional rules:
+
+- tuple destructuring is a first-class `let` form
+- the right-hand side must currently be an immediate tuple-valued builtin result
+- tuple arity must match exactly
+- tuple-valued expressions must be destructured before they can be used in `plot`, `export`, conditions, or other expressions
 
 ## Outputs
 

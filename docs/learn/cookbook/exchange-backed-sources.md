@@ -13,10 +13,12 @@ plot(bn.close)
 plot(hl.1h.close)
 ```
 
+Example file: [`examples/strategies/exchange_backed_sources.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/exchange_backed_sources.palm)
+
 ## Run It
 
 ```bash
-palmscript run market strategy.palm \
+palmscript run market examples/strategies/exchange_backed_sources.palm \
   --from 1704067200000 \
   --to 1704153600000
 ```

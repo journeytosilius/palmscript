@@ -39,7 +39,8 @@ Rules:
 
 - `<alias>.<field>` refers to that source on the script base interval
 - `<alias>.<interval>.<field>` refers to that source on the named interval
-- bare market identifiers such as `close` are rejected in source-aware scripts
+- bare market identifiers such as `close` are rejected in source-aware scripts as soon as the script declares any `source`
+- higher source interval references require a matching `use <alias> <interval>` declaration
 
 ## Current-Sample Semantics
 
@@ -81,7 +82,7 @@ Derived series inherit the update clocks of their inputs. A slower series is not
 Series may produce `na` for the current sample when:
 
 - there is insufficient history
-- the source feed is missing on a source-aware base-clock step
+- the source feed is missing on a source-aware base-clock step from the union of declared-source base timestamps
 - the series is a higher-interval feed that has not yet closed once
 - an indicator is still warming up
 

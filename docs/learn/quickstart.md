@@ -29,14 +29,10 @@ See [CSV Mode](../tooling/csv-mode.md) for the full operational contract.
 
 ## 4. Run An Exchange-Backed Strategy
 
-```palmscript
-interval 1m
-source bn = binance.spot("BTCUSDT")
-plot(bn.close)
-```
+Checked-in example: [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
 
 ```bash
-target/debug/palmscript run market strategy.palm \
+target/debug/palmscript run market examples/strategies/cross_source_spread.palm \
   --from 1704067200000 \
   --to 1704153600000
 ```

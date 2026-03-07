@@ -1,0 +1,8 @@
+interval 1m
+
+source bn = binance.spot("BTCUSDT")
+source hl = hyperliquid.perps("BTC")
+use hl 1h
+
+plot(bn.close - hl.close)
+plot(hl.1h.close)
