@@ -15,9 +15,9 @@ input rsi_len = 14
 input breakout_len = 30
 input kama_len = 30
 input atr_len = 14
-input protect_atr_mult = 4.0
+input protect_atr_mult = 3.5
 input protect_cooldown_bars = 10
-input target_atr_mult = 2.5
+input target_atr_mult = 2.0
 const target_return = 0.05
 const long_rsi_threshold = 58
 const macd_fast_len = 12
@@ -87,7 +87,7 @@ target2 long = take_profit_market(
         : position.entry_price * (1 + target_return * 2),
     trigger_ref.last
 )
-size target1 long = 0.25
+size target1 long = 0.3
 
 plot(fast - slow)
 plot(macd_line - macd_signal)
