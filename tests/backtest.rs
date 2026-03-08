@@ -477,6 +477,61 @@ plot(spot.close)",
 }
 
 #[test]
+fn same_side_reentry_can_scale_in_with_entry_size() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0} or spot.time == {}
+order entry long = market()
+size entry long = 0.5
+exit long = false
+plot(spot.close)",
+        t0 + support::MINUTE_MS
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 12.0, 12.0),
+                bar(t0 + 2 * support::MINUTE_MS, 14.0, 14.0),
+                bar(t0 + 3 * support::MINUTE_MS, 15.0, 15.0),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 2);
+    assert_eq!(result.fills[0].action, palmscript::FillAction::Buy);
+    assert_eq!(result.fills[1].action, palmscript::FillAction::Buy);
+    approx_eq(result.fills[0].quantity, 500.0 / 12.0);
+    approx_eq(result.fills[1].quantity, 250.0 / 14.0);
+    let open_position = result.open_position.expect("position should remain open");
+    assert_eq!(open_position.side, palmscript::PositionSide::Long);
+    approx_eq(
+        open_position.quantity,
+        result.fills[0].quantity + result.fills[1].quantity,
+    );
+    approx_eq(
+        open_position.entry_price,
+        ((result.fills[0].quantity * result.fills[0].price)
+            + (result.fills[1].quantity * result.fills[1].price))
+            / open_position.quantity,
+    );
+    assert!(result.diagnostics.opportunity_events.iter().all(|event| {
+        !(matches!(
+            event.kind,
+            palmscript::OpportunityEventKind::SignalIgnoredSameSide
+        ) && event.role == Some(SignalRole::LongEntry))
+    }));
+}
+
+#[test]
 fn conflicting_entries_are_rejected() {
     let compiled = compile(
         "interval 1m

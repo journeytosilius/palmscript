@@ -1082,15 +1082,15 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         }
         StmtKind::OrderSize { role, expr } => {
             let header = match role {
+                crate::ast::SignalRole::LongEntry => "size entry long",
+                crate::ast::SignalRole::ShortEntry => "size entry short",
                 crate::ast::SignalRole::TargetLong => "size target long",
                 crate::ast::SignalRole::TargetShort => "size target short",
-                crate::ast::SignalRole::LongEntry
-                | crate::ast::SignalRole::LongExit
-                | crate::ast::SignalRole::ShortEntry
+                crate::ast::SignalRole::LongExit
                 | crate::ast::SignalRole::ShortExit
                 | crate::ast::SignalRole::ProtectLong
                 | crate::ast::SignalRole::ProtectShort => {
-                    unreachable!("partial sizing is only supported for targets")
+                    unreachable!("order sizing is only supported for entries and targets")
                 }
             };
             lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));

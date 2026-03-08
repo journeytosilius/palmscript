@@ -11,6 +11,7 @@ PalmScript exposes three output-producing constructs:
 - `trigger name = expr`
 - `entry long = expr`, `exit long = expr`, `entry short = expr`, `exit short = expr`
 - `protect long = order_spec`, `protect short = order_spec`, `target long = order_spec`, `target short = order_spec`
+- `size entry long = expr`, `size entry short = expr`
 - `size target long = expr`, `size target short = expr`
 
 `plot` is a builtin call. `export` and `trigger` are declarations.
@@ -123,7 +124,11 @@ Rules:
 
 - attached exits are top-level only
 - `protect` and `target` are optional per side
+- `size entry long` and `size entry short` are optional per side and only apply to the matching `order entry`
 - `size target long` and `size target short` are optional per side and only apply to the matching attached `target`
+- `size entry ...` must evaluate to a finite fraction in `(0, 1]`
+- an entry size fraction below `1` leaves cash available for later same-side scale-ins on that entry role
+- same-side entry is still ignored by default and only becomes a scale-in path when that side declares `size entry ...`
 - they arm only after a matching entry fill exists
 - they are reevaluated once per execution bar while that position remains open
 - `protect` and `target` for one side are OCO: if one fills, the other is cancelled

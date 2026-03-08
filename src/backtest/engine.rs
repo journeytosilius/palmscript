@@ -4,12 +4,12 @@ use crate::backtest::diagnostics::{
     OrderDiagnosticContext,
 };
 use crate::backtest::orders::{
-    adjusted_price, close_position, close_trade_slice, empty_request_slots, evaluate_active_order,
-    fill_action_for_role, is_attached_exit_role, missing_field_reason, open_position,
-    position_side_for_entry, role_applicable, role_index, unrealized_pnl_for_position,
-    update_open_trade_excursions, ActiveOrder, CapturedOrderRequest, CloseExecution,
-    FillExecutionContext, OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT,
-    ROLE_PRIORITY,
+    add_to_position, adjusted_price, close_position, close_trade_slice, empty_request_slots,
+    evaluate_active_order, fill_action_for_role, is_attached_exit_role, missing_field_reason,
+    open_position, position_side_for_entry, request_applicable, role_index,
+    unrealized_pnl_for_position, update_open_trade_excursions, ActiveOrder, CapturedOrderRequest,
+    CloseExecution, FillExecutionContext, OpenTrade, PositionState, TradeEntryContext,
+    WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
@@ -123,10 +123,7 @@ pub(crate) fn simulate_backtest(
                 update_open_trade_excursions(open_trade, bar.high, bar.low);
             }
 
-            if position.is_none()
-                && pending_requests[role_index(SignalRole::LongEntry)].is_some()
-                && pending_requests[role_index(SignalRole::ShortEntry)].is_some()
-            {
+            if pending_entry_requests_conflict(&pending_requests, position.as_ref()) {
                 return Err(BacktestError::ConflictingSignals {
                     time: pending_conflict_time.unwrap_or(bar.time),
                 });
@@ -254,32 +251,59 @@ pub(crate) fn simulate_backtest(
                         }
 
                         if let Some(next_side) = position_side_for_entry(role) {
-                            let (next_position, mut next_trade, entry_fill) = open_position(
-                                FillExecutionContext {
-                                    bar_index: execution_cursor,
-                                    time: bar.time,
-                                    raw_price: execution.raw_price,
-                                    execution_price,
-                                },
-                                next_side,
-                                TradeEntryContext {
-                                    order_id: active.record_index,
-                                    role,
-                                    kind: active.request.kind,
-                                    snapshot: last_snapshot.clone(),
-                                },
-                                fee_rate,
-                                &mut cash,
-                            );
-                            update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
-                            fills.push(entry_fill);
-                            match next_side {
-                                PositionSide::Long => position_events.long_entry_fill = true,
-                                PositionSide::Short => position_events.short_entry_fill = true,
+                            let execution_context = FillExecutionContext {
+                                bar_index: execution_cursor,
+                                time: bar.time,
+                                raw_price: execution.raw_price,
+                                execution_price,
+                            };
+                            if position
+                                .as_ref()
+                                .is_some_and(|state| state.side == next_side)
+                            {
+                                if let (Some(position_state), Some(open_trade_state)) =
+                                    (position.as_mut(), open_trade.as_mut())
+                                {
+                                    let entry_fill = add_to_position(
+                                        execution_context,
+                                        position_state,
+                                        open_trade_state,
+                                        active.request.size_fraction,
+                                        fee_rate,
+                                        &mut cash,
+                                    );
+                                    update_open_trade_excursions(
+                                        open_trade_state,
+                                        bar.high,
+                                        bar.low,
+                                    );
+                                    fills.push(entry_fill);
+                                    reset_target_consumption(&mut target_consumption, next_side);
+                                }
+                            } else {
+                                let (next_position, mut next_trade, entry_fill) = open_position(
+                                    execution_context,
+                                    next_side,
+                                    TradeEntryContext {
+                                        order_id: active.record_index,
+                                        role,
+                                        kind: active.request.kind,
+                                        snapshot: last_snapshot.clone(),
+                                    },
+                                    active.request.size_fraction,
+                                    fee_rate,
+                                    &mut cash,
+                                );
+                                update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
+                                fills.push(entry_fill);
+                                match next_side {
+                                    PositionSide::Long => position_events.long_entry_fill = true,
+                                    PositionSide::Short => position_events.short_entry_fill = true,
+                                }
+                                reset_target_consumption(&mut target_consumption, next_side);
+                                position = Some(next_position);
+                                open_trade = Some(next_trade);
                             }
-                            reset_target_consumption(&mut target_consumption, next_side);
-                            position = Some(next_position);
-                            open_trade = Some(next_trade);
                         }
 
                         update_order_record(
@@ -766,7 +790,7 @@ fn place_pending_requests(
         };
         let signal_snapshot = pending_snapshots[slot].take();
         let signal_name = pending_signal_names[slot].take();
-        if !role_applicable(role, position) {
+        if !request_applicable(request, position) {
             diagnostics.record_signal_event(
                 if matches!(
                     (role, position.map(|state| state.side)),
@@ -841,6 +865,19 @@ fn place_pending_requests(
             state: WorkingState::Ready,
         });
     }
+}
+
+fn pending_entry_requests_conflict(
+    pending_requests: &[Option<CapturedOrderRequest>; ROLE_COUNT],
+    position: Option<&PositionState>,
+) -> bool {
+    let Some(long_request) = pending_requests[role_index(SignalRole::LongEntry)] else {
+        return false;
+    };
+    let Some(short_request) = pending_requests[role_index(SignalRole::ShortEntry)] else {
+        return false;
+    };
+    request_applicable(long_request, position) && request_applicable(short_request, position)
 }
 
 fn target_role_consumed(state: TargetConsumptionState, role: SignalRole) -> bool {
@@ -1136,7 +1173,7 @@ fn invalidate_inapplicable_orders(
         let Some(active) = slot.as_ref() else {
             continue;
         };
-        if role_applicable(active.request.role, position) {
+        if request_applicable(active.request, position) {
             continue;
         }
         let record_index = active.record_index;

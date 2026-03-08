@@ -154,24 +154,29 @@ pub(crate) fn position_side_for_entry(role: SignalRole) -> Option<PositionSide> 
     }
 }
 
-pub(crate) fn role_applicable(role: SignalRole, position: Option<&PositionState>) -> bool {
+pub(crate) fn request_applicable(
+    request: CapturedOrderRequest,
+    position: Option<&PositionState>,
+) -> bool {
     match position.map(|state| state.side) {
-        None => matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry),
-        Some(PositionSide::Long) => matches!(
-            role,
-            SignalRole::LongExit
-                | SignalRole::ProtectLong
-                | SignalRole::TargetLong
-                | SignalRole::ShortEntry
-        ),
+        None => matches!(request.role, SignalRole::LongEntry | SignalRole::ShortEntry),
+        Some(PositionSide::Long) => {
+            matches!(
+                request.role,
+                SignalRole::LongExit
+                    | SignalRole::ProtectLong
+                    | SignalRole::TargetLong
+                    | SignalRole::ShortEntry
+            ) || matches!(request.role, SignalRole::LongEntry) && request.has_size_fraction_field
+        }
         Some(PositionSide::Short) => {
             matches!(
-                role,
+                request.role,
                 SignalRole::ShortExit
                     | SignalRole::ProtectShort
                     | SignalRole::TargetShort
                     | SignalRole::LongEntry
-            )
+            ) || matches!(request.role, SignalRole::ShortEntry) && request.has_size_fraction_field
         }
     }
 }
@@ -487,6 +492,7 @@ pub(crate) fn open_position(
     execution: FillExecutionContext,
     side: PositionSide,
     entry_context: TradeEntryContext,
+    size_fraction: Option<f64>,
     fee_rate: f64,
     cash: &mut f64,
 ) -> (PositionState, OpenTrade, Fill) {
@@ -494,7 +500,8 @@ pub(crate) fn open_position(
         PositionSide::Long => FillAction::Buy,
         PositionSide::Short => FillAction::Sell,
     };
-    let quantity = *cash / (execution.execution_price * (1.0 + fee_rate));
+    let capital = *cash * size_fraction.unwrap_or(1.0);
+    let quantity = capital / (execution.execution_price * (1.0 + fee_rate));
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     match side {
@@ -536,6 +543,70 @@ pub(crate) fn open_position(
         remaining_entry_fee: fill.fee,
     };
     (position, trade, fill)
+}
+
+pub(crate) fn add_to_position(
+    execution: FillExecutionContext,
+    position: &mut PositionState,
+    open_trade: &mut OpenTrade,
+    size_fraction: Option<f64>,
+    fee_rate: f64,
+    cash: &mut f64,
+) -> Fill {
+    let action = match position.side {
+        PositionSide::Long => FillAction::Buy,
+        PositionSide::Short => FillAction::Sell,
+    };
+    let capital = *cash * size_fraction.unwrap_or(1.0);
+    let quantity = capital / (execution.execution_price * (1.0 + fee_rate));
+    let notional = quantity * execution.execution_price;
+    let fee = notional * fee_rate;
+    match position.side {
+        PositionSide::Long => *cash -= notional + fee,
+        PositionSide::Short => *cash += notional - fee,
+    }
+    zero_small_cash(cash);
+
+    let fill = Fill {
+        bar_index: execution.bar_index,
+        time: execution.time,
+        action,
+        quantity,
+        raw_price: execution.raw_price,
+        price: execution.execution_price,
+        notional,
+        fee,
+    };
+
+    let previous_quantity = position.quantity.abs();
+    let next_quantity = previous_quantity + quantity;
+    let weighted_entry_price = if next_quantity <= EPSILON {
+        execution.execution_price
+    } else {
+        ((position.entry_price * previous_quantity) + (execution.execution_price * quantity))
+            / next_quantity
+    };
+    position.entry_price = weighted_entry_price;
+    position.quantity = match position.side {
+        PositionSide::Long => next_quantity,
+        PositionSide::Short => -next_quantity,
+    };
+
+    let weighted_raw_price = if next_quantity <= EPSILON {
+        execution.raw_price
+    } else {
+        ((open_trade.entry.raw_price * previous_quantity) + (execution.raw_price * quantity))
+            / next_quantity
+    };
+    open_trade.quantity = next_quantity;
+    open_trade.entry.price = weighted_entry_price;
+    open_trade.entry.raw_price = weighted_raw_price;
+    open_trade.entry.quantity = next_quantity;
+    open_trade.entry.notional = next_quantity * weighted_entry_price;
+    open_trade.entry.fee += fee;
+    open_trade.remaining_entry_fee += fee;
+
+    fill
 }
 
 pub(crate) fn close_position(close: CloseExecution<'_>, fee_rate: f64) -> Fill {

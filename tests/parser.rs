@@ -192,6 +192,19 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_partial_entry_size_declarations() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+entry long = src.close > src.close[1]
+order entry long = market()
+size entry long = 0.5
+plot(src.close)",
+    )
+    .expect("partial entry size declarations should compile");
+}
+
+#[test]
 fn parses_position_event_anchors_with_since_helpers() {
     compile(
         "interval 1m
@@ -260,9 +273,9 @@ fn rejects_target_size_declarations_inside_blocks() {
 #[test]
 fn rejects_size_declarations_for_non_target_roles() {
     let message = compile_err(&with_interval(
-        "entry long = src.close > src.close[1]\nsize entry long = 0.5\nplot(src.close)",
+        "entry long = src.close > src.close[1]\nsize exit long = 0.5\nplot(src.close)",
     ));
-    assert!(message.contains("expected `target` after `size`"));
+    assert!(message.contains("expected `entry` or `target` after `size`"));
 }
 
 #[test]

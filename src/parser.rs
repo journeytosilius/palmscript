@@ -568,26 +568,42 @@ impl<'a> Parser<'a> {
 
     fn parse_order_size_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
-        if !self.matches_keyword(&TokenKind::Target) {
+        let role_prefix = if self.matches_keyword(&TokenKind::Target) {
+            "size target"
+        } else if self.matches_keyword(&TokenKind::Entry) {
+            "size entry"
+        } else {
             self.push_diagnostic(
-                "expected `target` after `size`",
+                "expected `entry` or `target` after `size`",
                 self.tokens[self.cursor].span,
             );
             return None;
-        }
-        let role = self.parse_side_role(
-            "expected `long` or `short` after `size target`",
-            |is_long| {
-                if is_long {
-                    SignalRole::TargetLong
-                } else {
-                    SignalRole::TargetShort
-                }
-            },
-        )?;
+        };
+        let role = match role_prefix {
+            "size target" => self.parse_side_role(
+                "expected `long` or `short` after `size target`",
+                |is_long| {
+                    if is_long {
+                        SignalRole::TargetLong
+                    } else {
+                        SignalRole::TargetShort
+                    }
+                },
+            )?,
+            "size entry" => {
+                self.parse_side_role("expected `long` or `short` after `size entry`", |is_long| {
+                    if is_long {
+                        SignalRole::LongEntry
+                    } else {
+                        SignalRole::ShortEntry
+                    }
+                })?
+            }
+            _ => unreachable!(),
+        };
         self.expect_kind(
             |kind| matches!(kind, TokenKind::Assign),
-            "expected `=` after target size side",
+            "expected `=` after order size side",
         )?;
         let expr = self.parse_expr(0)?;
         Some(Stmt {

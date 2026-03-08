@@ -251,7 +251,7 @@ impl<'a> Analyzer<'a> {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 format!(
-                    "size declaration for `{}` requires a matching target order declaration",
+                    "size declaration for `{}` requires a matching order declaration",
                     role.canonical_name()
                 ),
                 Span::default(),
@@ -1386,11 +1386,14 @@ impl<'a> Analyzer<'a> {
         let role = compiled_signal_role(role);
         if !matches!(
             role,
-            CompiledSignalRole::TargetLong | CompiledSignalRole::TargetShort
+            CompiledSignalRole::LongEntry
+                | CompiledSignalRole::ShortEntry
+                | CompiledSignalRole::TargetLong
+                | CompiledSignalRole::TargetShort
         ) {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
-                "only `size target long|short = ...` is supported in v1",
+                "only `size entry long|short = ...` and `size target long|short = ...` are supported in v1",
                 stmt.span,
             ));
             return;
