@@ -7,6 +7,11 @@ The backtester runs a compiled script, consumes runtime trigger events plus
 compiled signal-role and order metadata, and simulates fills, orders, trades,
 and equity for one configured execution source.
 
+PalmScript also exposes a walk-forward layer on top of the same deterministic
+backtester. Walk-forward reuses the existing fill semantics and venue rules,
+but evaluates the strategy over rolling train/test windows and stitches only
+the out-of-sample slices together.
+
 ## CLI
 
 Run a backtest end to end:
@@ -24,6 +29,24 @@ When the script declares one source, the CLI uses it as the execution source aut
 Backtest results depend on the script, venue, time window, fees, and slippage.
 Treat any performance report as strategy-specific rather than a property of the
 backtester itself.
+
+Run a rolling walk-forward evaluation:
+
+```bash
+palmscript run walk-forward strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63
+```
+
+V1 notes:
+
+- walk-forward uses the same deterministic order/fill engine as ordinary backtests
+- each segment uses the leading `train-bars` as in-sample context and reports the trailing `test-bars` as out-of-sample
+- `step-bars` controls how far each segment advances
+- v1 does not optimize parameters automatically; it evaluates the fixed script and inputs you passed in
 
 ## Rust API
 
@@ -68,6 +91,47 @@ let result = run_backtest_with_sources(
 println!("ending equity = {}", result.summary.ending_equity);
 ```
 
+Use `run_walk_forward_with_sources` for rolling train/test evaluation:
+
+```rust
+use palmscript::{
+    compile, run_walk_forward_with_sources, BacktestConfig, Interval, SourceFeed,
+    SourceRuntimeConfig, VmLimits, WalkForwardConfig,
+};
+
+let compiled = compile(source).expect("script compiles");
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_walk_forward_with_sources(
+    &compiled,
+    runtime,
+    VmLimits::default(),
+    WalkForwardConfig {
+        backtest: BacktestConfig {
+            execution_source_alias: "spot".to_string(),
+            initial_capital: 10_000.0,
+            fee_bps: 5.0,
+            slippage_bps: 2.0,
+        },
+        train_bars: 252,
+        test_bars: 63,
+        step_bars: 63,
+    },
+)
+.expect("walk-forward succeeds");
+
+println!(
+    "stitched out-of-sample return = {:.2}%",
+    result.stitched_summary.total_return * 100.0
+);
+```
+
 The result includes:
 
 - raw runtime `outputs`
@@ -78,6 +142,13 @@ The result includes:
 - per-bar account marks in `equity_curve`
 - aggregate metrics in `summary`
 - any still-open position in `open_position`
+
+Walk-forward results instead include:
+
+- per-segment `in_sample` summaries
+- per-segment `out_of_sample` summaries
+- a stitched out-of-sample equity curve
+- a stitched out-of-sample summary across all segments
 
 The `diagnostics` payload is designed for machine analysis and LLM-driven
 iteration. It currently includes:

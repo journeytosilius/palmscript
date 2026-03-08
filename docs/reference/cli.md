@@ -77,6 +77,52 @@ Backtest output:
 - JSON includes runtime `outputs`, order lifecycle records in `orders`, fills, trades, backtest diagnostics in `diagnostics`, equity, summary, and any open position
 - text output renders summary metrics plus diagnostics, order, and trade sections, with compact export and opportunity summaries when available
 
+## `palmscript run walk-forward`
+
+```bash
+palmscript run walk-forward <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--execution-source <alias>] \
+  [--initial-capital <amount>] \
+  [--fee-bps <bps>] \
+  [--slippage-bps <bps>] \
+  --train-bars <N> \
+  --test-bars <N> \
+  [--step-bars <N>] \
+  [--format json|text] \
+  [--max-instructions-per-bar <N>] \
+  [--max-history-capacity <N>]
+```
+
+Arguments and flags:
+
+- `<script.palm>`: path to the strategy source file
+- `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
+- `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--execution-source <alias>`: source alias used for fills when the script declares multiple sources
+- `--initial-capital <amount>`: starting equity for each stitched out-of-sample run, default `10000`
+- `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
+- `--slippage-bps <bps>`: slippage applied to each fill in basis points, default `2`
+- `--train-bars <N>`: in-sample context window size in execution bars
+- `--test-bars <N>`: out-of-sample window size in execution bars
+- `--step-bars <N>`: segment advance in execution bars, default `test-bars`
+- `--format json|text`: output rendering format, default `json`
+- `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
+- `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
+
+Requirements:
+
+- the script must declare at least one `source`
+- the script must emit at least one configured backtest trigger
+- `--train-bars`, `--test-bars`, and `--step-bars` must be positive
+- `--from` must be strictly less than `--to`
+- `--execution-source` is required when the script declares multiple sources
+
+Walk-forward output:
+
+- JSON includes per-segment `in_sample` and `out_of_sample` summaries, a stitched out-of-sample summary, and a stitched out-of-sample equity curve
+- text output renders a stitched summary, the configured walk-forward window sizes, and recent segment rows
+- v1 does not auto-optimize parameters; it evaluates the fixed script/inputs over rolling train/test slices
+
 ## `palmscript dump-bytecode`
 
 ```bash

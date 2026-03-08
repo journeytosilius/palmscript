@@ -3,7 +3,7 @@ use std::fmt::Write;
 use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::{
     BacktestResult, CompiledProgram, ExportDiagnosticSummary, OrderStatus, OutputKind, OutputValue,
-    Outputs, PositionSide, SignalRole, Value,
+    Outputs, PositionSide, SignalRole, Value, WalkForwardResult,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -340,6 +340,65 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         let _ = writeln!(out, "unrealized_pnl={:.2}", position.unrealized_pnl);
     } else {
         out.push_str("flat\n");
+    }
+
+    out
+}
+
+pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
+    let mut out = String::new();
+    let summary = &result.stitched_summary;
+    out.push_str("Walk-Forward Summary\n");
+    let _ = writeln!(out, "segment_count={}", summary.segment_count);
+    let _ = writeln!(out, "starting_equity={:.2}", summary.starting_equity);
+    let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
+    let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+    let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
+    let _ = writeln!(
+        out,
+        "positive_segment_count={}",
+        summary.positive_segment_count
+    );
+    let _ = writeln!(
+        out,
+        "negative_segment_count={}",
+        summary.negative_segment_count
+    );
+    let _ = writeln!(
+        out,
+        "average_segment_return_pct={:.2}",
+        summary.average_segment_return * 100.0
+    );
+
+    out.push_str("Walk-Forward Config\n");
+    let _ = writeln!(out, "train_bars={}", result.config.train_bars);
+    let _ = writeln!(out, "test_bars={}", result.config.test_bars);
+    let _ = writeln!(out, "step_bars={}", result.config.step_bars);
+    let _ = writeln!(
+        out,
+        "execution_source={}",
+        result.config.backtest.execution_source_alias
+    );
+
+    if !result.segments.is_empty() {
+        out.push_str("Recent Segments\n");
+        let start = result.segments.len().saturating_sub(5);
+        for segment in &result.segments[start..] {
+            let _ = writeln!(
+                out,
+                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2}",
+                segment.segment_index,
+                segment.train_from,
+                segment.train_to,
+                segment.test_from,
+                segment.test_to,
+                segment.in_sample.total_return * 100.0,
+                segment.out_of_sample.total_return * 100.0,
+                segment.out_of_sample.trade_count,
+                segment.out_of_sample.win_rate * 100.0,
+                segment.out_of_sample.max_drawdown,
+            );
+        }
     }
 
     out

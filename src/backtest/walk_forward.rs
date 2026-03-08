@@ -1,0 +1,417 @@
+use serde::{Deserialize, Serialize};
+
+use crate::backtest::{
+    average, execution_bars, run_backtest_with_sources, BacktestConfig, BacktestError,
+};
+use crate::compiler::CompiledProgram;
+use crate::runtime::{SourceRuntimeConfig, VmLimits};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardConfig {
+    pub backtest: BacktestConfig,
+    pub train_bars: usize,
+    pub test_bars: usize,
+    pub step_bars: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardWindowSummary {
+    pub starting_equity: f64,
+    pub ending_equity: f64,
+    pub total_return: f64,
+    pub trade_count: usize,
+    pub winning_trade_count: usize,
+    pub losing_trade_count: usize,
+    pub win_rate: f64,
+    pub max_drawdown: f64,
+    pub execution_asset_return: f64,
+    pub flat_bar_pct: f64,
+    pub long_bar_pct: f64,
+    pub short_bar_pct: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardSegmentResult {
+    pub segment_index: usize,
+    pub train_from: i64,
+    pub train_to: i64,
+    pub test_from: i64,
+    pub test_to: i64,
+    pub in_sample: WalkForwardWindowSummary,
+    pub out_of_sample: WalkForwardWindowSummary,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardEquityPoint {
+    pub segment_index: usize,
+    pub segment_bar_index: usize,
+    pub time: f64,
+    pub equity: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardStitchedSummary {
+    pub segment_count: usize,
+    pub starting_equity: f64,
+    pub ending_equity: f64,
+    pub total_return: f64,
+    pub max_drawdown: f64,
+    pub positive_segment_count: usize,
+    pub negative_segment_count: usize,
+    pub average_segment_return: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardResult {
+    pub config: WalkForwardConfig,
+    pub segments: Vec<WalkForwardSegmentResult>,
+    pub stitched_equity_curve: Vec<WalkForwardEquityPoint>,
+    pub stitched_summary: WalkForwardStitchedSummary,
+}
+
+pub fn run_walk_forward_with_sources(
+    compiled: &CompiledProgram,
+    runtime: SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: WalkForwardConfig,
+) -> Result<WalkForwardResult, BacktestError> {
+    validate_walk_forward_config(&config)?;
+    let execution = crate::backtest::bridge::resolve_execution_source(
+        compiled,
+        &config.backtest.execution_source_alias,
+    )?;
+    let full_execution_bars = execution_bars(
+        &runtime,
+        execution.source_id,
+        &config.backtest.execution_source_alias,
+    )?;
+    let required_bars = config.train_bars + config.test_bars;
+    if full_execution_bars.len() < required_bars {
+        return Err(BacktestError::InsufficientWalkForwardBars {
+            available: full_execution_bars.len(),
+            required: required_bars,
+        });
+    }
+
+    let segment_ranges = build_segment_ranges(
+        full_execution_bars.len(),
+        config.train_bars,
+        config.test_bars,
+        config.step_bars,
+    );
+    let mut segments = Vec::with_capacity(segment_ranges.len());
+    let mut stitched_equity_curve = Vec::new();
+    let mut segment_starting_equity = config.backtest.initial_capital;
+
+    for (segment_index, segment) in segment_ranges.iter().enumerate() {
+        let train_from = full_execution_bars[segment.start_index].time as i64;
+        let train_to = full_execution_bars[segment.train_end_index].time as i64;
+        let test_from = train_to;
+        let test_to = exclusive_end_time(&full_execution_bars, segment.end_index);
+        let runtime_slice = slice_runtime_window(&runtime, train_from, test_to);
+        let result =
+            run_backtest_with_sources(compiled, runtime_slice, vm_limits, config.backtest.clone())?;
+
+        let in_sample = summarize_window(
+            &result.equity_curve,
+            &result.trades,
+            0,
+            config.train_bars,
+            config.backtest.initial_capital,
+        );
+        let out_of_sample = summarize_window(
+            &result.equity_curve,
+            &result.trades,
+            config.train_bars,
+            config.train_bars + config.test_bars,
+            in_sample.ending_equity,
+        );
+        stitch_window(
+            &mut stitched_equity_curve,
+            &result.equity_curve,
+            config.train_bars,
+            config.train_bars + config.test_bars,
+            segment_index,
+            segment_starting_equity,
+            out_of_sample.starting_equity,
+        );
+        segment_starting_equity = stitched_equity_curve
+            .last()
+            .map(|point| point.equity)
+            .unwrap_or(segment_starting_equity);
+
+        segments.push(WalkForwardSegmentResult {
+            segment_index,
+            train_from,
+            train_to,
+            test_from,
+            test_to,
+            in_sample,
+            out_of_sample,
+        });
+    }
+
+    let stitched_summary = summarize_stitched_curve(
+        config.backtest.initial_capital,
+        &segments,
+        &stitched_equity_curve,
+    );
+
+    Ok(WalkForwardResult {
+        config,
+        segments,
+        stitched_equity_curve,
+        stitched_summary,
+    })
+}
+
+#[derive(Clone, Copy)]
+struct SegmentRange {
+    start_index: usize,
+    train_end_index: usize,
+    end_index: usize,
+}
+
+fn validate_walk_forward_config(config: &WalkForwardConfig) -> Result<(), BacktestError> {
+    if config.train_bars == 0 {
+        return Err(BacktestError::InvalidWalkForwardTrainBars {
+            value: config.train_bars,
+        });
+    }
+    if config.test_bars == 0 {
+        return Err(BacktestError::InvalidWalkForwardTestBars {
+            value: config.test_bars,
+        });
+    }
+    if config.step_bars == 0 {
+        return Err(BacktestError::InvalidWalkForwardStepBars {
+            value: config.step_bars,
+        });
+    }
+    crate::backtest::validate_config(&config.backtest)
+}
+
+fn build_segment_ranges(
+    total_bars: usize,
+    train_bars: usize,
+    test_bars: usize,
+    step_bars: usize,
+) -> Vec<SegmentRange> {
+    let mut ranges = Vec::new();
+    let mut start_index = 0usize;
+    while start_index + train_bars + test_bars <= total_bars {
+        ranges.push(SegmentRange {
+            start_index,
+            train_end_index: start_index + train_bars,
+            end_index: start_index + train_bars + test_bars,
+        });
+        start_index += step_bars;
+    }
+    ranges
+}
+
+fn exclusive_end_time(execution_bars: &[crate::runtime::Bar], end_index: usize) -> i64 {
+    execution_bars
+        .get(end_index)
+        .map(|bar| bar.time as i64)
+        .unwrap_or_else(|| {
+            execution_bars
+                .last()
+                .map(|bar| bar.time as i64 + 1)
+                .unwrap_or_default()
+        })
+}
+
+fn slice_runtime_window(
+    runtime: &SourceRuntimeConfig,
+    from_ms: i64,
+    to_ms: i64,
+) -> SourceRuntimeConfig {
+    SourceRuntimeConfig {
+        base_interval: runtime.base_interval,
+        feeds: runtime
+            .feeds
+            .iter()
+            .map(|feed| crate::runtime::SourceFeed {
+                source_id: feed.source_id,
+                interval: feed.interval,
+                bars: feed
+                    .bars
+                    .iter()
+                    .copied()
+                    .filter(|bar| {
+                        let time = bar.time as i64;
+                        time >= from_ms && time < to_ms
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+fn summarize_window(
+    equity_curve: &[crate::backtest::EquityPoint],
+    trades: &[crate::backtest::Trade],
+    start_index: usize,
+    end_index: usize,
+    starting_equity: f64,
+) -> WalkForwardWindowSummary {
+    let points = &equity_curve[start_index..end_index];
+    let ending_equity = points
+        .last()
+        .map(|point| point.equity)
+        .unwrap_or(starting_equity);
+    let total_return = if starting_equity.abs() > crate::backtest::EPSILON {
+        ending_equity / starting_equity - 1.0
+    } else {
+        0.0
+    };
+    let mut peak = starting_equity;
+    let mut max_drawdown: f64 = 0.0;
+    let mut flat_count = 0usize;
+    let mut long_count = 0usize;
+    let mut short_count = 0usize;
+    for point in points {
+        peak = peak.max(point.equity);
+        max_drawdown = max_drawdown.max(peak - point.equity);
+        match point.position_side {
+            Some(crate::position::PositionSide::Long) => long_count += 1,
+            Some(crate::position::PositionSide::Short) => short_count += 1,
+            None => flat_count += 1,
+        }
+    }
+    let trade_slice: Vec<_> = trades
+        .iter()
+        .filter(|trade| trade.exit.bar_index >= start_index && trade.exit.bar_index < end_index)
+        .collect();
+    let winning_trade_count = trade_slice
+        .iter()
+        .filter(|trade| trade.realized_pnl > crate::backtest::EPSILON)
+        .count();
+    let losing_trade_count = trade_slice
+        .iter()
+        .filter(|trade| trade.realized_pnl < -crate::backtest::EPSILON)
+        .count();
+    let trade_count = trade_slice.len();
+    let win_rate = if trade_count == 0 {
+        0.0
+    } else {
+        winning_trade_count as f64 / trade_count as f64
+    };
+    let execution_asset_return = execution_asset_return(equity_curve, start_index, end_index);
+    let point_count = points.len() as f64;
+    WalkForwardWindowSummary {
+        starting_equity,
+        ending_equity,
+        total_return,
+        trade_count,
+        winning_trade_count,
+        losing_trade_count,
+        win_rate,
+        max_drawdown,
+        execution_asset_return,
+        flat_bar_pct: ratio(flat_count as f64, point_count),
+        long_bar_pct: ratio(long_count as f64, point_count),
+        short_bar_pct: ratio(short_count as f64, point_count),
+    }
+}
+
+fn execution_asset_return(
+    equity_curve: &[crate::backtest::EquityPoint],
+    start_index: usize,
+    end_index: usize,
+) -> f64 {
+    let Some(end_point) = equity_curve.get(end_index.saturating_sub(1)) else {
+        return 0.0;
+    };
+    let start_price = if start_index == 0 {
+        equity_curve
+            .first()
+            .map(|point| point.mark_price)
+            .unwrap_or(end_point.mark_price)
+    } else {
+        equity_curve
+            .get(start_index - 1)
+            .map(|point| point.mark_price)
+            .unwrap_or(end_point.mark_price)
+    };
+    if start_price.abs() <= crate::backtest::EPSILON {
+        0.0
+    } else {
+        end_point.mark_price / start_price - 1.0
+    }
+}
+
+fn stitch_window(
+    stitched_curve: &mut Vec<WalkForwardEquityPoint>,
+    equity_curve: &[crate::backtest::EquityPoint],
+    start_index: usize,
+    end_index: usize,
+    segment_index: usize,
+    segment_starting_equity: f64,
+    window_starting_equity: f64,
+) {
+    if window_starting_equity.abs() <= crate::backtest::EPSILON {
+        return;
+    }
+    for (offset, point) in equity_curve[start_index..end_index].iter().enumerate() {
+        stitched_curve.push(WalkForwardEquityPoint {
+            segment_index,
+            segment_bar_index: offset,
+            time: point.time,
+            equity: segment_starting_equity * (point.equity / window_starting_equity),
+        });
+    }
+}
+
+fn summarize_stitched_curve(
+    starting_equity: f64,
+    segments: &[WalkForwardSegmentResult],
+    stitched_curve: &[WalkForwardEquityPoint],
+) -> WalkForwardStitchedSummary {
+    let ending_equity = stitched_curve
+        .last()
+        .map(|point| point.equity)
+        .unwrap_or(starting_equity);
+    let total_return = if starting_equity.abs() > crate::backtest::EPSILON {
+        ending_equity / starting_equity - 1.0
+    } else {
+        0.0
+    };
+    let mut peak = starting_equity;
+    let mut max_drawdown: f64 = 0.0;
+    for point in stitched_curve {
+        peak = peak.max(point.equity);
+        max_drawdown = max_drawdown.max(peak - point.equity);
+    }
+    let positive_segment_count = segments
+        .iter()
+        .filter(|segment| segment.out_of_sample.total_return > crate::backtest::EPSILON)
+        .count();
+    let negative_segment_count = segments
+        .iter()
+        .filter(|segment| segment.out_of_sample.total_return < -crate::backtest::EPSILON)
+        .count();
+    WalkForwardStitchedSummary {
+        segment_count: segments.len(),
+        starting_equity,
+        ending_equity,
+        total_return,
+        max_drawdown,
+        positive_segment_count,
+        negative_segment_count,
+        average_segment_return: average(
+            segments
+                .iter()
+                .map(|segment| segment.out_of_sample.total_return),
+        ),
+    }
+}
+
+fn ratio(numerator: f64, denominator: f64) -> f64 {
+    if denominator <= 0.0 {
+        0.0
+    } else {
+        numerator / denominator
+    }
+}

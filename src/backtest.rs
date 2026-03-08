@@ -9,6 +9,7 @@ mod diagnostics;
 mod engine;
 mod orders;
 mod venue;
+mod walk_forward;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -364,6 +365,11 @@ pub struct BacktestResult {
     pub open_position: Option<PositionSnapshot>,
 }
 
+pub use walk_forward::{
+    run_walk_forward_with_sources, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,
+    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardWindowSummary,
+};
+
 #[derive(Debug, Error, PartialEq)]
 pub enum BacktestError {
     #[error("runtime failed during backtest: {0}")]
@@ -393,6 +399,14 @@ pub enum BacktestError {
         kind: OrderKind,
         reason: String,
     },
+    #[error("walk-forward train_bars must be > 0, found {value}")]
+    InvalidWalkForwardTrainBars { value: usize },
+    #[error("walk-forward test_bars must be > 0, found {value}")]
+    InvalidWalkForwardTestBars { value: usize },
+    #[error("walk-forward step_bars must be > 0, found {value}")]
+    InvalidWalkForwardStepBars { value: usize },
+    #[error("walk-forward requires at least {required} execution bars, but only {available} were available")]
+    InsufficientWalkForwardBars { available: usize, required: usize },
 }
 
 pub fn run_backtest_with_sources(

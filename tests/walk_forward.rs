@@ -1,0 +1,96 @@
+mod support;
+
+use palmscript::{
+    compile, run_walk_forward_with_sources, BacktestConfig, BacktestError, Interval, VmLimits,
+    WalkForwardConfig,
+};
+
+use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
+
+#[test]
+fn walk_forward_builds_rolling_out_of_sample_segments() {
+    let source = "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = spot.close < spot.close[1]
+exit short = true
+plot(spot.close)";
+    let compiled = compile(source).expect("script compiles");
+    let runtime = source_runtime_config(
+        Interval::Min1,
+        flat_bars(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 12.0, 11.0, 12.0, 13.0, 12.0, 13.0],
+        ),
+        vec![],
+    );
+
+    let result = run_walk_forward_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 1_000.0,
+                fee_bps: 0.0,
+                slippage_bps: 0.0,
+            },
+            train_bars: 2,
+            test_bars: 2,
+            step_bars: 2,
+        },
+    )
+    .expect("walk-forward should succeed");
+
+    assert_eq!(result.segments.len(), 3);
+    assert_eq!(result.stitched_summary.segment_count, 3);
+    assert_eq!(result.segments[0].train_from, JAN_1_2024_UTC_MS);
+    assert_eq!(
+        result.segments[0].test_from,
+        JAN_1_2024_UTC_MS + 2 * MINUTE_MS
+    );
+    assert!(!result.stitched_equity_curve.is_empty());
+    assert!(result
+        .segments
+        .iter()
+        .all(|segment| segment.out_of_sample.trade_count <= 1));
+}
+
+#[test]
+fn walk_forward_rejects_zero_windows() {
+    let source = "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = spot.close < spot.close[1]
+exit short = true";
+    let compiled = compile(source).expect("script compiles");
+    let runtime = source_runtime_config(
+        Interval::Min1,
+        flat_bars(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 12.0, 11.0]),
+        vec![],
+    );
+
+    let err = run_walk_forward_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 1_000.0,
+                fee_bps: 0.0,
+                slippage_bps: 0.0,
+            },
+            train_bars: 0,
+            test_bars: 2,
+            step_bars: 2,
+        },
+    )
+    .expect_err("zero train_bars should fail");
+
+    assert_eq!(err, BacktestError::InvalidWalkForwardTrainBars { value: 0 });
+}

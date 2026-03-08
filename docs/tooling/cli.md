@@ -11,8 +11,9 @@ Typical development flow:
 1. validate a strategy with `palmscript check`
 2. run it in `market` mode
 3. backtest it with `palmscript run backtest` when the script emits trading triggers
-4. inspect outputs in `json` or `text`
-5. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
+4. run `palmscript run walk-forward` when you want rolling out-of-sample evaluation
+5. inspect outputs in `json` or `text`
+6. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
 
 ## Validate Without Running
 
@@ -61,6 +62,32 @@ Backtest mode compiles the script, fetches all required source feeds, runs the V
 
 When the script declares exactly one `source`, backtest mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
 
+## Run Walk-Forward Evaluation
+
+```bash
+palmscript run walk-forward strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63
+```
+
+Use walk-forward mode when:
+
+- the script already backtests normally and you want rolling out-of-sample evaluation
+- you want repeated train/test windows without changing fill semantics
+- you want a stitched summary of the out-of-sample segments
+
+V1 semantics:
+
+- PalmScript fetches the full requested source window once
+- it runs rolling windows using `train_bars`, `test_bars`, and `step_bars`
+- each segment reuses the training slice as in-sample context and reports the trailing test slice as out-of-sample
+- this mode does not auto-optimize parameters yet; it evaluates the fixed script/inputs you supplied
+
+When the script declares exactly one `source`, walk-forward mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
+
 ## Output Formats
 
 Market mode supports:
@@ -75,6 +102,11 @@ Backtest mode supports the same output formats.
 - JSON output includes order lifecycle records in `orders`
 - JSON output also includes backtest diagnostics in `diagnostics`, including order/trade context, capture summaries, export summaries, and opportunity events
 - text output includes compact diagnostics, order, and trade summaries plus short export/opportunity sections when available
+
+Walk-forward mode also supports `json` and `text`.
+
+- JSON output includes per-segment in-sample and out-of-sample summaries plus a stitched out-of-sample summary
+- text output includes a compact stitched summary, config, and recent segment rows
 
 ## Execution Limits
 

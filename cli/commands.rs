@@ -2,16 +2,19 @@ use std::fs;
 use std::path::Path;
 
 use palmscript::{
-    compile, fetch_source_runtime_config, run_backtest_with_sources, run_with_sources,
-    BacktestConfig, CompiledProgram, ExchangeEndpoints, RuntimeError, VmLimits,
+    compile, fetch_source_runtime_config, run_backtest_with_sources, run_walk_forward_with_sources,
+    run_with_sources, BacktestConfig, CompiledProgram, ExchangeEndpoints, RuntimeError, VmLimits,
+    WalkForwardConfig,
 };
 
 use crate::args::{
     BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs, MarketRunArgs,
-    OutputFormat, RunCommand,
+    OutputFormat, RunCommand, WalkForwardRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
-use crate::format::{render_backtest_text, render_bytecode_text, render_outputs_text};
+use crate::format::{
+    render_backtest_text, render_bytecode_text, render_outputs_text, render_walk_forward_text,
+};
 
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
@@ -25,6 +28,7 @@ fn run_mode(mode: RunCommand) -> Result<(), String> {
     match mode {
         RunCommand::Market(args) => run_market(args),
         RunCommand::Backtest(args) => run_backtest(args),
+        RunCommand::WalkForward(args) => run_walk_forward(args),
     }
 }
 
@@ -95,6 +99,50 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             serde_json::to_string_pretty(&result).map_err(|err| err.to_string())?
         ),
         OutputFormat::Text => print!("{}", render_backtest_text(&result)),
+    }
+    Ok(())
+}
+
+fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
+    let source = load_source(&args.script)?;
+    let compiled = compile(&source).map_err(|err| format_compile_error(&args.script, &err))?;
+    if compiled.program.declared_sources.is_empty() {
+        return Err("walk-forward mode requires at least one `source` declaration".to_string());
+    }
+    let execution_source_alias = resolve_execution_source_alias(&compiled, args.execution_source)?;
+    let runtime = fetch_source_runtime_config(
+        &compiled,
+        args.from,
+        args.to,
+        &ExchangeEndpoints::from_env(),
+    )
+    .map_err(|err| format!("walk-forward mode error: {err}"))?;
+    let result = run_walk_forward_with_sources(
+        &compiled,
+        runtime,
+        VmLimits {
+            max_instructions_per_bar: args.max_instructions_per_bar,
+            max_history_capacity: args.max_history_capacity,
+        },
+        WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias,
+                initial_capital: args.initial_capital,
+                fee_bps: args.fee_bps,
+                slippage_bps: args.slippage_bps,
+            },
+            train_bars: args.train_bars,
+            test_bars: args.test_bars,
+            step_bars: args.step_bars.unwrap_or(args.test_bars),
+        },
+    )
+    .map_err(|err| format!("walk-forward mode error: {err}"))?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&result).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_walk_forward_text(&result)),
     }
     Ok(())
 }

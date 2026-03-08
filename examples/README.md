@@ -53,6 +53,7 @@ Common commands:
 ./palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
 ./palmscript run market examples/strategies/exchange_backed_sources.palm --from 1704067200000 --to 1704153600000
 ./palmscript run backtest examples/strategies/adaptive_trend_backtest.palm --from 1646611200000 --to 1772841600000
+./palmscript run walk-forward examples/strategies/adaptive_trend_backtest.palm --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63
 ./palmscript run backtest examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
 ./palmscript run backtest examples/strategies/venue_orders_backtest.palm --from 1704067200000 --to 1704931200000 --format text
 ```
