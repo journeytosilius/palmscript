@@ -297,7 +297,9 @@ fn rejects_size_declarations_for_non_target_roles() {
     let message = compile_err(&with_interval(
         "entry long = src.close > src.close[1]\nsize exit long = 0.5\nplot(src.close)",
     ));
-    assert!(message.contains("expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`"));
+    assert!(
+        message.contains("expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`")
+    );
 }
 
 #[test]

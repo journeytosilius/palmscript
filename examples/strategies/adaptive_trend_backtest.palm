@@ -69,8 +69,8 @@ exit short = true
 
 order entry1 long = market()
 order entry2 long = market()
-size entry1 long = 0.7
-size entry2 long = 0.5
+size entry1 long = 1.0
+size entry2 long = 0.35
 order entry short = market()
 order exit short = stop_market(fast, trigger_ref.last)
 protect long = stop_market(chandelier_long, trigger_ref.last)
@@ -87,7 +87,7 @@ target2 long = take_profit_market(
         : position.entry_price * (1 + target_return * 2),
     trigger_ref.last
 )
-size target1 long = 0.5
+size target1 long = 0.25
 
 plot(fast - slow)
 plot(macd_line - macd_signal)
