@@ -117,6 +117,8 @@ pub enum OrderEndReason {
     MissingPrice,
     MissingTriggerPrice,
     MissingExpireTime,
+    MissingSizeFraction,
+    InvalidSizeFraction,
     IocUnfilled,
     FokUnfilled,
     PostOnlyWouldCross,
@@ -142,6 +144,7 @@ pub struct OrderRecord {
     pub limit_price: Option<f64>,
     pub trigger_price: Option<f64>,
     pub expire_time: Option<f64>,
+    pub size_fraction: Option<f64>,
     pub status: OrderStatus,
     pub end_reason: Option<OrderEndReason>,
 }

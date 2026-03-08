@@ -129,11 +129,14 @@ Optional execution templates:
 - `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
 - `order entry short = limit(spot.close[1], tif.gtc, false)`
 - `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
+- `size target long = 0.5`
+- `size target short = 0.5`
 
 Attached position-aware exits:
 
 - `protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
 - `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
+- `size target long = 0.5`
 - `position.*` is valid only inside `protect` and `target`
 
 Actual-fill anchor helpers:
@@ -173,6 +176,11 @@ The backtester stays intentionally simple and deterministic:
   opening the new side
 - attached exits arm only after an actual entry fill exists and are reevaluated once per execution bar while that position stays open
 - `protect` and `target` for the same side are OCO
+- `size target long = <expr>` and `size target short = <expr>` optionally reduce a target fill to a fraction of the current position instead of closing it fully
+- target size expressions are evaluated as hidden numeric series like other order fields
+- v1 only supports partial sizing for attached `target` exits; other order roles still close or open the full position
+- valid target size fractions are finite values in `(0, 1]`
+- a partial target is one-shot for the current position: once that side's target has filled, the remaining runner stays managed by `protect` / discretionary `exit` until the position fully closes
 - if `protect` and `target` both become fillable on one execution bar, `protect` fills and `target` is cancelled
 - open positions are marked to market on the execution-source close and are not
   force-closed at the end of the run

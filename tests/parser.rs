@@ -179,6 +179,19 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_partial_target_size_declarations() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+entry long = src.close > src.close[1]
+target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+size target long = 0.5
+plot(src.close)",
+    )
+    .expect("partial target size declarations should compile");
+}
+
+#[test]
 fn parses_position_event_anchors_with_since_helpers() {
     compile(
         "interval 1m
@@ -234,6 +247,22 @@ fn rejects_attached_exit_declarations_inside_blocks() {
         "if true { protect long = stop_market(1, trigger_ref.last) } else { plot(0) }",
     ));
     assert!(message.contains("attached exit declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_target_size_declarations_inside_blocks() {
+    let message = compile_err(&with_interval(
+        "if true { size target long = 0.5 } else { plot(0) }",
+    ));
+    assert!(message.contains("order size declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_size_declarations_for_non_target_roles() {
+    let message = compile_err(&with_interval(
+        "entry long = src.close > src.close[1]\nsize entry long = 0.5\nplot(src.close)",
+    ));
+    assert!(message.contains("expected `target` after `size`"));
 }
 
 #[test]

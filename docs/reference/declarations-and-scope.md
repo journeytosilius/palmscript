@@ -138,6 +138,7 @@ trigger long_entry = spot.close > spot.high[1]
 entry long = spot.close > spot.high[1]
 order entry long = limit(spot.close[1], tif.gtc, false)
 protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
+size target long = 0.5
 ```
 
 Rules:
@@ -148,9 +149,13 @@ Rules:
 - `entry long`, `exit long`, `entry short`, and `exit short` are first-class backtest signal declarations
 - `order entry long`, `order exit long`, `order entry short`, and `order exit short` attach an execution template to an existing backtest signal role
 - `protect long`, `protect short`, `target long`, and `target short` declare attached exits that arm only while the matching position is open
+- `size target long` and `size target short` optionally size an attached `target` fill as a fraction of the open position
 - at most one `order` declaration is allowed per signal role
 - at most one `protect` and one `target` declaration are allowed per side
+- at most one `size target` declaration is allowed per side
 - if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
+- `size target ...` requires a matching `target ...` declaration for the same side
+- current v1 support is intentionally narrow: only `size target long|short = ...` is valid
 - `position.*` is only available inside `protect` and `target` declarations
 - `position_event.*` is available anywhere a `series<bool>` is valid and is intended to anchor logic to actual backtest fills
 - current `position_event` fields are:

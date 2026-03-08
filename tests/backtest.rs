@@ -1123,6 +1123,78 @@ plot(spot.close)",
 }
 
 #[test]
+fn partial_target_exit_closes_a_slice_and_leaves_runner_for_protect() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {t0}
+protect long = stop_market(position.entry_price - 1, trigger_ref.last)
+target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+size target long = 0.5
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 12.0,
+                    high: 13.5,
+                    low: 11.5,
+                    close: 13.0,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 10.0,
+                    high: 10.5,
+                    low: 9.0,
+                    close: 9.5,
+                    volume: 1_000.0,
+                    time: (t0 + 3 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 2);
+    approx_eq(result.trades[0].quantity, result.trades[1].quantity);
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        palmscript::TradeExitClassification::Target
+    );
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[1].exit_classification,
+        palmscript::TradeExitClassification::Protect
+    );
+    let target_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::TargetLong && order.status == OrderStatus::Filled)
+        .expect("target order should fill");
+    approx_eq(
+        target_order
+            .size_fraction
+            .expect("size fraction should be recorded"),
+        0.5,
+    );
+    assert!(result
+        .orders
+        .iter()
+        .any(|order| order.role == SignalRole::ProtectLong && order.status == OrderStatus::Filled));
+    assert_eq!(result.open_position, None);
+}
+
+#[test]
 fn position_event_anchors_fire_on_fill_bar_and_drive_since_helpers() {
     let t0 = support::JAN_1_2024_UTC_MS;
     let compiled = compile(&format!(

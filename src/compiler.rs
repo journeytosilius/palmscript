@@ -165,6 +165,7 @@ struct Analysis {
     resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
     resolved_order_field_slots: HashMap<NodeId, ResolvedOrderFieldSlots>,
+    order_size_field_ids: HashMap<CompiledSignalRole, u16>,
     immutable_slots: HashMap<NodeId, u16>,
     immutable_bindings: HashMap<String, ExprInfo>,
     immutable_binding_slots: HashMap<String, u16>,
@@ -188,6 +189,7 @@ struct ResolvedOrderFieldSlots {
     price_slot: Option<u16>,
     trigger_price_slot: Option<u16>,
     expire_time_slot: Option<u16>,
+    size_slot: Option<u16>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -241,6 +243,19 @@ impl<'a> Analyzer<'a> {
     fn analyze(mut self, ast: &Ast) -> Result<Analysis, CompileError> {
         for stmt in &ast.statements {
             self.analyze_stmt(stmt);
+        }
+        for role in self.analysis.order_size_field_ids.keys().copied() {
+            if self.analysis.orders.iter().any(|order| order.role == role) {
+                continue;
+            }
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "size declaration for `{}` requires a matching target order declaration",
+                    role.canonical_name()
+                ),
+                Span::default(),
+            ));
         }
         if self.diagnostics.is_empty() {
             Ok(self.analysis)
@@ -1028,6 +1043,9 @@ impl<'a> Analyzer<'a> {
             StmtKind::Order { role, spec } => {
                 self.analyze_order_stmt(stmt, *role, spec);
             }
+            StmtKind::OrderSize { role, expr } => {
+                self.analyze_order_size_stmt(stmt, *role, expr);
+            }
             StmtKind::If {
                 condition,
                 then_block,
@@ -1155,6 +1173,7 @@ impl<'a> Analyzer<'a> {
             price_field_id: None,
             trigger_price_field_id: None,
             expire_time_field_id: None,
+            size_field_id: self.analysis.order_size_field_ids.get(&role).copied(),
         };
 
         match &spec.kind {
@@ -1361,6 +1380,48 @@ impl<'a> Analyzer<'a> {
             .resolved_order_field_slots
             .insert(stmt.id, resolved);
         self.analysis.orders.push(order);
+    }
+
+    fn analyze_order_size_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, expr: &Expr) {
+        let role = compiled_signal_role(role);
+        if !matches!(
+            role,
+            CompiledSignalRole::TargetLong | CompiledSignalRole::TargetShort
+        ) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "only `size target long|short = ...` is supported in v1",
+                stmt.span,
+            ));
+            return;
+        }
+        if self.analysis.order_size_field_ids.contains_key(&role) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("duplicate size declaration for `{}`", role.canonical_name()),
+                stmt.span,
+            ));
+            return;
+        }
+
+        let mut resolved = ResolvedOrderFieldSlots::default();
+        if let Some((field_id, slot)) =
+            self.analyze_order_numeric_field(role, OrderFieldKind::SizeFraction, expr)
+        {
+            self.analysis.order_size_field_ids.insert(role, field_id);
+            resolved.size_slot = Some(slot);
+            if let Some(order) = self
+                .analysis
+                .orders
+                .iter_mut()
+                .find(|decl| decl.role == role)
+            {
+                order.size_field_id = Some(field_id);
+            }
+        }
+        self.analysis
+            .resolved_order_field_slots
+            .insert(stmt.id, resolved);
     }
 
     fn diagnose_unknown_enum_literal(&mut self, expr: &Expr) {
@@ -2242,6 +2303,7 @@ fn collect_source_series_stmt(
         | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
         StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
+        StmtKind::OrderSize { expr, .. } => collect_source_series_refs(expr, refs),
         StmtKind::If {
             condition,
             then_block,
@@ -2361,6 +2423,7 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
         StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
+        StmtKind::OrderSize { expr, .. } => expr_source_ref_span(expr, source, target),
         StmtKind::If {
             condition,
             then_block,
@@ -4767,6 +4830,17 @@ impl<'a> Compiler<'a> {
                             );
                         }
                     }
+                }
+            }
+            StmtKind::OrderSize { expr, .. } => {
+                let resolved = self.analysis.resolved_order_field_slots[&stmt.id];
+                if let Some(slot) = resolved.size_slot {
+                    self.emit_expr(expr, expr_info, user_calls);
+                    self.emit(
+                        Instruction::new(OpCode::StoreLocal)
+                            .with_a(slot)
+                            .with_span(stmt.span),
+                    );
                 }
             }
             StmtKind::If {

@@ -101,6 +101,10 @@ pub(crate) fn capture_request(
         expire_time: template
             .expire_time_field_id
             .and_then(|_| lookup(template.role, OrderFieldKind::ExpireTime)),
+        has_size_fraction_field: template.size_field_id.is_some(),
+        size_fraction: template
+            .size_field_id
+            .and_then(|_| lookup(template.role, OrderFieldKind::SizeFraction)),
         signal_time,
     }
 }
@@ -184,6 +188,7 @@ fn default_market_order(role: SignalRole) -> OrderDecl {
         price_field_id: None,
         trigger_price_field_id: None,
         expire_time_field_id: None,
+        size_field_id: None,
     }
 }
 

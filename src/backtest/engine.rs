@@ -4,11 +4,12 @@ use crate::backtest::diagnostics::{
     OrderDiagnosticContext,
 };
 use crate::backtest::orders::{
-    adjusted_price, close_position, close_trade, empty_request_slots, evaluate_active_order,
+    adjusted_price, close_position, close_trade_slice, empty_request_slots, evaluate_active_order,
     fill_action_for_role, is_attached_exit_role, missing_field_reason, open_position,
     position_side_for_entry, role_applicable, role_index, unrealized_pnl_for_position,
-    update_open_trade_excursions, ActiveOrder, CapturedOrderRequest, FillExecutionContext,
-    OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
+    update_open_trade_excursions, ActiveOrder, CapturedOrderRequest, CloseExecution,
+    FillExecutionContext, OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT,
+    ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
@@ -32,6 +33,12 @@ pub(crate) struct OrderRecordUpdate {
     pub fill_price: Option<f64>,
     pub status: OrderStatus,
     pub end_reason: Option<OrderEndReason>,
+}
+
+struct CloseOutcome {
+    snapshot: Option<LastExitSnapshot>,
+    fully_closed_side: Option<PositionSide>,
+    consumed_target_side: Option<PositionSide>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -60,6 +67,12 @@ struct LastExitSnapshot {
     realized_pnl: f64,
     realized_return: f64,
     bars_held: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct TargetConsumptionState {
+    long_consumed: bool,
+    short_consumed: bool,
 }
 
 pub(crate) fn simulate_backtest(
@@ -96,6 +109,7 @@ pub(crate) fn simulate_backtest(
     let mut last_exit = None::<LastExitSnapshot>;
     let mut last_long_exit = None::<LastExitSnapshot>;
     let mut last_short_exit = None::<LastExitSnapshot>;
+    let mut target_consumption = TargetConsumptionState::default();
     let mut diagnostics = DiagnosticsAccumulator::new(&prepared.exports);
 
     while let Some(open_time) = stepper.peek_open_time() {
@@ -195,18 +209,11 @@ pub(crate) fn simulate_backtest(
                             execution.price
                         };
 
-                        let closed_side = position.as_ref().and_then(|state| {
-                            if closes_existing_position(role, state.side) {
-                                Some(state.side)
-                            } else {
-                                None
-                            }
-                        });
-
-                        let closed_trade_snapshot = maybe_close_position_for_role(
+                        let close_outcome = maybe_close_position_for_role(
                             role,
                             active.record_index,
                             active.request.kind,
+                            active.request.size_fraction,
                             last_snapshot.clone(),
                             execution_cursor,
                             bar.time,
@@ -222,7 +229,7 @@ pub(crate) fn simulate_backtest(
                             &mut total_realized_pnl,
                         );
 
-                        if let Some(snapshot) = closed_trade_snapshot {
+                        if let Some(snapshot) = close_outcome.snapshot {
                             set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
                             update_last_exit_snapshots(
                                 &mut last_exit,
@@ -232,7 +239,12 @@ pub(crate) fn simulate_backtest(
                             );
                         }
 
-                        if let Some(side) = closed_side {
+                        if let Some(side) = close_outcome.consumed_target_side {
+                            mark_target_consumed(&mut target_consumption, side);
+                        }
+
+                        if let Some(side) = close_outcome.fully_closed_side {
+                            reset_target_consumption(&mut target_consumption, side);
                             cancel_orders_for_closed_side(
                                 &mut active_orders,
                                 side,
@@ -265,6 +277,7 @@ pub(crate) fn simulate_backtest(
                                 PositionSide::Long => position_events.long_entry_fill = true,
                                 PositionSide::Short => position_events.short_entry_fill = true,
                             }
+                            reset_target_consumption(&mut target_consumption, next_side);
                             position = Some(next_position);
                             open_trade = Some(next_trade);
                         }
@@ -393,6 +406,7 @@ pub(crate) fn simulate_backtest(
             &prepared,
             position.as_ref(),
             position.as_ref(),
+            target_consumption,
             &mut pending_requests,
             &mut pending_snapshots,
             &mut pending_signal_names,
@@ -683,6 +697,7 @@ fn enqueue_attached_requests(
     prepared: &PreparedBacktest,
     position_before_step: Option<&PositionState>,
     position_after_step: Option<&PositionState>,
+    target_consumption: TargetConsumptionState,
     pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
     pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
     pending_signal_names: &mut [Option<String>; ROLE_COUNT],
@@ -703,6 +718,9 @@ fn enqueue_attached_requests(
         PositionSide::Short => [SignalRole::ProtectShort, SignalRole::TargetShort],
     };
     for role in roles {
+        if target_role_consumed(target_consumption, role) {
+            continue;
+        }
         let Some(template) = prepared.order_templates.get(&role).copied() else {
             continue;
         };
@@ -825,23 +843,26 @@ fn place_pending_requests(
     }
 }
 
-fn closes_existing_position(role: SignalRole, side: PositionSide) -> bool {
-    matches!(
-        (side, role),
-        (
-            PositionSide::Long,
-            SignalRole::LongExit
-                | SignalRole::ProtectLong
-                | SignalRole::TargetLong
-                | SignalRole::ShortEntry
-        ) | (
-            PositionSide::Short,
-            SignalRole::ShortExit
-                | SignalRole::ProtectShort
-                | SignalRole::TargetShort
-                | SignalRole::LongEntry
-        )
-    )
+fn target_role_consumed(state: TargetConsumptionState, role: SignalRole) -> bool {
+    match role {
+        SignalRole::TargetLong => state.long_consumed,
+        SignalRole::TargetShort => state.short_consumed,
+        _ => false,
+    }
+}
+
+fn mark_target_consumed(state: &mut TargetConsumptionState, side: PositionSide) {
+    match side {
+        PositionSide::Long => state.long_consumed = true,
+        PositionSide::Short => state.short_consumed = true,
+    }
+}
+
+fn reset_target_consumption(state: &mut TargetConsumptionState, side: PositionSide) {
+    match side {
+        PositionSide::Long => state.long_consumed = false,
+        PositionSide::Short => state.short_consumed = false,
+    }
 }
 
 fn cancel_orders_for_closed_side(
@@ -932,6 +953,7 @@ fn maybe_close_position_for_role(
     role: SignalRole,
     order_id: usize,
     order_kind: OrderKind,
+    size_fraction: Option<f64>,
     exit_snapshot: Option<FeatureSnapshot>,
     bar_index: usize,
     time: f64,
@@ -945,7 +967,7 @@ fn maybe_close_position_for_role(
     trades: &mut Vec<Trade>,
     trade_diagnostics: &mut Vec<TradeDiagnostic>,
     total_realized_pnl: &mut f64,
-) -> Option<LastExitSnapshot> {
+) -> CloseOutcome {
     let should_close = matches!(
         (position.as_ref().map(|state| state.side), role),
         (
@@ -963,24 +985,82 @@ fn maybe_close_position_for_role(
         )
     );
     if !should_close {
-        return None;
+        return CloseOutcome {
+            snapshot: None,
+            fully_closed_side: None,
+            consumed_target_side: None,
+        };
     }
 
-    let closed_position = position.take().expect("open position should exist");
+    let current_side = position
+        .as_ref()
+        .map(|state| state.side)
+        .expect("open position should exist");
+    let full_close = !matches!(role, SignalRole::TargetLong | SignalRole::TargetShort)
+        || size_fraction.unwrap_or(1.0) >= 1.0 - crate::backtest::EPSILON;
+    let close_quantity = position
+        .as_ref()
+        .map(|state| {
+            if full_close {
+                state.quantity.abs()
+            } else {
+                state.quantity.abs() * size_fraction.unwrap_or(1.0)
+            }
+        })
+        .expect("open position should exist");
+    let closed_position = position
+        .as_ref()
+        .expect("open position should exist")
+        .clone();
     let exit_fill = close_position(
-        bar_index,
-        time,
-        raw_price,
-        execution_price,
+        CloseExecution {
+            execution: FillExecutionContext {
+                bar_index,
+                time,
+                raw_price,
+                execution_price,
+            },
+            cash,
+            position: &closed_position,
+            quantity: Some(close_quantity),
+        },
         fee_rate,
-        cash,
-        &closed_position,
     );
-    let open_trade = open_trade.take().expect("open trade should exist");
-    let trade = close_trade(open_trade.clone(), exit_fill.clone());
-    let bars_held = exit_fill
-        .bar_index
-        .saturating_sub(open_trade.entry.bar_index);
+    let (
+        trade,
+        side,
+        entry_order_id,
+        entry_role,
+        entry_kind,
+        entry_snapshot_value,
+        entry_time,
+        entry_price,
+        mae_price_delta,
+        mfe_price_delta,
+        bars_held,
+    ) = {
+        let open_trade = open_trade.as_mut().expect("open trade should exist");
+        let trade = close_trade_slice(open_trade, exit_fill.clone(), close_quantity);
+        let bars_held = exit_fill
+            .bar_index
+            .saturating_sub(open_trade.entry.bar_index);
+        if !full_close {
+            open_trade.quantity = (open_trade.quantity - close_quantity).max(0.0);
+        }
+        (
+            trade,
+            open_trade.side,
+            open_trade.entry_order_id,
+            open_trade.entry_role,
+            open_trade.entry_kind,
+            open_trade.entry_snapshot.clone(),
+            open_trade.entry.time,
+            open_trade.entry.price,
+            open_trade.mae_price_delta,
+            open_trade.mfe_price_delta,
+            bars_held,
+        )
+    };
     let entry_notional = trade.entry.notional.abs();
     let realized_pnl = trade.realized_pnl;
     let realized_return = if entry_notional.abs() < crate::backtest::EPSILON {
@@ -992,35 +1072,59 @@ fn maybe_close_position_for_role(
     fills.push(exit_fill.clone());
     trade_diagnostics.push(TradeDiagnostic {
         trade_id: trades.len(),
-        side: open_trade.side,
-        entry_order_id: open_trade.entry_order_id,
+        side,
+        entry_order_id,
         exit_order_id: order_id,
-        entry_role: open_trade.entry_role,
+        entry_role,
         exit_role: role,
-        entry_kind: open_trade.entry_kind,
+        entry_kind,
         exit_kind: order_kind,
         exit_classification: classify_exit(role),
-        entry_snapshot: open_trade.entry_snapshot,
+        entry_snapshot: entry_snapshot_value,
         exit_snapshot,
         bars_held,
-        duration_ms: exit_fill.time - open_trade.entry.time,
+        duration_ms: exit_fill.time - entry_time,
         realized_pnl,
-        mae_price_delta: open_trade.mae_price_delta,
-        mfe_price_delta: open_trade.mfe_price_delta,
-        mae_pct: pct_delta(open_trade.mae_price_delta, open_trade.entry.price),
-        mfe_pct: pct_delta(open_trade.mfe_price_delta, open_trade.entry.price),
+        mae_price_delta,
+        mfe_price_delta,
+        mae_pct: pct_delta(mae_price_delta, entry_price),
+        mfe_pct: pct_delta(mfe_price_delta, entry_price),
     });
     trades.push(trade);
-    Some(LastExitSnapshot {
+    let snapshot = LastExitSnapshot {
         kind: exit_kind_for_role(role),
-        side: open_trade.side,
+        side,
         price: exit_fill.price,
         time: exit_fill.time,
         bar_index: exit_fill.bar_index,
         realized_pnl,
         realized_return,
         bars_held,
-    })
+    };
+
+    if full_close {
+        *position = None;
+        *open_trade = None;
+        return CloseOutcome {
+            snapshot: Some(snapshot),
+            fully_closed_side: Some(current_side),
+            consumed_target_side: None,
+        };
+    }
+
+    if let Some(state) = position.as_mut() {
+        let remaining_quantity = (state.quantity.abs() - close_quantity).max(0.0);
+        state.quantity = match state.side {
+            PositionSide::Long => remaining_quantity,
+            PositionSide::Short => -remaining_quantity,
+        };
+    }
+    crate::backtest::orders::zero_small_cash(cash);
+    CloseOutcome {
+        snapshot: Some(snapshot),
+        fully_closed_side: None,
+        consumed_target_side: Some(current_side),
+    }
 }
 
 fn invalidate_inapplicable_orders(

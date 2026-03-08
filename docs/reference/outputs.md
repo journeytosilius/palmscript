@@ -11,6 +11,7 @@ PalmScript exposes three output-producing constructs:
 - `trigger name = expr`
 - `entry long = expr`, `exit long = expr`, `entry short = expr`, `exit short = expr`
 - `protect long = order_spec`, `protect short = order_spec`, `target long = order_spec`, `target short = order_spec`
+- `size target long = expr`, `size target short = expr`
 
 `plot` is a builtin call. `export` and `trigger` are declarations.
 
@@ -115,15 +116,20 @@ target long = take_profit_market(
     highest_since(position_event.long_entry_fill, spot.high) + 4,
     trigger_ref.last
 )
+size target long = 0.5
 ```
 
 Rules:
 
 - attached exits are top-level only
 - `protect` and `target` are optional per side
+- `size target long` and `size target short` are optional per side and only apply to the matching attached `target`
 - they arm only after a matching entry fill exists
 - they are reevaluated once per execution bar while that position remains open
 - `protect` and `target` for one side are OCO: if one fills, the other is cancelled
+- `size target ...` must evaluate to a finite fraction in `(0, 1]`
+- a `size target ...` declaration turns the matching target into a partial take-profit when the fraction is below `1`
+- partial targets are one-shot per open position: once the target has filled, the remaining runner stays managed by the other exit paths until the position closes
 - if both become fillable on the same execution bar, `protect` wins deterministically
 - `position.*` is available only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven series namespace that exposes actual fill events such as `position_event.long_entry_fill`

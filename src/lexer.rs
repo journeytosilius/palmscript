@@ -211,6 +211,7 @@ impl<'a> LexerState<'a> {
             "exit" => TokenKind::Exit,
             "protect" => TokenKind::Protect,
             "target" => TokenKind::Target,
+            "size" => TokenKind::Size,
             "long" => TokenKind::Long,
             "short" => TokenKind::Short,
             "if" => TokenKind::If,

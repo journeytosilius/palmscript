@@ -131,7 +131,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, `protect`, `target`, and `order` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
@@ -143,6 +143,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - `position.*` is valid only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven `series<bool>` namespace
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are backtest-driven latest-closed-trade namespaces
+- `size target long = ...` and `size target short = ...` are the only valid `size` declarations in v1 and require a matching `target` declaration for the same side
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

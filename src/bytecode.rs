@@ -173,6 +173,7 @@ pub struct OrderDecl {
     pub price_field_id: Option<u16>,
     pub trigger_price_field_id: Option<u16>,
     pub expire_time_field_id: Option<u16>,
+    pub size_field_id: Option<u16>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

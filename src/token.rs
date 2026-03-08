@@ -23,6 +23,7 @@ pub enum TokenKind {
     Exit,
     Protect,
     Target,
+    Size,
     Long,
     Short,
     If,

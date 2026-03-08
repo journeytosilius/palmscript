@@ -175,6 +175,10 @@ pub enum StmtKind {
         role: SignalRole,
         spec: Box<OrderSpec>,
     },
+    OrderSize {
+        role: SignalRole,
+        expr: Expr,
+    },
     If {
         condition: Expr,
         then_block: Block,

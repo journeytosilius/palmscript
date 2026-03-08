@@ -182,6 +182,16 @@ impl<'a> Parser<'a> {
             }
             return self.parse_attached_order_stmt(false);
         }
+        if self.matches_keyword(&TokenKind::Size) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "order size declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_order_size_stmt();
+        }
         if self.matches_keyword(&TokenKind::Const) {
             if self.block_depth > 0 {
                 self.push_diagnostic(
@@ -553,6 +563,37 @@ impl<'a> Parser<'a> {
                 role,
                 spec: Box::new(spec),
             },
+        })
+    }
+
+    fn parse_order_size_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        if !self.matches_keyword(&TokenKind::Target) {
+            self.push_diagnostic(
+                "expected `target` after `size`",
+                self.tokens[self.cursor].span,
+            );
+            return None;
+        }
+        let role = self.parse_side_role(
+            "expected `long` or `short` after `size target`",
+            |is_long| {
+                if is_long {
+                    SignalRole::TargetLong
+                } else {
+                    SignalRole::TargetShort
+                }
+            },
+        )?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after target size side",
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::OrderSize { role, expr },
         })
     }
 

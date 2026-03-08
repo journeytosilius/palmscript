@@ -533,6 +533,9 @@ fn resolve_stmt(
         StmtKind::Order { spec, .. } => {
             resolve_order_spec(context, spec, scope);
         }
+        StmtKind::OrderSize { expr, .. } => {
+            resolve_expr(context, expr, scope);
+        }
         StmtKind::If {
             condition,
             then_block,
@@ -751,6 +754,7 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
         }),
         StmtKind::Signal { .. } => {}
         StmtKind::Order { .. } => {}
+        StmtKind::OrderSize { .. } => {}
         StmtKind::LetTuple { names, expr } => {
             let detail = context.expr_info.get(&expr.id).map(render_expr_info);
             for binding in names {
@@ -1075,6 +1079,21 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
                 crate::ast::SignalRole::TargetShort => "target short",
             };
             lines.push(format!("{prefix}{header} = {}", format_order_spec(spec)));
+        }
+        StmtKind::OrderSize { role, expr } => {
+            let header = match role {
+                crate::ast::SignalRole::TargetLong => "size target long",
+                crate::ast::SignalRole::TargetShort => "size target short",
+                crate::ast::SignalRole::LongEntry
+                | crate::ast::SignalRole::LongExit
+                | crate::ast::SignalRole::ShortEntry
+                | crate::ast::SignalRole::ShortExit
+                | crate::ast::SignalRole::ProtectLong
+                | crate::ast::SignalRole::ProtectShort => {
+                    unreachable!("partial sizing is only supported for targets")
+                }
+            };
+            lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));
         }
         StmtKind::Expr(expr) => {
             lines.push(format!("{prefix}{}", format_expr(expr, 0)));

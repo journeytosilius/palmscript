@@ -88,6 +88,7 @@ pub enum OrderFieldKind {
     Price,
     TriggerPrice,
     ExpireTime,
+    SizeFraction,
 }
 
 impl OrderFieldKind {
@@ -96,6 +97,7 @@ impl OrderFieldKind {
             Self::Price => "price",
             Self::TriggerPrice => "trigger_price",
             Self::ExpireTime => "expire_time",
+            Self::SizeFraction => "size_fraction",
         }
     }
 }

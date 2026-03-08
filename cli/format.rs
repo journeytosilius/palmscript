@@ -575,6 +575,7 @@ mod tests {
                 role: SignalRole::LongEntry,
                 kind: OrderKind::Market,
                 action: FillAction::Buy,
+                size_fraction: None,
                 tif: None,
                 post_only: false,
                 trigger_ref: None,

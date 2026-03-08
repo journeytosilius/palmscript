@@ -27,6 +27,8 @@ pub(crate) struct CapturedOrderRequest {
     pub price: Option<f64>,
     pub trigger_price: Option<f64>,
     pub expire_time: Option<f64>,
+    pub has_size_fraction_field: bool,
+    pub size_fraction: Option<f64>,
     pub signal_time: f64,
 }
 
@@ -83,6 +85,7 @@ pub(crate) struct OpenTrade {
     pub entry_snapshot: Option<FeatureSnapshot>,
     pub mae_price_delta: f64,
     pub mfe_price_delta: f64,
+    pub remaining_entry_fee: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +102,13 @@ pub(crate) struct FillExecutionContext {
     pub time: f64,
     pub raw_price: f64,
     pub execution_price: f64,
+}
+
+pub(crate) struct CloseExecution<'a> {
+    pub execution: FillExecutionContext,
+    pub cash: &'a mut f64,
+    pub position: &'a PositionState,
+    pub quantity: Option<f64>,
 }
 
 pub(crate) fn empty_request_slots() -> [Option<CapturedOrderRequest>; ROLE_COUNT] {
@@ -201,6 +211,7 @@ pub(crate) fn order_record(
         limit_price: request.price,
         trigger_price: request.trigger_price,
         expire_time: request.expire_time,
+        size_fraction: request.size_fraction,
         status: OrderStatus::Open,
         end_reason: None,
     }
@@ -221,6 +232,21 @@ pub(crate) fn missing_field_reason(request: CapturedOrderRequest) -> Option<Orde
         }
         _ if matches!(request.tif, Some(TimeInForce::Gtd)) && request.expire_time.is_none() => {
             Some(OrderEndReason::MissingExpireTime)
+        }
+        _ if request.has_size_fraction_field && request.size_fraction.is_none() => {
+            Some(OrderEndReason::MissingSizeFraction)
+        }
+        _ if request
+            .size_fraction
+            .is_some_and(|value| !value.is_finite()) =>
+        {
+            Some(OrderEndReason::InvalidSizeFraction)
+        }
+        _ if request
+            .size_fraction
+            .is_some_and(|value| value <= 0.0 || value > 1.0) =>
+        {
+            Some(OrderEndReason::InvalidSizeFraction)
         }
         _ => None,
     }
@@ -507,25 +533,24 @@ pub(crate) fn open_position(
         entry_snapshot: entry_context.snapshot,
         mae_price_delta: 0.0,
         mfe_price_delta: 0.0,
+        remaining_entry_fee: fill.fee,
     };
     (position, trade, fill)
 }
 
-pub(crate) fn close_position(
-    bar_index: usize,
-    time: f64,
-    raw_price: f64,
-    execution_price: f64,
-    fee_rate: f64,
-    cash: &mut f64,
-    position: &PositionState,
-) -> Fill {
+pub(crate) fn close_position(close: CloseExecution<'_>, fee_rate: f64) -> Fill {
+    let CloseExecution {
+        execution,
+        cash,
+        position,
+        quantity,
+    } = close;
     let action = match position.side {
         PositionSide::Long => FillAction::Sell,
         PositionSide::Short => FillAction::Buy,
     };
-    let quantity = position.quantity.abs();
-    let notional = quantity * execution_price;
+    let quantity = quantity.unwrap_or_else(|| position.quantity.abs());
+    let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     match position.side {
         PositionSide::Long => *cash += notional - fee,
@@ -533,33 +558,46 @@ pub(crate) fn close_position(
     }
     zero_small_cash(cash);
     Fill {
-        bar_index,
-        time,
+        bar_index: execution.bar_index,
+        time: execution.time,
         action,
         quantity,
-        raw_price,
-        price: execution_price,
+        raw_price: execution.raw_price,
+        price: execution.execution_price,
         notional,
         fee,
     }
 }
 
-pub(crate) fn close_trade(open_trade: OpenTrade, exit: Fill) -> crate::backtest::Trade {
+pub(crate) fn close_trade_slice(
+    open_trade: &mut OpenTrade,
+    exit: Fill,
+    quantity: f64,
+) -> crate::backtest::Trade {
+    let remaining_before_close = open_trade.quantity.max(EPSILON);
+    let entry_fee = if (quantity - remaining_before_close).abs() < EPSILON {
+        open_trade.remaining_entry_fee
+    } else {
+        open_trade.remaining_entry_fee * (quantity / remaining_before_close)
+    };
+    open_trade.remaining_entry_fee -= entry_fee;
+    let mut entry = open_trade.entry.clone();
+    entry.quantity = quantity;
+    entry.notional = quantity * entry.price;
+    entry.fee = entry_fee;
     let signed_entry_price = match open_trade.side {
-        PositionSide::Long => -open_trade.entry.price,
-        PositionSide::Short => open_trade.entry.price,
+        PositionSide::Long => -entry.price,
+        PositionSide::Short => entry.price,
     };
     let signed_exit_price = match open_trade.side {
         PositionSide::Long => exit.price,
         PositionSide::Short => -exit.price,
     };
-    let realized_pnl = (signed_entry_price + signed_exit_price) * open_trade.quantity
-        - open_trade.entry.fee
-        - exit.fee;
+    let realized_pnl = (signed_entry_price + signed_exit_price) * quantity - entry.fee - exit.fee;
     crate::backtest::Trade {
         side: open_trade.side,
-        quantity: open_trade.quantity,
-        entry: open_trade.entry,
+        quantity,
+        entry,
         exit,
         realized_pnl,
     }

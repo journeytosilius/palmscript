@@ -36,6 +36,8 @@ Representative files:
 - `examples/strategies/multi_strategy_backtest.palm`: composite trend, momentum, and breakout backtest strategy using `input`, `const`, and first-class `entry` / `exit` signals
 - `examples/strategies/venue_orders_backtest.palm`: backtest strategy using explicit `order` declarations with `limit(...)` and `stop_market(...)`
 
+The backtester also supports partial attached profit-taking through `size target long = ...` and `size target short = ...`, which size the matching `target` fill as a fraction of the open position.
+
 For runnable commands and workflow guidance, use the linked docs pages above.
 
 Common commands:
