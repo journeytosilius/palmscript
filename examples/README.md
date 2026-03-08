@@ -27,7 +27,7 @@ Checked-in `.palm` strategies live under `examples/strategies/`.
 
 Representative files:
 
-- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe long-only backtest strategy with staged `entry1` / `entry2` market entries, staged `target1` / `target2` profit-taking, and `protect_after_target1 long` stop ratchets
+- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned staged `entry1` / `entry2` market entries, staged `target1` / `target2` profit-taking, and `protect_after_target1 long` stop ratchets
 - `examples/strategies/risk_sized_entry_backtest.palm`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `examples/strategies/usdm_long_short_backtest.palm`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
 - `examples/strategies/sma_cross.palm`: single-source market-mode strategy
