@@ -386,7 +386,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
         for segment in &result.segments[start..] {
             let _ = writeln!(
                 out,
-                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2}",
+                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2} protect_exit_count={} target_exit_count={} flat_bar_pct={:.2}",
                 segment.segment_index,
                 segment.train_from,
                 segment.train_to,
@@ -397,6 +397,45 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
                 segment.out_of_sample.trade_count,
                 segment.out_of_sample.win_rate * 100.0,
                 segment.out_of_sample.max_drawdown,
+                segment.out_of_sample_diagnostics.summary.protect_exit_count,
+                segment.out_of_sample_diagnostics.summary.target_exit_count,
+                segment.out_of_sample_diagnostics.capture_summary.flat_bar_pct * 100.0,
+            );
+        }
+    }
+
+    if !result.segments.is_empty() {
+        let mut weakest = result.segments.iter().collect::<Vec<_>>();
+        weakest.sort_by(|left, right| {
+            left.out_of_sample
+                .total_return
+                .partial_cmp(&right.out_of_sample.total_return)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out.push_str("Worst Segments\n");
+        for segment in weakest.into_iter().take(3) {
+            let top_export = segment
+                .out_of_sample_diagnostics
+                .export_summaries
+                .iter()
+                .find_map(|summary| match summary {
+                    ExportDiagnosticSummary::Bool(summary) => {
+                        Some(format!("{}:{}", summary.name, summary.true_count))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| "none".to_string());
+            let _ = writeln!(
+                out,
+                "index={} test_from={} test_to={} test_return_pct={:.2} protect_exit_count={} target_exit_count={} opportunity_event_count={} top_bool_export={}",
+                segment.segment_index,
+                segment.test_from,
+                segment.test_to,
+                segment.out_of_sample.total_return * 100.0,
+                segment.out_of_sample_diagnostics.summary.protect_exit_count,
+                segment.out_of_sample_diagnostics.summary.target_exit_count,
+                segment.out_of_sample_diagnostics.opportunity_event_count,
+                top_export,
             );
         }
     }

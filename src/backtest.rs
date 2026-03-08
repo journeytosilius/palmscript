@@ -367,7 +367,8 @@ pub struct BacktestResult {
 
 pub use walk_forward::{
     run_walk_forward_with_sources, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,
-    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    WalkForwardSegmentDiagnostics, WalkForwardSegmentResult, WalkForwardStitchedSummary,
+    WalkForwardWindowSummary,
 };
 
 #[derive(Debug, Error, PartialEq)]

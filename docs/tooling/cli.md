@@ -105,8 +105,8 @@ Backtest mode supports the same output formats.
 
 Walk-forward mode also supports `json` and `text`.
 
-- JSON output includes per-segment in-sample and out-of-sample summaries plus a stitched out-of-sample summary
-- text output includes a compact stitched summary, config, and recent segment rows
+- JSON output includes per-segment in-sample and out-of-sample summaries, per-segment out-of-sample diagnostics, plus a stitched out-of-sample summary
+- text output includes a compact stitched summary, config, recent segment rows, and a short weakest-segment section with out-of-sample protect/target counts
 
 ## Execution Limits
 

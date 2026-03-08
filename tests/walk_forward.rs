@@ -57,6 +57,16 @@ plot(spot.close)";
         .segments
         .iter()
         .all(|segment| segment.out_of_sample.trade_count <= 1));
+    assert!(result.segments.iter().all(|segment| segment
+        .out_of_sample_diagnostics
+        .capture_summary
+        .in_market_bar_count
+        <= 2));
+    assert!(result.segments.iter().all(|segment| segment
+        .out_of_sample_diagnostics
+        .summary
+        .order_fill_rate
+        >= 0.0));
 }
 
 #[test]

@@ -740,6 +740,10 @@ fn run_walk_forward_emits_segmented_json() {
     assert_eq!(json["stitched_summary"]["segment_count"], Value::from(3));
     assert!(json["segments"].is_array());
     assert!(json["segments"][0]["out_of_sample"].is_object());
+    assert!(json["segments"][0]["out_of_sample_diagnostics"].is_object());
+    assert!(json["segments"][0]["out_of_sample_diagnostics"]["summary"].is_object());
+    assert!(json["segments"][0]["out_of_sample_diagnostics"]["capture_summary"].is_object());
+    assert!(json["segments"][0]["out_of_sample_diagnostics"]["export_summaries"].is_array());
 }
 
 #[test]
@@ -796,5 +800,6 @@ fn run_walk_forward_supports_text_output() {
         .success()
         .stdout(predicate::str::contains("Walk-Forward Summary"))
         .stdout(predicate::str::contains("Walk-Forward Config"))
-        .stdout(predicate::str::contains("Recent Segments"));
+        .stdout(predicate::str::contains("Recent Segments"))
+        .stdout(predicate::str::contains("Worst Segments"));
 }

@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+use crate::backtest::bridge::PreparedExport;
+use crate::backtest::diagnostics::{
+    build_diagnostics_summary, snapshot_from_step, DiagnosticsAccumulator,
+};
 use crate::backtest::{
-    average, execution_bars, run_backtest_with_sources, BacktestConfig, BacktestError,
+    average, execution_bars, run_backtest_with_sources, BacktestCaptureSummary, BacktestConfig,
+    BacktestDiagnosticSummary, BacktestError, ExportDiagnosticSummary,
 };
 use crate::compiler::CompiledProgram;
+use crate::output::{OutputSample, StepOutput};
 use crate::runtime::{SourceRuntimeConfig, VmLimits};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,6 +45,15 @@ pub struct WalkForwardSegmentResult {
     pub test_to: i64,
     pub in_sample: WalkForwardWindowSummary,
     pub out_of_sample: WalkForwardWindowSummary,
+    pub out_of_sample_diagnostics: WalkForwardSegmentDiagnostics,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WalkForwardSegmentDiagnostics {
+    pub summary: BacktestDiagnosticSummary,
+    pub capture_summary: BacktestCaptureSummary,
+    pub export_summaries: Vec<ExportDiagnosticSummary>,
+    pub opportunity_event_count: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,6 +94,11 @@ pub fn run_walk_forward_with_sources(
     let execution = crate::backtest::bridge::resolve_execution_source(
         compiled,
         &config.backtest.execution_source_alias,
+    )?;
+    let prepared = crate::backtest::bridge::prepare_backtest(
+        compiled,
+        &config.backtest.execution_source_alias,
+        execution.template,
     )?;
     let full_execution_bars = execution_bars(
         &runtime,
@@ -126,6 +146,7 @@ pub fn run_walk_forward_with_sources(
             config.train_bars + config.test_bars,
             in_sample.ending_equity,
         );
+        let out_of_sample_total_return = out_of_sample.total_return;
         stitch_window(
             &mut stitched_equity_curve,
             &result.equity_curve,
@@ -148,6 +169,14 @@ pub fn run_walk_forward_with_sources(
             test_to,
             in_sample,
             out_of_sample,
+            out_of_sample_diagnostics: summarize_segment_diagnostics(
+                &prepared.exports,
+                &result,
+                &full_execution_bars[segment.train_end_index..segment.end_index],
+                config.train_bars,
+                config.train_bars + config.test_bars,
+                out_of_sample_total_return,
+            ),
         });
     }
 
@@ -406,6 +435,121 @@ fn summarize_stitched_curve(
                 .map(|segment| segment.out_of_sample.total_return),
         ),
     }
+}
+
+fn summarize_segment_diagnostics(
+    exports: &[PreparedExport],
+    result: &crate::backtest::BacktestResult,
+    execution_bars: &[crate::runtime::Bar],
+    start_index: usize,
+    end_index: usize,
+    strategy_total_return: f64,
+) -> WalkForwardSegmentDiagnostics {
+    let mut accumulator = DiagnosticsAccumulator::new(exports);
+    let export_steps = export_steps_by_bar(&result.outputs.exports, start_index, end_index);
+
+    for (offset, step_exports) in export_steps.into_iter().enumerate() {
+        let full_bar_index = start_index + offset;
+        let Some(execution_bar) = execution_bars.get(offset) else {
+            continue;
+        };
+        let position_side = result
+            .equity_curve
+            .get(full_bar_index)
+            .and_then(|point| point.position_side);
+        let bar_return = accumulator.observe_execution_bar(execution_bar.close, position_side);
+        let step = StepOutput {
+            exports: step_exports,
+            ..StepOutput::default()
+        };
+        let feature_snapshot = snapshot_from_step(&step, execution_bar.time);
+        accumulator.observe_exports(
+            &step,
+            feature_snapshot.as_ref(),
+            None,
+            full_bar_index,
+            execution_bar.time,
+            bar_return,
+            position_side,
+        );
+    }
+
+    let entered_trade_diagnostics = result
+        .diagnostics
+        .trade_diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic
+                .entry_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| in_bar_range(snapshot.bar_index, start_index, end_index))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let exited_trade_diagnostics = result
+        .diagnostics
+        .trade_diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic
+                .exit_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| in_bar_range(snapshot.bar_index, start_index, end_index))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let placed_order_diagnostics = result
+        .diagnostics
+        .order_diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic
+                .placed_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| in_bar_range(snapshot.bar_index, start_index, end_index))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let summary = build_diagnostics_summary(&placed_order_diagnostics, &exited_trade_diagnostics);
+    let (capture_summary, export_summaries, _) = accumulator.finalize(
+        execution_bars,
+        &entered_trade_diagnostics,
+        strategy_total_return,
+    );
+    let opportunity_event_count = result
+        .diagnostics
+        .opportunity_events
+        .iter()
+        .filter(|event| in_bar_range(event.bar_index, start_index, end_index))
+        .count();
+
+    WalkForwardSegmentDiagnostics {
+        summary,
+        capture_summary,
+        export_summaries,
+        opportunity_event_count,
+    }
+}
+
+fn export_steps_by_bar(
+    exports: &[crate::output::OutputSeries],
+    start_index: usize,
+    end_index: usize,
+) -> Vec<Vec<OutputSample>> {
+    let mut steps = vec![Vec::new(); end_index.saturating_sub(start_index)];
+    for series in exports {
+        for sample in &series.points {
+            if in_bar_range(sample.bar_index, start_index, end_index) {
+                steps[sample.bar_index - start_index].push(sample.clone());
+            }
+        }
+    }
+    steps
+}
+
+fn in_bar_range(bar_index: usize, start_index: usize, end_index: usize) -> bool {
+    bar_index >= start_index && bar_index < end_index
 }
 
 fn ratio(numerator: f64, denominator: f64) -> f64 {

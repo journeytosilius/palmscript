@@ -119,8 +119,8 @@ Requirements:
 
 Walk-forward output:
 
-- JSON includes per-segment `in_sample` and `out_of_sample` summaries, a stitched out-of-sample summary, and a stitched out-of-sample equity curve
-- text output renders a stitched summary, the configured walk-forward window sizes, and recent segment rows
+- JSON includes per-segment `in_sample` and `out_of_sample` summaries, per-segment `out_of_sample_diagnostics`, a stitched out-of-sample summary, and a stitched out-of-sample equity curve
+- text output renders a stitched summary, the configured walk-forward window sizes, recent segment rows, and a short weakest-segment section
 - v1 does not auto-optimize parameters; it evaluates the fixed script/inputs over rolling train/test slices
 
 ## `palmscript dump-bytecode`

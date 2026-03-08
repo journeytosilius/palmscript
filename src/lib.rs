@@ -35,8 +35,8 @@ pub use backtest::{
     NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind, OrderDiagnostic,
     OrderEndReason, OrderRecord, OrderStatus, PositionSnapshot, SideDiagnosticSummary, Trade,
     TradeDiagnostic, TradeExitClassification, WalkForwardConfig, WalkForwardEquityPoint,
-    WalkForwardResult, WalkForwardSegmentResult, WalkForwardStitchedSummary,
-    WalkForwardWindowSummary,
+    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardSegmentResult,
+    WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, CompiledProgram};

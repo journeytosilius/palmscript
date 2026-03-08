@@ -147,8 +147,18 @@ Walk-forward results instead include:
 
 - per-segment `in_sample` summaries
 - per-segment `out_of_sample` summaries
+- per-segment `out_of_sample_diagnostics` with compact trade/order/export context for the test slice
 - a stitched out-of-sample equity curve
 - a stitched out-of-sample summary across all segments
+
+Each segment-level out-of-sample diagnostics payload currently includes:
+
+- an out-of-sample diagnostic summary with fill rate, average hold metrics, and protect/target/signal exit counts
+- an out-of-sample capture summary with flat/long/short bar mix and execution-asset return context
+- out-of-sample export summaries built from the test slice only
+
+This makes it possible to compare weak walk-forward slices by regime/setup state
+without rerunning each slice manually.
 
 The `diagnostics` payload is designed for machine analysis and LLM-driven
 iteration. It currently includes:

@@ -103,3 +103,24 @@ Opportunity events are bounded and deterministic:
 Backtest diagnostics are not compile failures or runtime errors. They are part
 of the successful result surface returned by `palmscript run backtest` and
 `run_backtest_with_sources`.
+
+## 5. Walk-Forward Segment Diagnostics
+
+Walk-forward evaluation reuses the same backtest engine and now also surfaces a
+compact diagnostics payload for each out-of-sample segment.
+
+Each segment includes:
+
+- `in_sample`: the rolling training-window summary
+- `out_of_sample`: the trailing test-window summary
+- `out_of_sample_diagnostics`: compact diagnostics for the test slice only
+
+The `out_of_sample_diagnostics` payload includes:
+
+- `summary`: out-of-sample order/trade aggregates such as fill rate, average bars held, and signal/protect/target/reversal exit counts
+- `capture_summary`: out-of-sample exposure mix plus execution-asset return context
+- `export_summaries`: out-of-sample export-state summaries computed only from the test slice
+- `opportunity_event_count`: bounded count of out-of-sample opportunity events in that segment
+
+This is intended for regime comparison across weak and strong segments without
+rerunning each slice manually.
