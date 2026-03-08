@@ -291,7 +291,7 @@ The backtester stays intentionally simple and deterministic:
 - perp venues now support isolated margin, per-venue risk tiers, leverage, and deterministic liquidation checks
 - liquidation checks run after fills and before the strategy step on each execution bar
 - v1 does not liquidate a position from the full mark-price range of its entry bar; liquidation checks begin on the first later execution bar after the fill
-- Binance USD-M uses premium-index kline bars as the liquidation mark basis
+- Binance USD-M uses mark-price kline bars as the liquidation mark basis
 - Hyperliquid perps currently use execution-price candles as the liquidation mark fallback because the public REST API does not expose historical mark candles directly
 - open positions are not force-closed at the end of the run unless liquidation was triggered earlier
 

@@ -451,11 +451,11 @@ pub fn fetch_perp_backtest_context(
                 from_ms,
                 to_ms,
                 &endpoints.binance_usdm_base_url,
-                "/fapi/v1/premiumIndexKlines",
+                "/fapi/v1/markPriceKlines",
             )?;
             let risk_snapshot = fetch_binance_usdm_risk_snapshot(&client, source, endpoints)?;
             Ok(Some(PerpBacktestContext {
-                mark_price_basis: MarkPriceBasis::BinancePremiumIndexKlines,
+                mark_price_basis: MarkPriceBasis::BinanceMarkPriceKlines,
                 mark_bars,
                 risk_snapshot: VenueRiskSnapshot::BinanceUsdm(risk_snapshot),
             }))
@@ -1620,7 +1620,7 @@ mod tests {
             .with_body(json!({ "serverTime": 1704067200000_i64 }).to_string())
             .create();
         let _marks = server
-            .mock("GET", "/fapi/v1/premiumIndexKlines")
+            .mock("GET", "/fapi/v1/markPriceKlines")
             .match_query(Matcher::AllOf(vec![
                 Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
                 Matcher::UrlEncoded("interval".into(), "1m".into()),
@@ -1681,7 +1681,7 @@ mod tests {
 
         assert_eq!(
             context.mark_price_basis,
-            MarkPriceBasis::BinancePremiumIndexKlines
+            MarkPriceBasis::BinanceMarkPriceKlines
         );
         match context.risk_snapshot {
             VenueRiskSnapshot::BinanceUsdm(snapshot) => {
@@ -1702,7 +1702,7 @@ mod tests {
         let _env_guard = binance_usdm_env_lock().lock().expect("env lock");
         let mut server = Server::new();
         let _marks = server
-            .mock("GET", "/fapi/v1/premiumIndexKlines")
+            .mock("GET", "/fapi/v1/markPriceKlines")
             .match_query(Matcher::AllOf(vec![
                 Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
                 Matcher::UrlEncoded("interval".into(), "1m".into()),
@@ -1752,7 +1752,7 @@ mod tests {
 
         assert_eq!(
             context.mark_price_basis,
-            MarkPriceBasis::BinancePremiumIndexKlines
+            MarkPriceBasis::BinanceMarkPriceKlines
         );
         match context.risk_snapshot {
             VenueRiskSnapshot::BinanceUsdm(snapshot) => {

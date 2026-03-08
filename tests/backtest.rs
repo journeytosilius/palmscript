@@ -41,7 +41,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
             margin_mode: PerpMarginMode::Isolated,
         }),
         perp_context: Some(PerpBacktestContext {
-            mark_price_basis: MarkPriceBasis::BinancePremiumIndexKlines,
+            mark_price_basis: MarkPriceBasis::BinanceMarkPriceKlines,
             mark_bars,
             risk_snapshot: VenueRiskSnapshot::BinanceUsdm(BinanceUsdmRiskSnapshot {
                 symbol: "BTCUSDT".to_string(),

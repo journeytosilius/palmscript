@@ -48,7 +48,7 @@ pub struct PerpBacktestConfig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MarkPriceBasis {
-    BinancePremiumIndexKlines,
+    BinanceMarkPriceKlines,
     HyperliquidExecutionFallback,
 }
 
