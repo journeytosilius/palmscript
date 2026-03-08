@@ -185,6 +185,8 @@ fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
                 initial_capital: 10_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
+                perp: None,
+                perp_context: None,
             },
         )
         .unwrap_or_else(|_| panic!("{path} should backtest"));
@@ -218,6 +220,8 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
             initial_capital: 10_000.0,
             fee_bps: 0.0,
             slippage_bps: 0.0,
+            perp: None,
+            perp_context: None,
         },
     )
     .expect("venue_orders_backtest should backtest");

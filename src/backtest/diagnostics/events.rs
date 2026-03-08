@@ -190,6 +190,15 @@ pub(crate) fn build_diagnostics_summary(
                 )
             })
             .count(),
+        liquidation_exit_count: trade_diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.exit_classification,
+                    TradeExitClassification::Liquidation
+                )
+            })
+            .count(),
         by_order_kind,
         by_side,
     }

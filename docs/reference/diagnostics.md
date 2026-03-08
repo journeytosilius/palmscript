@@ -117,7 +117,7 @@ Each segment includes:
 
 The `out_of_sample_diagnostics` payload includes:
 
-- `summary`: out-of-sample order/trade aggregates such as fill rate, average bars held, and signal/protect/target/reversal exit counts
+- `summary`: out-of-sample order/trade aggregates such as fill rate, average bars held, and signal/protect/target/reversal/liquidation exit counts
 - `capture_summary`: out-of-sample exposure mix plus execution-asset return context
 - `export_summaries`: out-of-sample export-state summaries computed only from the test slice
 - `opportunity_event_count`: bounded count of out-of-sample opportunity events in that segment

@@ -5,16 +5,18 @@ use crate::backtest::diagnostics::{
 };
 use crate::backtest::orders::{
     add_to_position, adjusted_price, close_position, close_trade_slice, empty_request_slots,
-    evaluate_active_order, fill_action_for_role, is_attached_exit_role, missing_field_reason,
-    open_position, position_side_for_entry, request_applicable, role_index,
-    unrealized_pnl_for_position, update_open_trade_excursions, ActiveOrder, CapturedOrderRequest,
+    evaluate_active_order, fill_action_for_role, is_attached_exit_role, liquidation_trigger_price,
+    missing_field_reason, open_position, position_side_for_entry, realize_perp_close,
+    refresh_position_risk, request_applicable, role_index, unrealized_pnl_for_position,
+    update_open_trade_excursions, AccountingMode, ActiveOrder, CapturedOrderRequest,
     CloseExecution, FillExecutionContext, OpenTrade, PositionState, TradeEntryContext,
     WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
     EquityPoint, FeatureSnapshot, Fill, OpportunityEventKind, OrderEndReason, OrderRecord,
-    OrderStatus, PositionSnapshot, Trade, TradeDiagnostic, TradeExitClassification,
+    OrderStatus, PerpBacktestMetadata, PositionSnapshot, Trade, TradeDiagnostic,
+    TradeExitClassification, VenueRiskSnapshot,
 };
 use crate::bytecode::{LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, SignalRole};
 use crate::order::OrderKind;
@@ -55,6 +57,8 @@ struct PositionEventStep {
     short_signal_exit_fill: bool,
     long_reversal_exit_fill: bool,
     short_reversal_exit_fill: bool,
+    long_liquidation_fill: bool,
+    short_liquidation_fill: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -83,6 +87,8 @@ pub(crate) fn simulate_backtest(
 ) -> Result<BacktestResult, BacktestError> {
     let fee_rate = config.fee_bps / crate::backtest::BPS_SCALE;
     let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
+    let accounting = accounting_mode(config);
+    let aligned_mark_bars = aligned_mark_bars(config, &execution_bars)?;
     let mut cash = config.initial_capital;
     let mut position = None::<PositionState>;
     let mut open_trade = None::<OpenTrade>;
@@ -116,6 +122,8 @@ pub(crate) fn simulate_backtest(
         let next_execution = execution_bars.get(execution_cursor).copied();
         let current_execution =
             next_execution.filter(|bar| bar.time.is_finite() && bar.time == open_time as f64);
+        let current_mark =
+            current_execution.and_then(|_| aligned_mark_bars.get(execution_cursor).copied());
         let mut position_events = PositionEventStep::default();
         let mut filled_record_indices = Vec::new();
         if let Some(bar) = current_execution {
@@ -216,6 +224,7 @@ pub(crate) fn simulate_backtest(
                             bar.time,
                             execution.raw_price,
                             execution_price,
+                            &accounting,
                             fee_rate,
                             &mut cash,
                             &mut position,
@@ -269,8 +278,14 @@ pub(crate) fn simulate_backtest(
                                         position_state,
                                         open_trade_state,
                                         active.request.size_fraction,
+                                        &accounting,
                                         fee_rate,
                                         &mut cash,
+                                    );
+                                    refresh_position_risk(
+                                        position_state,
+                                        &accounting,
+                                        current_mark.map(|mark| mark.close).unwrap_or(bar.close),
                                     );
                                     update_open_trade_excursions(
                                         open_trade_state,
@@ -291,8 +306,15 @@ pub(crate) fn simulate_backtest(
                                         snapshot: last_snapshot.clone(),
                                     },
                                     active.request.size_fraction,
+                                    &accounting,
                                     fee_rate,
                                     &mut cash,
+                                );
+                                let mut next_position = next_position;
+                                refresh_position_risk(
+                                    &mut next_position,
+                                    &accounting,
+                                    current_mark.map(|mark| mark.close).unwrap_or(bar.close),
                                 );
                                 update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
                                 fills.push(entry_fill);
@@ -326,6 +348,49 @@ pub(crate) fn simulate_backtest(
                             &mut orders,
                         );
                         filled_this_bar = true;
+                    }
+                }
+            }
+
+            if let (Some(mark_bar), Some(position_state)) = (current_mark, position.as_mut()) {
+                refresh_position_risk(position_state, &accounting, mark_bar.close);
+                if let Some(liquidation_price) = liquidation_trigger_price(
+                    position_state,
+                    mark_bar.open,
+                    mark_bar.high,
+                    mark_bar.low,
+                ) {
+                    let liquidation_outcome = force_liquidation(
+                        position_state.side,
+                        execution_cursor,
+                        bar.time,
+                        liquidation_price,
+                        fee_rate,
+                        &mut cash,
+                        &mut position,
+                        &mut open_trade,
+                        &mut fills,
+                        &mut trades,
+                        &mut trade_diagnostics,
+                        &mut total_realized_pnl,
+                    );
+                    if let Some(snapshot) = liquidation_outcome.snapshot {
+                        set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                        update_last_exit_snapshots(
+                            &mut last_exit,
+                            &mut last_long_exit,
+                            &mut last_short_exit,
+                            snapshot,
+                        );
+                    }
+                    if let Some(side) = liquidation_outcome.fully_closed_side {
+                        reset_target_consumption(&mut target_consumption, side);
+                        cancel_orders_for_closed_side(
+                            &mut active_orders,
+                            side,
+                            liquidation_signal_role(side),
+                            &mut orders,
+                        );
                     }
                 }
             }
@@ -382,9 +447,18 @@ pub(crate) fn simulate_backtest(
                 position.as_ref().map(|state| state.side),
             );
             let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
-            let gross_exposure = quantity.abs() * bar.close;
+            let mark_price = current_mark.map(|mark| mark.close).unwrap_or(bar.close);
+            let gross_exposure = quantity.abs() * mark_price;
             max_gross_exposure = max_gross_exposure.max(gross_exposure);
-            let equity = cash + quantity * bar.close;
+            let equity = match &accounting {
+                AccountingMode::Spot => cash + quantity * mark_price,
+                AccountingMode::PerpIsolated { .. } => {
+                    cash + position.as_ref().map_or(0.0, |state| state.isolated_margin)
+                        + position
+                            .as_ref()
+                            .map_or(0.0, |state| unrealized_pnl_for_position(state, mark_price))
+                }
+            };
             peak_equity = peak_equity.max(equity);
             max_drawdown = max_drawdown.max(peak_equity - equity);
             equity_curve.push(EquityPoint {
@@ -394,10 +468,14 @@ pub(crate) fn simulate_backtest(
                 equity,
                 position_side: position.as_ref().map(|state| state.side),
                 quantity,
-                mark_price: bar.close,
+                mark_price,
                 gross_exposure,
+                free_collateral: accounting.is_perp().then_some(cash),
+                isolated_margin: position.as_ref().map(|state| state.isolated_margin),
+                maintenance_margin: position.as_ref().map(|state| state.maintenance_margin),
+                liquidation_price: position.as_ref().and_then(|state| state.liquidation_price),
             });
-            last_mark_price = Some(bar.close);
+            last_mark_price = Some(mark_price);
             execution_cursor += 1;
         } else {
             diagnostics.observe_exports(
@@ -474,6 +552,13 @@ pub(crate) fn simulate_backtest(
             market_price: last_point.mark_price,
             market_time: last_point.time,
             unrealized_pnl: unrealized_pnl_for_position(&position, last_point.mark_price),
+            free_collateral: accounting.is_perp().then_some(last_point.cash),
+            isolated_margin: accounting.is_perp().then_some(position.isolated_margin),
+            maintenance_margin: accounting.is_perp().then_some(position.maintenance_margin),
+            liquidation_price: accounting
+                .is_perp()
+                .then_some(position.liquidation_price)
+                .flatten(),
         }),
         _ => None,
     };
@@ -511,6 +596,16 @@ pub(crate) fn simulate_backtest(
             max_gross_exposure,
         },
         open_position,
+        perp: config
+            .perp
+            .as_ref()
+            .zip(config.perp_context.as_ref())
+            .map(|(perp, context)| PerpBacktestMetadata {
+                leverage: perp.leverage,
+                margin_mode: perp.margin_mode,
+                mark_price_basis: context.mark_price_basis,
+                risk_snapshot: context.risk_snapshot.clone(),
+            }),
     })
 }
 
@@ -599,6 +694,12 @@ fn build_runtime_overrides(
             PositionEventField::ShortReversalExitFill => {
                 Value::Bool(position_events.short_reversal_exit_fill)
             }
+            PositionEventField::LongLiquidationFill => {
+                Value::Bool(position_events.long_liquidation_fill)
+            }
+            PositionEventField::ShortLiquidationFill => {
+                Value::Bool(position_events.short_liquidation_fill)
+            }
         };
         (decl.slot, value)
     }));
@@ -638,6 +739,7 @@ fn set_exit_events(position_events: &mut PositionEventStep, side: PositionSide, 
                 ExitKind::Target => position_events.long_target_fill = true,
                 ExitKind::Signal => position_events.long_signal_exit_fill = true,
                 ExitKind::Reversal => position_events.long_reversal_exit_fill = true,
+                ExitKind::Liquidation => position_events.long_liquidation_fill = true,
             }
         }
         PositionSide::Short => {
@@ -647,6 +749,7 @@ fn set_exit_events(position_events: &mut PositionEventStep, side: PositionSide, 
                 ExitKind::Target => position_events.short_target_fill = true,
                 ExitKind::Signal => position_events.short_signal_exit_fill = true,
                 ExitKind::Reversal => position_events.short_reversal_exit_fill = true,
+                ExitKind::Liquidation => position_events.short_liquidation_fill = true,
             }
         }
     }
@@ -996,6 +1099,7 @@ fn maybe_close_position_for_role(
     time: f64,
     raw_price: f64,
     execution_price: f64,
+    accounting: &AccountingMode,
     fee_rate: f64,
     cash: &mut f64,
     position: &mut Option<PositionState>,
@@ -1049,20 +1153,43 @@ fn maybe_close_position_for_role(
         .as_ref()
         .expect("open position should exist")
         .clone();
-    let exit_fill = close_position(
-        CloseExecution {
-            execution: FillExecutionContext {
+    let exit_fill = match accounting {
+        AccountingMode::Spot => close_position(
+            CloseExecution {
+                execution: FillExecutionContext {
+                    bar_index,
+                    time,
+                    raw_price,
+                    execution_price,
+                },
+                cash,
+                position: &closed_position,
+                quantity: Some(close_quantity),
+            },
+            fee_rate,
+        ),
+        AccountingMode::PerpIsolated { .. } => {
+            let action = realize_perp_close(
+                cash,
+                &closed_position,
+                execution_price,
+                close_quantity,
+                fee_rate,
+            );
+            let notional = close_quantity * execution_price;
+            let fee = notional * fee_rate;
+            Fill {
                 bar_index,
                 time,
+                action,
+                quantity: close_quantity,
                 raw_price,
-                execution_price,
-            },
-            cash,
-            position: &closed_position,
-            quantity: Some(close_quantity),
-        },
-        fee_rate,
-    );
+                price: execution_price,
+                notional,
+                fee,
+            }
+        }
+    };
     let (
         trade,
         side,
@@ -1155,6 +1282,16 @@ fn maybe_close_position_for_role(
             PositionSide::Long => remaining_quantity,
             PositionSide::Short => -remaining_quantity,
         };
+        if matches!(accounting, AccountingMode::PerpIsolated { .. }) {
+            let release_fraction = if closed_position.quantity.abs() < crate::backtest::EPSILON {
+                0.0
+            } else {
+                close_quantity / closed_position.quantity.abs()
+            };
+            state.isolated_margin =
+                (closed_position.isolated_margin * (1.0 - release_fraction)).max(0.0);
+            refresh_position_risk(state, accounting, execution_price);
+        }
     }
     crate::backtest::orders::zero_small_cash(cash);
     CloseOutcome {
@@ -1225,6 +1362,7 @@ fn exit_kind_for_role(role: SignalRole) -> ExitKind {
         TradeExitClassification::Protect => ExitKind::Protect,
         TradeExitClassification::Target => ExitKind::Target,
         TradeExitClassification::Reversal => ExitKind::Reversal,
+        TradeExitClassification::Liquidation => ExitKind::Liquidation,
     }
 }
 
@@ -1250,7 +1388,170 @@ fn current_position_snapshot(
         market_price: mark_price,
         market_time,
         unrealized_pnl: unrealized_pnl_for_position(state, mark_price),
+        free_collateral: None,
+        isolated_margin: None,
+        maintenance_margin: None,
+        liquidation_price: None,
     })
+}
+
+fn accounting_mode(config: &BacktestConfig) -> AccountingMode {
+    match (config.perp.as_ref(), config.perp_context.as_ref()) {
+        (Some(perp), Some(context)) => AccountingMode::PerpIsolated {
+            leverage: perp.leverage,
+            risk_tiers: risk_tiers(&context.risk_snapshot).to_vec(),
+        },
+        _ => AccountingMode::Spot,
+    }
+}
+
+fn risk_tiers(snapshot: &VenueRiskSnapshot) -> &[crate::backtest::RiskTier] {
+    match snapshot {
+        VenueRiskSnapshot::BinanceUsdm(snapshot) => &snapshot.brackets,
+        VenueRiskSnapshot::HyperliquidPerps(snapshot) => &snapshot.tiers,
+    }
+}
+
+fn aligned_mark_bars(
+    config: &BacktestConfig,
+    execution_bars: &[Bar],
+) -> Result<Vec<Bar>, BacktestError> {
+    let Some(context) = config.perp_context.as_ref() else {
+        return Ok(execution_bars.to_vec());
+    };
+    let mut by_time = std::collections::BTreeMap::<i64, Bar>::new();
+    for bar in &context.mark_bars {
+        by_time.insert(bar.time as i64, *bar);
+    }
+    let mut aligned = Vec::with_capacity(execution_bars.len());
+    for execution_bar in execution_bars {
+        let Some(mark_bar) = by_time.get(&(execution_bar.time as i64)).copied() else {
+            return Err(BacktestError::MissingPerpMarkFeed {
+                alias: config.execution_source_alias.clone(),
+            });
+        };
+        aligned.push(mark_bar);
+    }
+    Ok(aligned)
+}
+
+fn liquidation_signal_role(side: PositionSide) -> SignalRole {
+    match side {
+        PositionSide::Long => SignalRole::ProtectLong,
+        PositionSide::Short => SignalRole::ProtectShort,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn force_liquidation(
+    side: PositionSide,
+    bar_index: usize,
+    time: f64,
+    execution_price: f64,
+    fee_rate: f64,
+    cash: &mut f64,
+    position: &mut Option<PositionState>,
+    open_trade: &mut Option<OpenTrade>,
+    fills: &mut Vec<Fill>,
+    trades: &mut Vec<Trade>,
+    trade_diagnostics: &mut Vec<TradeDiagnostic>,
+    total_realized_pnl: &mut f64,
+) -> CloseOutcome {
+    let closed_position = position
+        .as_ref()
+        .expect("liquidation requires an open position")
+        .clone();
+    let quantity = closed_position.quantity.abs();
+    let action = realize_perp_close(cash, &closed_position, execution_price, quantity, fee_rate);
+    let notional = quantity * execution_price;
+    let fee = notional * fee_rate;
+    let exit_fill = Fill {
+        bar_index,
+        time,
+        action,
+        quantity,
+        raw_price: execution_price,
+        price: execution_price,
+        notional,
+        fee,
+    };
+    let (
+        trade,
+        entry_order_id,
+        entry_role,
+        entry_kind,
+        entry_snapshot,
+        entry_time,
+        entry_price,
+        mae_price_delta,
+        mfe_price_delta,
+        bars_held,
+    ) = {
+        let open_trade = open_trade
+            .as_mut()
+            .expect("liquidation requires an open trade");
+        let trade = close_trade_slice(open_trade, exit_fill.clone(), quantity);
+        (
+            trade,
+            open_trade.entry_order_id,
+            open_trade.entry_role,
+            open_trade.entry_kind,
+            open_trade.entry_snapshot.clone(),
+            open_trade.entry.time,
+            open_trade.entry.price,
+            open_trade.mae_price_delta,
+            open_trade.mfe_price_delta,
+            exit_fill
+                .bar_index
+                .saturating_sub(open_trade.entry.bar_index),
+        )
+    };
+    let entry_notional = trade.entry.notional.abs();
+    let realized_pnl = trade.realized_pnl;
+    let realized_return = if entry_notional.abs() < crate::backtest::EPSILON {
+        0.0
+    } else {
+        realized_pnl / entry_notional
+    };
+    *total_realized_pnl += realized_pnl;
+    fills.push(exit_fill.clone());
+    trade_diagnostics.push(TradeDiagnostic {
+        trade_id: trades.len(),
+        side,
+        entry_order_id,
+        exit_order_id: usize::MAX,
+        entry_role,
+        exit_role: liquidation_signal_role(side),
+        entry_kind,
+        exit_kind: OrderKind::Market,
+        exit_classification: TradeExitClassification::Liquidation,
+        entry_snapshot,
+        exit_snapshot: None,
+        bars_held,
+        duration_ms: exit_fill.time - entry_time,
+        realized_pnl,
+        mae_price_delta,
+        mfe_price_delta,
+        mae_pct: pct_delta(mae_price_delta, entry_price),
+        mfe_pct: pct_delta(mfe_price_delta, entry_price),
+    });
+    trades.push(trade);
+    *position = None;
+    *open_trade = None;
+    CloseOutcome {
+        snapshot: Some(LastExitSnapshot {
+            kind: ExitKind::Liquidation,
+            side,
+            price: exit_fill.price,
+            time: exit_fill.time,
+            bar_index: exit_fill.bar_index,
+            realized_pnl,
+            realized_return,
+            bars_held,
+        }),
+        fully_closed_side: Some(side),
+        consumed_target_side: None,
+    }
 }
 
 fn pct_delta(delta: f64, price: f64) -> f64 {

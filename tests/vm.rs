@@ -870,6 +870,7 @@ fn valuewhen_preserves_bool_source_type() {
 fn position_event_namespace_is_false_outside_backtests() {
     let compiled = palmscript::compile(&with_interval(
         "export entry_fill = position_event.long_entry_fill
+export liquidation_fill = position_event.long_liquidation_fill
 export trail = highest_since(position_event.long_entry_fill, close)
 plot(0)",
     ))
@@ -885,6 +886,9 @@ plot(0)",
         assert_eq!(point.value, palmscript::OutputValue::Bool(false));
     }
     for point in &outputs.exports[1].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(false));
+    }
+    for point in &outputs.exports[2].points {
         assert_eq!(point.value, palmscript::OutputValue::NA);
     }
 }
@@ -895,6 +899,7 @@ fn last_exit_namespace_is_na_outside_backtests() {
         "export target_fill = position_event.long_target_fill
 export last_exit_price = last_long_exit.price
 export was_target = last_long_exit.kind == exit_kind.target
+export was_liquidation = last_long_exit.kind == exit_kind.liquidation
 plot(0)",
     ))
     .expect("script compiles");
@@ -912,6 +917,9 @@ plot(0)",
         assert_eq!(point.value, palmscript::OutputValue::NA);
     }
     for point in &outputs.exports[2].points {
+        assert_eq!(point.value, palmscript::OutputValue::NA);
+    }
+    for point in &outputs.exports[3].points {
         assert_eq!(point.value, palmscript::OutputValue::NA);
     }
 }

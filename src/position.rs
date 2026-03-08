@@ -36,6 +36,7 @@ pub enum ExitKind {
     Target,
     Signal,
     Reversal,
+    Liquidation,
 }
 
 impl ExitKind {
@@ -45,6 +46,7 @@ impl ExitKind {
             Self::Target => "target",
             Self::Signal => "signal",
             Self::Reversal => "reversal",
+            Self::Liquidation => "liquidation",
         }
     }
 
@@ -54,6 +56,7 @@ impl ExitKind {
             "target" => Some(Self::Target),
             "signal" => Some(Self::Signal),
             "reversal" => Some(Self::Reversal),
+            "liquidation" => Some(Self::Liquidation),
             _ => None,
         }
     }
@@ -126,6 +129,8 @@ pub enum PositionEventField {
     ShortSignalExitFill,
     LongReversalExitFill,
     ShortReversalExitFill,
+    LongLiquidationFill,
+    ShortLiquidationFill,
 }
 
 impl PositionEventField {
@@ -143,6 +148,8 @@ impl PositionEventField {
             Self::ShortSignalExitFill => "short_signal_exit_fill",
             Self::LongReversalExitFill => "long_reversal_exit_fill",
             Self::ShortReversalExitFill => "short_reversal_exit_fill",
+            Self::LongLiquidationFill => "long_liquidation_fill",
+            Self::ShortLiquidationFill => "short_liquidation_fill",
         }
     }
 
@@ -160,6 +167,8 @@ impl PositionEventField {
             "short_signal_exit_fill" => Some(Self::ShortSignalExitFill),
             "long_reversal_exit_fill" => Some(Self::LongReversalExitFill),
             "short_reversal_exit_fill" => Some(Self::ShortReversalExitFill),
+            "long_liquidation_fill" => Some(Self::LongLiquidationFill),
+            "short_liquidation_fill" => Some(Self::ShortLiquidationFill),
             _ => None,
         }
     }

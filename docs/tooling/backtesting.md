@@ -30,6 +30,17 @@ Backtest results depend on the script, venue, time window, fees, and slippage.
 Treat any performance report as strategy-specific rather than a property of the
 backtester itself.
 
+Perp execution sources also accept isolated-margin controls:
+
+```bash
+palmscript run backtest strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --execution-source perp \
+  --leverage 3 \
+  --margin-mode isolated
+```
+
 Run a rolling walk-forward evaluation:
 
 ```bash
@@ -84,6 +95,8 @@ let result = run_backtest_with_sources(
         initial_capital: 10_000.0,
         fee_bps: 5.0,
         slippage_bps: 2.0,
+        perp: None,
+        perp_context: None,
     },
 )
 .expect("backtest succeeds");
@@ -118,6 +131,8 @@ let result = run_walk_forward_with_sources(
             initial_capital: 10_000.0,
             fee_bps: 5.0,
             slippage_bps: 2.0,
+            perp: None,
+            perp_context: None,
         },
         train_bars: 252,
         test_bars: 63,
@@ -142,6 +157,7 @@ The result includes:
 - per-bar account marks in `equity_curve`
 - aggregate metrics in `summary`
 - any still-open position in `open_position`
+- optional perp metadata in `perp`
 
 Walk-forward results instead include:
 
@@ -166,7 +182,7 @@ iteration. It currently includes:
 - per-order diagnostics with signal, placement, and fill snapshots of named `export` features
 - per-order position snapshots at placement and fill time for attached exits and other order paths
 - per-trade diagnostics with entry and exit snapshots, MAE, MFE, holding time, and exit classification
-- aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, protect, target, and reversal exits
+- aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, protect, target, reversal, and liquidation exits
 - capture summaries that compare strategy return with execution-asset return, time spent flat or in market, and opportunity cost while flat
 - export summaries for every named `export`, including numeric distribution stats and bool regime/setup activation counts
 - bounded opportunity events for bool-export activations and backtest-consumed signal decisions, each with forward-return context over `1`, `6`, and `24` execution bars
@@ -227,7 +243,8 @@ Actual-fill anchor helpers:
 - `position_event.long_entry_fill`, `position_event.short_entry_fill`, `position_event.long_exit_fill`, and `position_event.short_exit_fill` expose aggregate real backtest fill events as `series<bool>`
 - exit-kind-specific events are also available:
   `position_event.long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
-  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`, and `short_reversal_exit_fill`
+  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
+  `short_reversal_exit_fill`, `long_liquidation_fill`, and `short_liquidation_fill`
 - anchored helpers such as `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, and `valuewhen_since` can use those events directly
 - example: `protect long = stop_market(highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
 - outside backtests, `position_event.*` stays deterministic by evaluating to `false` on every step
@@ -237,7 +254,7 @@ Latest closed-trade state:
 - `last_exit.*` exposes the most recent closed trade regardless of side
 - `last_long_exit.*` and `last_short_exit.*` keep side-specific latest-closed-trade snapshots
 - available fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
-- `last_*_exit.kind` compares against `exit_kind.protect`, `exit_kind.target`, `exit_kind.signal`, and `exit_kind.reversal`
+- `last_*_exit.kind` compares against `exit_kind.protect`, `exit_kind.target`, `exit_kind.signal`, `exit_kind.reversal`, and `exit_kind.liquidation`
 - outside backtests, `last_*_exit.*` evaluates to `na`
 
 Legacy compatibility bridge:
@@ -270,8 +287,12 @@ The backtester stays intentionally simple and deterministic:
 - same-side scale-in fills do not emit `position_event.*_entry_fill`; those events still represent opening a new net position
 - a partial target is one-shot for the current position: once that side's target has filled, the remaining runner stays managed by `protect` / discretionary `exit` until the position fully closes
 - if `protect` and `target` both become fillable on one execution bar, `protect` fills and `target` is cancelled
-- open positions are marked to market on the execution-source close and are not
-  force-closed at the end of the run
+- spot venues continue to use the original cash/notional model
+- perp venues now support isolated margin, per-venue risk tiers, leverage, and deterministic liquidation checks
+- liquidation checks run after fills and before the strategy step on the same execution bar
+- Binance USD-M uses premium-index kline bars as the liquidation mark basis
+- Hyperliquid perps currently use execution-price candles as the liquidation mark fallback because the public REST API does not expose historical mark candles directly
+- open positions are not force-closed at the end of the run unless liquidation was triggered earlier
 
 Supported order constructors:
 
@@ -304,11 +325,22 @@ Venue profile notes:
 - Hyperliquid Spot and Hyperliquid Perps currently support `tif.gtc` and `tif.ioc`, and trigger orders use `trigger_ref.mark`
 - venue-incompatible orders are rejected before simulation starts
 
+Perp startup requirements:
+
+- Binance USD-M live leverage brackets require:
+  - `PALMSCRIPT_BINANCE_USDM_API_KEY`
+  - `PALMSCRIPT_BINANCE_USDM_API_SECRET`
+- the fetched live risk snapshot is embedded in `BacktestResult.perp`
+- walk-forward reuses one fetched perp context across all stitched segments in the same run
+
 ## Current Scope
 
 Not included in V1:
 
 - partial fills
 - order book or queue-position modeling
-- leverage beyond the implicit 1x gross-notional model
-- funding, borrow fees, or liquidation logic
+- cross-margin accounting
+- funding payments
+- borrow fees
+- venue liquidation penalty fees
+- dedicated historical mark-price candles for Hyperliquid perps

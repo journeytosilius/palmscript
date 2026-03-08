@@ -213,6 +213,11 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     );
     let _ = writeln!(
         out,
+        "liquidation_exit_count={}",
+        result.diagnostics.summary.liquidation_exit_count
+    );
+    let _ = writeln!(
+        out,
         "execution_asset_return_pct={:.2}",
         result.diagnostics.capture_summary.execution_asset_return * 100.0
     );
@@ -338,8 +343,27 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         let _ = writeln!(out, "entry_price={:.2}", position.entry_price);
         let _ = writeln!(out, "market_price={:.2}", position.market_price);
         let _ = writeln!(out, "unrealized_pnl={:.2}", position.unrealized_pnl);
+        if let Some(free_collateral) = position.free_collateral {
+            let _ = writeln!(out, "free_collateral={:.2}", free_collateral);
+        }
+        if let Some(isolated_margin) = position.isolated_margin {
+            let _ = writeln!(out, "isolated_margin={:.2}", isolated_margin);
+        }
+        if let Some(maintenance_margin) = position.maintenance_margin {
+            let _ = writeln!(out, "maintenance_margin={:.2}", maintenance_margin);
+        }
+        if let Some(liquidation_price) = position.liquidation_price {
+            let _ = writeln!(out, "liquidation_price={:.2}", liquidation_price);
+        }
     } else {
         out.push_str("flat\n");
+    }
+
+    if let Some(perp) = &result.perp {
+        out.push_str("Perp Context\n");
+        let _ = writeln!(out, "leverage={:.2}", perp.leverage);
+        let _ = writeln!(out, "margin_mode={:?}", perp.margin_mode);
+        let _ = writeln!(out, "mark_price_basis={:?}", perp.mark_price_basis);
     }
 
     out
@@ -386,7 +410,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
         for segment in &result.segments[start..] {
             let _ = writeln!(
                 out,
-                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2} protect_exit_count={} target_exit_count={} flat_bar_pct={:.2}",
+                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2} protect_exit_count={} target_exit_count={} liquidation_exit_count={} flat_bar_pct={:.2}",
                 segment.segment_index,
                 segment.train_from,
                 segment.train_to,
@@ -399,6 +423,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
                 segment.out_of_sample.max_drawdown,
                 segment.out_of_sample_diagnostics.summary.protect_exit_count,
                 segment.out_of_sample_diagnostics.summary.target_exit_count,
+                segment.out_of_sample_diagnostics.summary.liquidation_exit_count,
                 segment.out_of_sample_diagnostics.capture_summary.flat_bar_pct * 100.0,
             );
         }
@@ -427,13 +452,14 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
                 .unwrap_or_else(|| "none".to_string());
             let _ = writeln!(
                 out,
-                "index={} test_from={} test_to={} test_return_pct={:.2} protect_exit_count={} target_exit_count={} opportunity_event_count={} top_bool_export={}",
+                "index={} test_from={} test_to={} test_return_pct={:.2} protect_exit_count={} target_exit_count={} liquidation_exit_count={} opportunity_event_count={} top_bool_export={}",
                 segment.segment_index,
                 segment.test_from,
                 segment.test_to,
                 segment.out_of_sample.total_return * 100.0,
                 segment.out_of_sample_diagnostics.summary.protect_exit_count,
                 segment.out_of_sample_diagnostics.summary.target_exit_count,
+                segment.out_of_sample_diagnostics.summary.liquidation_exit_count,
                 segment.out_of_sample_diagnostics.opportunity_event_count,
                 top_export,
             );
@@ -726,6 +752,10 @@ mod tests {
                 quantity: 0.0,
                 mark_price: 100.0,
                 gross_exposure: 0.0,
+                free_collateral: None,
+                isolated_margin: None,
+                maintenance_margin: None,
+                liquidation_price: None,
             }],
             summary: BacktestSummary {
                 starting_equity: 1000.0,
@@ -753,6 +783,7 @@ mod tests {
                     protect_exit_count: 0,
                     target_exit_count: 0,
                     reversal_exit_count: 0,
+                    liquidation_exit_count: 0,
                     by_order_kind: vec![],
                     by_side: vec![],
                 },
@@ -812,6 +843,7 @@ mod tests {
                 }],
             },
             open_position: None,
+            perp: None,
         };
 
         let rendered = render_backtest_text(&result);

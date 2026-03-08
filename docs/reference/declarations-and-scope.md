@@ -163,9 +163,11 @@ Rules:
 - current `position_event` fields are:
   `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, `short_exit_fill`,
   `long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
-  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`, and `short_reversal_exit_fill`
+  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
+  `short_reversal_exit_fill`, `long_liquidation_fill`, and `short_liquidation_fill`
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are available anywhere ordinary expressions are valid
 - current `last_*_exit` fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
+- `last_*_exit.kind` includes `exit_kind.liquidation` in addition to the existing exit kinds
 - legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 
 ## Conditional Scope

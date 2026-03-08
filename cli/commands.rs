@@ -2,14 +2,15 @@ use std::fs;
 use std::path::Path;
 
 use palmscript::{
-    compile, fetch_source_runtime_config, run_backtest_with_sources, run_walk_forward_with_sources,
-    run_with_sources, BacktestConfig, CompiledProgram, ExchangeEndpoints, RuntimeError, VmLimits,
+    compile, fetch_perp_backtest_context, fetch_source_runtime_config, run_backtest_with_sources,
+    run_walk_forward_with_sources, run_with_sources, BacktestConfig, CompiledProgram,
+    ExchangeEndpoints, PerpBacktestConfig, PerpMarginMode, RuntimeError, SourceTemplate, VmLimits,
     WalkForwardConfig,
 };
 
 use crate::args::{
-    BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs, MarketRunArgs,
-    OutputFormat, RunCommand, WalkForwardRunArgs,
+    BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs,
+    MarketRunArgs, OutputFormat, RunCommand, WalkForwardRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
 use crate::format::{
@@ -70,14 +71,13 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
     if compiled.program.declared_sources.is_empty() {
         return Err("backtest mode requires at least one `source` declaration".to_string());
     }
-    let execution_source_alias = resolve_execution_source_alias(&compiled, args.execution_source)?;
-    let runtime = fetch_source_runtime_config(
-        &compiled,
-        args.from,
-        args.to,
-        &ExchangeEndpoints::from_env(),
-    )
-    .map_err(|err| format!("backtest mode error: {err}"))?;
+    let execution_source_alias =
+        resolve_execution_source_alias(&compiled, args.execution_source.clone())?;
+    let endpoints = ExchangeEndpoints::from_env();
+    let runtime = fetch_source_runtime_config(&compiled, args.from, args.to, &endpoints)
+        .map_err(|err| format!("backtest mode error: {err}"))?;
+    let (perp, perp_context) =
+        resolve_perp_backtest_context(&compiled, &execution_source_alias, &args, &endpoints)?;
     let result = run_backtest_with_sources(
         &compiled,
         runtime,
@@ -90,6 +90,8 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             initial_capital: args.initial_capital,
             fee_bps: args.fee_bps,
             slippage_bps: args.slippage_bps,
+            perp,
+            perp_context,
         },
     )
     .map_err(|err| format!("backtest mode error: {err}"))?;
@@ -109,14 +111,13 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
     if compiled.program.declared_sources.is_empty() {
         return Err("walk-forward mode requires at least one `source` declaration".to_string());
     }
-    let execution_source_alias = resolve_execution_source_alias(&compiled, args.execution_source)?;
-    let runtime = fetch_source_runtime_config(
-        &compiled,
-        args.from,
-        args.to,
-        &ExchangeEndpoints::from_env(),
-    )
-    .map_err(|err| format!("walk-forward mode error: {err}"))?;
+    let execution_source_alias =
+        resolve_execution_source_alias(&compiled, args.execution_source.clone())?;
+    let endpoints = ExchangeEndpoints::from_env();
+    let runtime = fetch_source_runtime_config(&compiled, args.from, args.to, &endpoints)
+        .map_err(|err| format!("walk-forward mode error: {err}"))?;
+    let (perp, perp_context) =
+        resolve_walk_forward_perp_context(&compiled, &execution_source_alias, &args, &endpoints)?;
     let result = run_walk_forward_with_sources(
         &compiled,
         runtime,
@@ -130,6 +131,8 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
                 initial_capital: args.initial_capital,
                 fee_bps: args.fee_bps,
                 slippage_bps: args.slippage_bps,
+                perp,
+                perp_context,
             },
             train_bars: args.train_bars,
             test_bars: args.test_bars,
@@ -188,6 +191,123 @@ fn resolve_execution_source_alias(
             "backtest mode requires --execution-source when the script declares multiple `source`s"
                 .to_string(),
         ),
+    }
+}
+
+fn resolve_perp_backtest_context(
+    compiled: &CompiledProgram,
+    execution_source_alias: &str,
+    args: &BacktestRunArgs,
+    endpoints: &ExchangeEndpoints,
+) -> Result<
+    (
+        Option<PerpBacktestConfig>,
+        Option<palmscript::PerpBacktestContext>,
+    ),
+    String,
+> {
+    let source = compiled
+        .program
+        .declared_sources
+        .iter()
+        .find(|source| source.alias == execution_source_alias)
+        .ok_or_else(|| format!("unknown execution source `{execution_source_alias}`"))?;
+    resolve_perp_context(
+        source.template,
+        source,
+        compiled.program.base_interval,
+        PerpCliOptions {
+            from: args.from,
+            to: args.to,
+            leverage: args.leverage,
+            margin_mode: args.margin_mode,
+        },
+        endpoints,
+    )
+}
+
+fn resolve_walk_forward_perp_context(
+    compiled: &CompiledProgram,
+    execution_source_alias: &str,
+    args: &WalkForwardRunArgs,
+    endpoints: &ExchangeEndpoints,
+) -> Result<
+    (
+        Option<PerpBacktestConfig>,
+        Option<palmscript::PerpBacktestContext>,
+    ),
+    String,
+> {
+    let source = compiled
+        .program
+        .declared_sources
+        .iter()
+        .find(|source| source.alias == execution_source_alias)
+        .ok_or_else(|| format!("unknown execution source `{execution_source_alias}`"))?;
+    resolve_perp_context(
+        source.template,
+        source,
+        compiled.program.base_interval,
+        PerpCliOptions {
+            from: args.from,
+            to: args.to,
+            leverage: args.leverage,
+            margin_mode: args.margin_mode,
+        },
+        endpoints,
+    )
+}
+
+#[derive(Clone, Copy)]
+struct PerpCliOptions {
+    from: i64,
+    to: i64,
+    leverage: Option<f64>,
+    margin_mode: Option<BacktestMarginMode>,
+}
+
+fn resolve_perp_context(
+    template: SourceTemplate,
+    source: &palmscript::DeclaredMarketSource,
+    base_interval: Option<palmscript::Interval>,
+    options: PerpCliOptions,
+    endpoints: &ExchangeEndpoints,
+) -> Result<
+    (
+        Option<PerpBacktestConfig>,
+        Option<palmscript::PerpBacktestContext>,
+    ),
+    String,
+> {
+    let margin_mode = match options.margin_mode.unwrap_or(BacktestMarginMode::Isolated) {
+        BacktestMarginMode::Isolated => PerpMarginMode::Isolated,
+    };
+    match template {
+        SourceTemplate::BinanceSpot | SourceTemplate::HyperliquidSpot => {
+            if options.leverage.is_some() || !matches!(margin_mode, PerpMarginMode::Isolated) {
+                return Err(format!(
+                    "spot source `{}` does not accept --leverage or --margin-mode",
+                    source.alias
+                ));
+            }
+            Ok((None, None))
+        }
+        SourceTemplate::BinanceUsdm | SourceTemplate::HyperliquidPerps => {
+            let interval = base_interval.ok_or_else(|| {
+                format!(
+                    "perp backtest for `{}` requires a base interval declaration",
+                    source.alias
+                )
+            })?;
+            let perp = PerpBacktestConfig {
+                leverage: options.leverage.unwrap_or(1.0),
+                margin_mode,
+            };
+            let context =
+                fetch_perp_backtest_context(source, interval, options.from, options.to, endpoints)
+                    .map_err(|err| format!("perp context error: {err}"))?;
+            Ok((Some(perp), context))
+        }
     }
 }
 

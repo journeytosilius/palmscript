@@ -31,6 +31,71 @@ pub struct BacktestConfig {
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,
+    pub perp: Option<PerpBacktestConfig>,
+    pub perp_context: Option<PerpBacktestContext>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PerpMarginMode {
+    Isolated,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PerpBacktestConfig {
+    pub leverage: f64,
+    pub margin_mode: PerpMarginMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkPriceBasis {
+    BinancePremiumIndexKlines,
+    HyperliquidExecutionFallback,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RiskTier {
+    pub lower_bound: f64,
+    pub upper_bound: Option<f64>,
+    pub max_leverage: f64,
+    pub maintenance_margin_rate: f64,
+    pub maintenance_amount: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BinanceUsdmRiskSnapshot {
+    pub symbol: String,
+    pub fetched_at_ms: i64,
+    pub brackets: Vec<RiskTier>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HyperliquidPerpsRiskSnapshot {
+    pub coin: String,
+    pub fetched_at_ms: i64,
+    pub margin_table_id: u32,
+    pub tiers: Vec<RiskTier>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "venue_kind", rename_all = "snake_case")]
+pub enum VenueRiskSnapshot {
+    BinanceUsdm(BinanceUsdmRiskSnapshot),
+    HyperliquidPerps(HyperliquidPerpsRiskSnapshot),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PerpBacktestContext {
+    pub mark_price_basis: MarkPriceBasis,
+    pub mark_bars: Vec<Bar>,
+    pub risk_snapshot: VenueRiskSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PerpBacktestMetadata {
+    pub leverage: f64,
+    pub margin_mode: PerpMarginMode,
+    pub mark_price_basis: MarkPriceBasis,
+    pub risk_snapshot: VenueRiskSnapshot,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +135,10 @@ pub struct PositionSnapshot {
     pub market_price: f64,
     pub market_time: f64,
     pub unrealized_pnl: f64,
+    pub free_collateral: Option<f64>,
+    pub isolated_margin: Option<f64>,
+    pub maintenance_margin: Option<f64>,
+    pub liquidation_price: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -82,6 +151,10 @@ pub struct EquityPoint {
     pub quantity: f64,
     pub mark_price: f64,
     pub gross_exposure: f64,
+    pub free_collateral: Option<f64>,
+    pub isolated_margin: Option<f64>,
+    pub maintenance_margin: Option<f64>,
+    pub liquidation_price: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -265,6 +338,7 @@ pub enum TradeExitClassification {
     Protect,
     Target,
     Reversal,
+    Liquidation,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -339,6 +413,7 @@ pub struct BacktestDiagnosticSummary {
     pub protect_exit_count: usize,
     pub target_exit_count: usize,
     pub reversal_exit_count: usize,
+    pub liquidation_exit_count: usize,
     pub by_order_kind: Vec<OrderKindDiagnosticSummary>,
     pub by_side: Vec<SideDiagnosticSummary>,
 }
@@ -363,6 +438,7 @@ pub struct BacktestResult {
     pub equity_curve: Vec<EquityPoint>,
     pub summary: BacktestSummary,
     pub open_position: Option<PositionSnapshot>,
+    pub perp: Option<PerpBacktestMetadata>,
 }
 
 pub use walk_forward::{
@@ -385,6 +461,18 @@ pub enum BacktestError {
     InvalidFeeBps { value: f64 },
     #[error("backtest slippage_bps must be finite and >= 0, found {value}")]
     InvalidSlippageBps { value: f64 },
+    #[error("backtest leverage must be finite and >= 1.0, found {value}")]
+    InvalidLeverage { value: f64 },
+    #[error("backtest only supports isolated perp margin mode, found {mode:?}")]
+    UnsupportedPerpMarginMode { mode: PerpMarginMode },
+    #[error("spot execution source `{alias}` cannot use perp-only backtest settings")]
+    SpotPerpConfigMismatch { alias: String },
+    #[error("perp execution source `{alias}` requires a venue risk snapshot and mark-price feed")]
+    MissingPerpContext { alias: String },
+    #[error(
+        "perp execution source `{alias}` requires mark-price bars aligned to the execution window"
+    )]
+    MissingPerpMarkFeed { alias: String },
     #[error("backtest requires entry/exit signals for long and short; missing={missing:?}, available={available:?}")]
     MissingSignalRoles {
         missing: Vec<String>,
@@ -414,10 +502,39 @@ pub fn run_backtest_with_sources(
     compiled: &CompiledProgram,
     runtime: SourceRuntimeConfig,
     vm_limits: VmLimits,
-    config: BacktestConfig,
+    mut config: BacktestConfig,
 ) -> Result<BacktestResult, BacktestError> {
     validate_config(&config)?;
     let execution = bridge::resolve_execution_source(compiled, &config.execution_source_alias)?;
+    match execution.template {
+        crate::interval::SourceTemplate::BinanceSpot
+        | crate::interval::SourceTemplate::HyperliquidSpot => {
+            if config.perp.is_some() || config.perp_context.is_some() {
+                return Err(BacktestError::SpotPerpConfigMismatch {
+                    alias: config.execution_source_alias.clone(),
+                });
+            }
+        }
+        crate::interval::SourceTemplate::BinanceUsdm
+        | crate::interval::SourceTemplate::HyperliquidPerps => {
+            if config.perp.is_none() {
+                config.perp = Some(PerpBacktestConfig {
+                    leverage: 1.0,
+                    margin_mode: PerpMarginMode::Isolated,
+                });
+            }
+            if config.perp_context.is_none()
+                && config
+                    .perp
+                    .as_ref()
+                    .is_some_and(|perp| perp.leverage > 1.0 + EPSILON)
+            {
+                return Err(BacktestError::MissingPerpContext {
+                    alias: config.execution_source_alias.clone(),
+                });
+            }
+        }
+    }
     let execution_bars = execution_bars(
         &runtime,
         execution.source_id,
@@ -444,6 +561,18 @@ fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
         return Err(BacktestError::InvalidSlippageBps {
             value: config.slippage_bps,
         });
+    }
+    if let Some(perp) = &config.perp {
+        if !perp.leverage.is_finite() || perp.leverage < 1.0 {
+            return Err(BacktestError::InvalidLeverage {
+                value: perp.leverage,
+            });
+        }
+        if !matches!(perp.margin_mode, PerpMarginMode::Isolated) {
+            return Err(BacktestError::UnsupportedPerpMarginMode {
+                mode: perp.margin_mode,
+            });
+        }
     }
     Ok(())
 }

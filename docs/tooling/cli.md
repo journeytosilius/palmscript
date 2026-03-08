@@ -61,6 +61,18 @@ Use backtest mode when:
 
 Backtest mode compiles the script, fetches all required source feeds, runs the VM, collects trigger events, resolves venue-aware order templates, and simulates fills on the selected execution source.
 
+Perp execution sources also accept:
+
+- `--leverage <N>`
+- `--margin-mode isolated`
+
+Current V1 notes:
+
+- spot sources reject `--leverage` and `--margin-mode`
+- perp sources default to isolated `1.0x` when those flags are omitted
+- Binance USD-M requires `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET` to fetch live leverage brackets
+- Hyperliquid perps fetch live margin tables publicly and currently use execution candles as the liquidation-mark fallback
+
 When the script declares exactly one `source`, backtest mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
 
 ## Run Walk-Forward Evaluation
@@ -102,6 +114,7 @@ Backtest mode supports the same output formats.
 
 - JSON output includes order lifecycle records in `orders`
 - JSON output also includes backtest diagnostics in `diagnostics`, including order/trade context, capture summaries, export summaries, and opportunity events
+- JSON output includes optional perp metadata in `perp` when the execution source is a perp venue
 - text output includes compact diagnostics, order, and trade summaries plus short export/opportunity sections when available
 
 Walk-forward mode also supports `json` and `text`.

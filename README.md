@@ -30,6 +30,7 @@ PalmScript currently implements:
 - an expanding executable TA-Lib-style builtin surface, with remaining reserved catalog names exposed through diagnostics and IDE metadata
 - exchange-backed execution through `palmscript run market`
 - venue-aware signal-to-portfolio backtesting through `palmscript run backtest` and `run_backtest_with_sources`, including machine-readable order, trade, regime, and opportunity diagnostics
+- isolated-margin perp backtesting for `binance.usdm` and `hyperliquid.perps`, with live venue risk snapshots, leverage, and deterministic liquidation exits
 - rolling out-of-sample walk-forward evaluation through `palmscript run walk-forward` and `run_walk_forward_with_sources`
 
 Checked-in strategy examples live under [`examples/strategies/`](examples/strategies/).
@@ -60,6 +61,7 @@ target/debug/palmscript run market examples/strategies/sma_cross.palm --from 170
 target/debug/palmscript run market examples/strategies/macd_tuple.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run backtest examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
+target/debug/palmscript run backtest strategy.palm --from 1741348800000 --to 1772884800000 --execution-source perp --leverage 3 --margin-mode isolated
 target/debug/palmscript run walk-forward examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --train-bars 252 --test-bars 63 --step-bars 63
 target/debug/palmscript run backtest examples/strategies/venue_orders_backtest.palm --from 1704067200000 --to 1704931200000 --format text
 mkdocs build --strict

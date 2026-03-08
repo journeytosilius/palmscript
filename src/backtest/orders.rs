@@ -1,6 +1,6 @@
 use crate::backtest::{
     FeatureSnapshot, Fill, FillAction, OrderEndReason, OrderRecord, OrderStatus, PositionSide,
-    EPSILON,
+    RiskTier, EPSILON,
 };
 use crate::bytecode::SignalRole;
 use crate::order::{OrderKind, TimeInForce, TriggerReference};
@@ -16,6 +16,28 @@ pub(crate) const ROLE_PRIORITY: [SignalRole; ROLE_COUNT] = [
     SignalRole::LongEntry,
     SignalRole::ShortEntry,
 ];
+
+#[derive(Clone, Debug)]
+pub(crate) enum AccountingMode {
+    Spot,
+    PerpIsolated {
+        leverage: f64,
+        risk_tiers: Vec<RiskTier>,
+    },
+}
+
+impl AccountingMode {
+    pub(crate) const fn is_perp(&self) -> bool {
+        matches!(self, Self::PerpIsolated { .. })
+    }
+
+    fn risk_tiers(&self) -> &[RiskTier] {
+        match self {
+            Self::Spot => &[],
+            Self::PerpIsolated { risk_tiers, .. } => risk_tiers,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CapturedOrderRequest {
@@ -72,6 +94,9 @@ pub(crate) struct PositionState {
     pub entry_bar_index: usize,
     pub entry_time: f64,
     pub entry_price: f64,
+    pub isolated_margin: f64,
+    pub maintenance_margin: f64,
+    pub liquidation_price: Option<f64>,
 }
 
 #[derive(Clone, Debug)]
@@ -493,6 +518,7 @@ pub(crate) fn open_position(
     side: PositionSide,
     entry_context: TradeEntryContext,
     size_fraction: Option<f64>,
+    accounting: &AccountingMode,
     fee_rate: f64,
     cash: &mut f64,
 ) -> (PositionState, OpenTrade, Fill) {
@@ -501,12 +527,26 @@ pub(crate) fn open_position(
         PositionSide::Short => FillAction::Sell,
     };
     let capital = *cash * size_fraction.unwrap_or(1.0);
-    let quantity = capital / (execution.execution_price * (1.0 + fee_rate));
+    let quantity = match accounting {
+        AccountingMode::Spot => capital / (execution.execution_price * (1.0 + fee_rate)),
+        AccountingMode::PerpIsolated { leverage, .. } => {
+            capital / (execution.execution_price * ((1.0 / leverage) + fee_rate))
+        }
+    };
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
-    match side {
-        PositionSide::Long => *cash -= notional + fee,
-        PositionSide::Short => *cash += notional - fee,
+    let isolated_margin = match accounting {
+        AccountingMode::Spot => 0.0,
+        AccountingMode::PerpIsolated { leverage, .. } => notional / leverage,
+    };
+    match accounting {
+        AccountingMode::Spot => match side {
+            PositionSide::Long => *cash -= notional + fee,
+            PositionSide::Short => *cash += notional - fee,
+        },
+        AccountingMode::PerpIsolated { .. } => {
+            *cash -= isolated_margin + fee;
+        }
     }
     zero_small_cash(cash);
     let signed_quantity = match side {
@@ -529,6 +569,9 @@ pub(crate) fn open_position(
         entry_bar_index: execution.bar_index,
         entry_time: execution.time,
         entry_price: execution.execution_price,
+        isolated_margin,
+        maintenance_margin: 0.0,
+        liquidation_price: None,
     };
     let trade = OpenTrade {
         side,
@@ -550,6 +593,7 @@ pub(crate) fn add_to_position(
     position: &mut PositionState,
     open_trade: &mut OpenTrade,
     size_fraction: Option<f64>,
+    accounting: &AccountingMode,
     fee_rate: f64,
     cash: &mut f64,
 ) -> Fill {
@@ -558,12 +602,26 @@ pub(crate) fn add_to_position(
         PositionSide::Short => FillAction::Sell,
     };
     let capital = *cash * size_fraction.unwrap_or(1.0);
-    let quantity = capital / (execution.execution_price * (1.0 + fee_rate));
+    let quantity = match accounting {
+        AccountingMode::Spot => capital / (execution.execution_price * (1.0 + fee_rate)),
+        AccountingMode::PerpIsolated { leverage, .. } => {
+            capital / (execution.execution_price * ((1.0 / leverage) + fee_rate))
+        }
+    };
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
-    match position.side {
-        PositionSide::Long => *cash -= notional + fee,
-        PositionSide::Short => *cash += notional - fee,
+    let isolated_margin = match accounting {
+        AccountingMode::Spot => 0.0,
+        AccountingMode::PerpIsolated { leverage, .. } => notional / leverage,
+    };
+    match accounting {
+        AccountingMode::Spot => match position.side {
+            PositionSide::Long => *cash -= notional + fee,
+            PositionSide::Short => *cash += notional - fee,
+        },
+        AccountingMode::PerpIsolated { .. } => {
+            *cash -= isolated_margin + fee;
+        }
     }
     zero_small_cash(cash);
 
@@ -591,6 +649,7 @@ pub(crate) fn add_to_position(
         PositionSide::Long => next_quantity,
         PositionSide::Short => -next_quantity,
     };
+    position.isolated_margin += isolated_margin;
 
     let weighted_raw_price = if next_quantity <= EPSILON {
         execution.raw_price
@@ -699,6 +758,124 @@ pub(crate) fn unrealized_pnl_for_position(position: &PositionState, mark_price: 
     match position.side {
         PositionSide::Long => (mark_price - position.entry_price) * position.quantity.abs(),
         PositionSide::Short => (position.entry_price - mark_price) * position.quantity.abs(),
+    }
+}
+
+pub(crate) fn realize_perp_close(
+    cash: &mut f64,
+    position: &PositionState,
+    execution_price: f64,
+    quantity: f64,
+    fee_rate: f64,
+) -> FillAction {
+    let price_pnl = match position.side {
+        PositionSide::Long => (execution_price - position.entry_price) * quantity,
+        PositionSide::Short => (position.entry_price - execution_price) * quantity,
+    };
+    let released_margin = if position.quantity.abs() <= EPSILON {
+        0.0
+    } else {
+        position.isolated_margin * (quantity / position.quantity.abs())
+    };
+    let fee = execution_price * quantity * fee_rate;
+    *cash += released_margin + price_pnl - fee;
+    zero_small_cash(cash);
+    match position.side {
+        PositionSide::Long => FillAction::Sell,
+        PositionSide::Short => FillAction::Buy,
+    }
+}
+
+pub(crate) fn refresh_position_risk(
+    position: &mut PositionState,
+    accounting: &AccountingMode,
+    mark_price: f64,
+) {
+    if !accounting.is_perp() {
+        position.maintenance_margin = 0.0;
+        position.liquidation_price = None;
+        return;
+    }
+    let quantity = position.quantity.abs();
+    if quantity <= EPSILON {
+        position.maintenance_margin = 0.0;
+        position.liquidation_price = None;
+        return;
+    }
+    let notional = quantity * mark_price;
+    let tier = risk_tier_for_notional(accounting.risk_tiers(), notional);
+    let maintenance_margin = maintenance_margin_for_tier(notional, tier);
+    position.maintenance_margin = maintenance_margin;
+    position.liquidation_price = liquidation_price_for_tier(position, tier);
+}
+
+pub(crate) fn liquidation_trigger_price(
+    position: &PositionState,
+    mark_open: f64,
+    mark_high: f64,
+    mark_low: f64,
+) -> Option<f64> {
+    let liquidation_price = position.liquidation_price?;
+    match position.side {
+        PositionSide::Long if mark_low <= liquidation_price => {
+            Some(mark_open.min(liquidation_price))
+        }
+        PositionSide::Short if mark_high >= liquidation_price => {
+            Some(mark_open.max(liquidation_price))
+        }
+        _ => None,
+    }
+}
+
+fn risk_tier_for_notional(risk_tiers: &[RiskTier], notional: f64) -> &RiskTier {
+    risk_tiers
+        .iter()
+        .find(|tier| {
+            notional >= tier.lower_bound && tier.upper_bound.is_none_or(|upper| notional < upper)
+        })
+        .unwrap_or_else(|| {
+            risk_tiers
+                .last()
+                .expect("perp accounting requires at least one risk tier")
+        })
+}
+
+fn maintenance_margin_for_tier(notional: f64, tier: &RiskTier) -> f64 {
+    (notional * tier.maintenance_margin_rate - tier.maintenance_amount).max(0.0)
+}
+
+fn liquidation_price_for_tier(position: &PositionState, tier: &RiskTier) -> Option<f64> {
+    let quantity = position.quantity.abs();
+    if quantity <= EPSILON {
+        return None;
+    }
+    match position.side {
+        PositionSide::Long => {
+            let denominator = quantity * (1.0 - tier.maintenance_margin_rate);
+            if denominator <= EPSILON {
+                None
+            } else {
+                Some(
+                    (quantity * position.entry_price
+                        - position.isolated_margin
+                        - tier.maintenance_amount)
+                        / denominator,
+                )
+            }
+        }
+        PositionSide::Short => {
+            let denominator = quantity * (1.0 + tier.maintenance_margin_rate);
+            if denominator <= EPSILON {
+                None
+            } else {
+                Some(
+                    (position.isolated_margin
+                        + quantity * position.entry_price
+                        + tier.maintenance_amount)
+                        / denominator,
+                )
+            }
+        }
     }
 }
 

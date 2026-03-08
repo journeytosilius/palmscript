@@ -45,6 +45,8 @@ palmscript run backtest <script.palm> --from <unix_ms> --to <unix_ms> \
   [--initial-capital <amount>] \
   [--fee-bps <bps>] \
   [--slippage-bps <bps>] \
+  [--leverage <N>] \
+  [--margin-mode isolated] \
   [--format json|text] \
   [--max-instructions-per-bar <N>] \
   [--max-history-capacity <N>]
@@ -59,6 +61,8 @@ Arguments and flags:
 - `--initial-capital <amount>`: starting equity, default `10000`
 - `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
 - `--slippage-bps <bps>`: slippage applied to each fill in basis points, default `2`
+- `--leverage <N>`: isolated leverage for perp execution sources, default `1`
+- `--margin-mode isolated`: isolated perp margin mode; this is the only accepted v1 value
 - `--format json|text`: output rendering format, default `json`
 - `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
 - `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
@@ -72,10 +76,12 @@ Requirements:
 - the script may optionally size attached `target` exits with `size target long ...` or `size target short ...`
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
+- spot execution sources reject `--leverage` and `--margin-mode`
+- Binance USD-M perp runs require `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET`
 
 Backtest output:
 
-- JSON includes runtime `outputs`, order lifecycle records in `orders`, fills, trades, backtest diagnostics in `diagnostics`, equity, summary, and any open position
+- JSON includes runtime `outputs`, order lifecycle records in `orders`, fills, trades, backtest diagnostics in `diagnostics`, equity, summary, any open position, and optional perp metadata in `perp`
 - text output renders summary metrics plus diagnostics, order, and trade sections, with compact export and opportunity summaries when available
 
 ## `palmscript run walk-forward`
@@ -86,6 +92,8 @@ palmscript run walk-forward <script.palm> --from <unix_ms> --to <unix_ms> \
   [--initial-capital <amount>] \
   [--fee-bps <bps>] \
   [--slippage-bps <bps>] \
+  [--leverage <N>] \
+  [--margin-mode isolated] \
   --train-bars <N> \
   --test-bars <N> \
   [--step-bars <N>] \
@@ -103,6 +111,8 @@ Arguments and flags:
 - `--initial-capital <amount>`: starting equity for each stitched out-of-sample run, default `10000`
 - `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
 - `--slippage-bps <bps>`: slippage applied to each fill in basis points, default `2`
+- `--leverage <N>`: isolated leverage for perp execution sources, default `1`
+- `--margin-mode isolated`: isolated perp margin mode; this is the only accepted v1 value
 - `--train-bars <N>`: in-sample context window size in execution bars
 - `--test-bars <N>`: out-of-sample window size in execution bars
 - `--step-bars <N>`: segment advance in execution bars, default `test-bars`
@@ -117,6 +127,8 @@ Requirements:
 - `--train-bars`, `--test-bars`, and `--step-bars` must be positive
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
+- spot execution sources reject `--leverage` and `--margin-mode`
+- Binance USD-M perp runs require `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET`
 
 Walk-forward output:
 

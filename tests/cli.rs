@@ -662,6 +662,34 @@ fn run_backtest_supports_text_output() {
 }
 
 #[test]
+fn run_backtest_rejects_leverage_for_spot_sources() {
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "spot_backtest.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\nplot(spot.close)",
+    );
+
+    palmscript_cmd()
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067260000",
+            "--leverage",
+            "2",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "does not accept --leverage or --margin-mode",
+        ));
+}
+
+#[test]
 fn run_backtest_requires_execution_source_for_multi_source_scripts() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(

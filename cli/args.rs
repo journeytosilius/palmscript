@@ -57,6 +57,10 @@ pub struct BacktestRunArgs {
     pub fee_bps: f64,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
+    #[arg(long)]
+    pub leverage: Option<f64>,
+    #[arg(long, value_enum)]
+    pub margin_mode: Option<BacktestMarginMode>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
     #[arg(long, default_value_t = 10_000)]
@@ -80,6 +84,10 @@ pub struct WalkForwardRunArgs {
     pub fee_bps: f64,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
+    #[arg(long)]
+    pub leverage: Option<f64>,
+    #[arg(long, value_enum)]
+    pub margin_mode: Option<BacktestMarginMode>,
     #[arg(long)]
     pub train_bars: usize,
     #[arg(long)]
@@ -118,4 +126,9 @@ pub enum BytecodeFormat {
     #[default]
     Text,
     Json,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum BacktestMarginMode {
+    Isolated,
 }

@@ -1,6 +1,8 @@
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval,
-    OrderEndReason, OrderKind, OrderStatus, SignalRole, SourceFeed, SourceRuntimeConfig, VmLimits,
+    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar,
+    BinanceUsdmRiskSnapshot, Interval, MarkPriceBasis, OrderEndReason, OrderKind, OrderStatus,
+    PerpBacktestConfig, PerpBacktestContext, PerpMarginMode, RiskTier, SignalRole, SourceFeed,
+    SourceRuntimeConfig, VenueRiskSnapshot, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -23,6 +25,36 @@ fn config(alias: &str) -> BacktestConfig {
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
+        perp: None,
+        perp_context: None,
+    }
+}
+
+fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
+    BacktestConfig {
+        execution_source_alias: alias.to_string(),
+        initial_capital: 1_000.0,
+        fee_bps: 0.0,
+        slippage_bps: 0.0,
+        perp: Some(PerpBacktestConfig {
+            leverage,
+            margin_mode: PerpMarginMode::Isolated,
+        }),
+        perp_context: Some(PerpBacktestContext {
+            mark_price_basis: MarkPriceBasis::BinancePremiumIndexKlines,
+            mark_bars,
+            risk_snapshot: VenueRiskSnapshot::BinanceUsdm(BinanceUsdmRiskSnapshot {
+                symbol: "BTCUSDT".to_string(),
+                fetched_at_ms: support::JAN_1_2024_UTC_MS,
+                brackets: vec![RiskTier {
+                    lower_bound: 0.0,
+                    upper_bound: None,
+                    max_leverage: 20.0,
+                    maintenance_margin_rate: 0.05,
+                    maintenance_amount: 0.0,
+                }],
+            }),
+        }),
     }
 }
 
@@ -833,6 +865,89 @@ plot(spot.close)",
     assert_eq!(result.orders[0].fill_bar_index, Some(3));
     approx_eq(result.orders[0].fill_price.expect("fill"), 10.0);
     approx_eq(result.fills[0].price, 10.0);
+}
+
+#[test]
+fn isolated_perp_mode_liquidates_on_mark_price_touch_and_surfaces_exit_state() {
+    let compiled = compile(
+        "interval 1m
+source perp = binance.usdm(\"BTCUSDT\")
+entry long = perp.close > perp.close[1]
+plot(perp.close)
+export liquidated = position_event.long_liquidation_fill
+export last_kind = last_long_exit.kind == exit_kind.liquidation",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                    100.0,
+                    101.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    101.0,
+                    101.0,
+                ),
+            ],
+        }],
+    };
+    let mark_bars = vec![
+        bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+        bar(
+            support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+            100.0,
+            100.0,
+        ),
+        Bar {
+            open: 85.0,
+            high: 86.0,
+            low: 80.0,
+            close: 84.0,
+            volume: 0.0,
+            time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+        },
+    ];
+
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        binance_perp_config("perp", 5.0, mark_bars),
+    )
+    .expect("perp liquidation backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        palmscript::TradeExitClassification::Liquidation
+    );
+    assert_eq!(result.diagnostics.summary.liquidation_exit_count, 1);
+    assert!(result
+        .outputs
+        .exports
+        .iter()
+        .find(|series| series.name == "liquidated")
+        .expect("liquidated export")
+        .points
+        .iter()
+        .any(|point| matches!(point.value, palmscript::OutputValue::Bool(true))));
+    assert!(result
+        .outputs
+        .exports
+        .iter()
+        .find(|series| series.name == "last_kind")
+        .expect("last_kind export")
+        .points
+        .iter()
+        .any(|point| matches!(point.value, palmscript::OutputValue::Bool(true))));
+    assert!(result.perp.is_some());
 }
 
 #[test]

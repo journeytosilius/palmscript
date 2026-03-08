@@ -3,13 +3,20 @@
 use std::collections::BTreeSet;
 use std::env;
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use hmac::{Hmac, Mac};
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 use serde::de::{self, Deserializer, IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use thiserror::Error;
 
+use crate::backtest::{
+    BinanceUsdmRiskSnapshot, HyperliquidPerpsRiskSnapshot, MarkPriceBasis, PerpBacktestContext,
+    RiskTier, VenueRiskSnapshot,
+};
 use crate::compiler::CompiledProgram;
 use crate::interval::{DeclaredMarketSource, Interval, SourceIntervalRef, SourceTemplate};
 use crate::runtime::{Bar, SourceFeed, SourceRuntimeConfig};
@@ -166,6 +173,62 @@ struct HyperliquidCandleSnapshotParams<'a> {
     end_time: i64,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct BinanceServerTimeResponse {
+    #[serde(rename = "serverTime")]
+    server_time: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BinanceLeverageBracketResponse {
+    symbol: String,
+    brackets: Vec<BinanceLeverageBracketTier>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BinanceLeverageBracketTier {
+    #[serde(rename = "initialLeverage")]
+    initial_leverage: f64,
+    #[serde(rename = "notionalFloor", deserialize_with = "deserialize_f64_text")]
+    notional_floor: f64,
+    #[serde(rename = "notionalCap", deserialize_with = "deserialize_f64_text")]
+    notional_cap: f64,
+    #[serde(rename = "maintMarginRatio", deserialize_with = "deserialize_f64_text")]
+    maint_margin_ratio: f64,
+    #[serde(rename = "cum", deserialize_with = "deserialize_f64_text")]
+    cumulative_maint_amount: f64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct HyperliquidMetaResponse {
+    universe: Vec<HyperliquidPerpsMetaAsset>,
+    #[serde(rename = "marginTables")]
+    margin_tables: Vec<HyperliquidMarginTableEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct HyperliquidPerpsMetaAsset {
+    name: String,
+    #[serde(rename = "marginTableId")]
+    margin_table_id: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct HyperliquidMarginTable {
+    #[serde(rename = "marginTiers")]
+    margin_tiers: Vec<HyperliquidMarginTier>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct HyperliquidMarginTier {
+    #[serde(rename = "lowerBound", deserialize_with = "deserialize_f64_text")]
+    lower_bound: f64,
+    #[serde(rename = "maxLeverage")]
+    max_leverage: f64,
+}
+
+type HyperliquidMarginTableEntry = (u32, HyperliquidMarginTable);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExchangeEndpoints {
     pub binance_spot_base_url: String,
@@ -244,6 +307,30 @@ pub enum ExchangeFetchError {
     },
     #[error("unknown Hyperliquid spot symbol `{symbol}`")]
     UnknownHyperliquidSpotSymbol { symbol: String },
+    #[error("perp risk fetch for `{alias}` ({template}) `{symbol}` failed: {message}")]
+    RiskRequestFailed {
+        alias: String,
+        template: &'static str,
+        symbol: String,
+        message: String,
+    },
+    #[error("perp risk response for `{alias}` ({template}) `{symbol}` was malformed: {message}")]
+    MalformedRiskResponse {
+        alias: String,
+        template: &'static str,
+        symbol: String,
+        message: String,
+    },
+    #[error("Binance USD-M leverage bracket fetch requires PALMSCRIPT_BINANCE_USDM_API_KEY and PALMSCRIPT_BINANCE_USDM_API_SECRET")]
+    MissingBinanceUsdmCredentials,
+    #[error("unknown Hyperliquid perp symbol `{symbol}`")]
+    UnknownHyperliquidPerpSymbol { symbol: String },
+    #[error("no risk tiers available for `{alias}` ({template}) `{symbol}`")]
+    MissingRiskTiers {
+        alias: String,
+        template: &'static str,
+        symbol: String,
+    },
 }
 
 pub fn fetch_source_runtime_config(
@@ -317,6 +404,61 @@ pub fn fetch_source_runtime_config(
         base_interval,
         feeds,
     })
+}
+
+pub fn fetch_perp_backtest_context(
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+    endpoints: &ExchangeEndpoints,
+) -> Result<Option<PerpBacktestContext>, ExchangeFetchError> {
+    let client =
+        Client::builder()
+            .build()
+            .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+                alias: source.alias.clone(),
+                template: source.template.as_str(),
+                symbol: source.symbol.clone(),
+                message: err.to_string(),
+            })?;
+    match source.template {
+        SourceTemplate::BinanceUsdm => {
+            let mark_bars = fetch_binance_bars(
+                &client,
+                source,
+                interval,
+                from_ms,
+                to_ms,
+                &endpoints.binance_usdm_base_url,
+                "/fapi/v1/premiumIndexKlines",
+            )?;
+            let risk_snapshot = fetch_binance_usdm_risk_snapshot(&client, source, endpoints)?;
+            Ok(Some(PerpBacktestContext {
+                mark_price_basis: MarkPriceBasis::BinancePremiumIndexKlines,
+                mark_bars,
+                risk_snapshot: VenueRiskSnapshot::BinanceUsdm(risk_snapshot),
+            }))
+        }
+        SourceTemplate::HyperliquidPerps => {
+            let mark_bars = fetch_hyperliquid_bars(
+                &client,
+                source,
+                interval,
+                from_ms,
+                to_ms,
+                &endpoints.hyperliquid_info_url,
+                source.symbol.clone(),
+            )?;
+            let risk_snapshot = fetch_hyperliquid_perps_risk_snapshot(&client, source, endpoints)?;
+            Ok(Some(PerpBacktestContext {
+                mark_price_basis: MarkPriceBasis::HyperliquidExecutionFallback,
+                mark_bars,
+                risk_snapshot: VenueRiskSnapshot::HyperliquidPerps(risk_snapshot),
+            }))
+        }
+        SourceTemplate::BinanceSpot | SourceTemplate::HyperliquidSpot => Ok(None),
+    }
 }
 
 fn fetch_source_bars(
@@ -530,6 +672,271 @@ fn fetch_hyperliquid_bars(
         return Err(no_data(source, interval));
     }
     Ok(bars)
+}
+
+fn fetch_binance_usdm_risk_snapshot(
+    client: &Client,
+    source: &DeclaredMarketSource,
+    endpoints: &ExchangeEndpoints,
+) -> Result<BinanceUsdmRiskSnapshot, ExchangeFetchError> {
+    let api_key = env::var("PALMSCRIPT_BINANCE_USDM_API_KEY")
+        .map_err(|_| ExchangeFetchError::MissingBinanceUsdmCredentials)?;
+    let api_secret = env::var("PALMSCRIPT_BINANCE_USDM_API_SECRET")
+        .map_err(|_| ExchangeFetchError::MissingBinanceUsdmCredentials)?;
+    let server_time = fetch_binance_server_time(client, endpoints)?;
+    let query = format!("symbol={}&timestamp={server_time}", source.symbol);
+    let signature = sign_binance_query(&api_secret, &query).map_err(|err| {
+        ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: err,
+        }
+    })?;
+    let response = client
+        .get(format!(
+            "{}/fapi/v1/leverageBracket?{}&signature={}",
+            endpoints.binance_usdm_base_url.trim_end_matches('/'),
+            query,
+            signature
+        ))
+        .header("X-MBX-APIKEY", api_key)
+        .send()
+        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: err.to_string(),
+        })?;
+    if response.status() != StatusCode::OK {
+        return Err(ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: format!("HTTP {}", response.status()),
+        });
+    }
+    let payload: Vec<BinanceLeverageBracketResponse> =
+        response
+            .json()
+            .map_err(|err| ExchangeFetchError::MalformedRiskResponse {
+                alias: source.alias.clone(),
+                template: source.template.as_str(),
+                symbol: source.symbol.clone(),
+                message: err.to_string(),
+            })?;
+    let Some(symbol_entry) = payload
+        .into_iter()
+        .find(|entry| entry.symbol == source.symbol)
+    else {
+        return Err(ExchangeFetchError::MalformedRiskResponse {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: "requested symbol missing from leverage bracket response".to_string(),
+        });
+    };
+    let brackets = symbol_entry
+        .brackets
+        .into_iter()
+        .map(|tier| RiskTier {
+            lower_bound: tier.notional_floor,
+            upper_bound: Some(tier.notional_cap),
+            max_leverage: tier.initial_leverage,
+            maintenance_margin_rate: tier.maint_margin_ratio,
+            maintenance_amount: tier.cumulative_maint_amount,
+        })
+        .collect::<Vec<_>>();
+    if brackets.is_empty() {
+        return Err(ExchangeFetchError::MissingRiskTiers {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+        });
+    }
+    Ok(BinanceUsdmRiskSnapshot {
+        symbol: source.symbol.clone(),
+        fetched_at_ms: server_time,
+        brackets,
+    })
+}
+
+fn fetch_hyperliquid_perps_risk_snapshot(
+    client: &Client,
+    source: &DeclaredMarketSource,
+    endpoints: &ExchangeEndpoints,
+) -> Result<HyperliquidPerpsRiskSnapshot, ExchangeFetchError> {
+    let fetched_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0);
+    let response = client
+        .post(&endpoints.hyperliquid_info_url)
+        .json(&HyperliquidSpotMetaRequest {
+            request_type: "meta",
+        })
+        .send()
+        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: err.to_string(),
+        })?;
+    if response.status() != StatusCode::OK {
+        return Err(ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: format!("HTTP {}", response.status()),
+        });
+    }
+    let meta: HyperliquidMetaResponse =
+        response
+            .json()
+            .map_err(|err| ExchangeFetchError::MalformedRiskResponse {
+                alias: source.alias.clone(),
+                template: source.template.as_str(),
+                symbol: source.symbol.clone(),
+                message: err.to_string(),
+            })?;
+    let Some(asset) = meta
+        .universe
+        .into_iter()
+        .find(|asset| asset.name == source.symbol)
+    else {
+        return Err(ExchangeFetchError::UnknownHyperliquidPerpSymbol {
+            symbol: source.symbol.clone(),
+        });
+    };
+    let Some((_, table)) = meta
+        .margin_tables
+        .into_iter()
+        .find(|(table_id, _)| *table_id == asset.margin_table_id)
+    else {
+        return Err(ExchangeFetchError::MissingRiskTiers {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+        });
+    };
+    let mut tiers = Vec::with_capacity(table.margin_tiers.len());
+    for (index, tier) in table.margin_tiers.iter().enumerate() {
+        let upper_bound = table
+            .margin_tiers
+            .get(index + 1)
+            .map(|next| next.lower_bound);
+        // Hyperliquid documents maintenance margin as half of the initial margin
+        // implied by the tier max leverage.
+        let maintenance_margin_rate = 0.5 / tier.max_leverage;
+        tiers.push(RiskTier {
+            lower_bound: tier.lower_bound,
+            upper_bound,
+            max_leverage: tier.max_leverage,
+            maintenance_margin_rate,
+            maintenance_amount: 0.0,
+        });
+    }
+    if tiers.is_empty() {
+        return Err(ExchangeFetchError::MissingRiskTiers {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+        });
+    }
+    Ok(HyperliquidPerpsRiskSnapshot {
+        coin: source.symbol.clone(),
+        fetched_at_ms,
+        margin_table_id: asset.margin_table_id,
+        tiers,
+    })
+}
+
+fn fetch_binance_server_time(
+    client: &Client,
+    endpoints: &ExchangeEndpoints,
+) -> Result<i64, ExchangeFetchError> {
+    let response = client
+        .get(format!(
+            "{}/fapi/v1/time",
+            endpoints.binance_usdm_base_url.trim_end_matches('/')
+        ))
+        .send()
+        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+            alias: "binance".to_string(),
+            template: SourceTemplate::BinanceUsdm.as_str(),
+            symbol: String::new(),
+            message: err.to_string(),
+        })?;
+    if response.status() != StatusCode::OK {
+        return Err(ExchangeFetchError::RiskRequestFailed {
+            alias: "binance".to_string(),
+            template: SourceTemplate::BinanceUsdm.as_str(),
+            symbol: String::new(),
+            message: format!("HTTP {}", response.status()),
+        });
+    }
+    let body: BinanceServerTimeResponse =
+        response
+            .json()
+            .map_err(|err| ExchangeFetchError::MalformedRiskResponse {
+                alias: "binance".to_string(),
+                template: SourceTemplate::BinanceUsdm.as_str(),
+                symbol: String::new(),
+                message: err.to_string(),
+            })?;
+    Ok(body.server_time)
+}
+
+fn sign_binance_query(secret: &str, query: &str) -> Result<String, String> {
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(secret.as_bytes()).map_err(|err| err.to_string())?;
+    mac.update(query.as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+fn deserialize_f64_text<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct F64TextVisitor;
+
+    impl<'de> Visitor<'de> for F64TextVisitor {
+        type Value = f64;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a float or float-like string")
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(value)
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(value as f64)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(value as f64)
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            value
+                .parse::<f64>()
+                .map_err(|err| E::custom(err.to_string()))
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_str(&value)
+        }
+    }
+
+    deserializer.deserialize_any(F64TextVisitor)
 }
 
 fn resolve_hyperliquid_spot_coin(
@@ -771,15 +1178,18 @@ impl HyperliquidCandle {
 #[cfg(test)]
 mod tests {
     use super::{
-        fetch_source_runtime_config, requested_candle_count, resolve_hyperliquid_spot_coin,
-        BinanceKlineRow, ExchangeEndpoints, ExchangeFetchError, HyperliquidCandle,
-        SourceFetchConstraints, BINANCE_USDM_PAGE_LIMIT, HYPERLIQUID_RECENT_CANDLE_LIMIT,
+        fetch_perp_backtest_context, fetch_source_runtime_config, requested_candle_count,
+        resolve_hyperliquid_spot_coin, BinanceKlineRow, ExchangeEndpoints, ExchangeFetchError,
+        HyperliquidCandle, SourceFetchConstraints, BINANCE_USDM_PAGE_LIMIT,
+        HYPERLIQUID_RECENT_CANDLE_LIMIT,
     };
+    use crate::backtest::{MarkPriceBasis, VenueRiskSnapshot};
     use crate::compile;
     use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
     use crate::runtime::Bar;
     use mockito::{Matcher, Server};
     use serde_json::json;
+    use std::env;
 
     fn sample_source(template: SourceTemplate, symbol: &str) -> DeclaredMarketSource {
         DeclaredMarketSource {
@@ -937,6 +1347,154 @@ mod tests {
                 .expect("config");
         assert_eq!(config.base_interval, Interval::Min1);
         assert_eq!(config.feeds.len(), 3);
+    }
+
+    #[test]
+    fn fetch_perp_backtest_context_reads_hyperliquid_margin_table_and_mark_bars() {
+        let mut server = Server::new();
+        let _meta = server
+            .mock("POST", "/info")
+            .match_body(Matcher::Json(json!({ "type": "meta" })))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "universe": [{"name": "BTC", "marginTableId": 56, "maxLeverage": 40}],
+                    "marginTables": [
+                        [56, {"description": "tiered", "marginTiers": [
+                            {"lowerBound": "0.0", "maxLeverage": 40},
+                            {"lowerBound": "150000000.0", "maxLeverage": 20}
+                        ]}]
+                    ],
+                    "collateralToken": "USDC"
+                })
+                .to_string(),
+            )
+            .create();
+        let _candles = server
+            .mock("POST", "/info")
+            .match_body(Matcher::PartialJson(json!({
+                "type": "candleSnapshot",
+                "req": { "coin": "BTC", "interval": "1m" }
+            })))
+            .with_status(200)
+            .with_body(
+                json!([
+                    {"t": 1704067200000_i64, "o": "10.0", "h": "11.0", "l": "9.0", "c": "10.5", "v": "5.0"},
+                    {"t": 1704067260000_i64, "o": "10.5", "h": "12.0", "l": "10.0", "c": "11.5", "v": "6.0"}
+                ])
+                .to_string(),
+            )
+            .create();
+        let source = sample_source(SourceTemplate::HyperliquidPerps, "BTC");
+        let context = fetch_perp_backtest_context(
+            &source,
+            Interval::Min1,
+            1704067200000,
+            1704067320000,
+            &ExchangeEndpoints {
+                binance_spot_base_url: String::new(),
+                binance_usdm_base_url: String::new(),
+                hyperliquid_info_url: format!("{}/info", server.url()),
+            },
+        )
+        .expect("context")
+        .expect("perp context");
+        assert_eq!(
+            context.mark_price_basis,
+            MarkPriceBasis::HyperliquidExecutionFallback
+        );
+        assert_eq!(context.mark_bars.len(), 2);
+        match context.risk_snapshot {
+            VenueRiskSnapshot::HyperliquidPerps(snapshot) => {
+                assert_eq!(snapshot.coin, "BTC");
+                assert_eq!(snapshot.margin_table_id, 56);
+                assert_eq!(snapshot.tiers.len(), 2);
+                assert_eq!(snapshot.tiers[0].maintenance_margin_rate, 0.0125);
+            }
+            other => panic!("unexpected snapshot: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fetch_perp_backtest_context_reads_binance_signed_risk_snapshot() {
+        let mut server = Server::new();
+        let _time = server
+            .mock("GET", "/fapi/v1/time")
+            .with_status(200)
+            .with_body(json!({ "serverTime": 1704067200000_i64 }).to_string())
+            .create();
+        let _marks = server
+            .mock("GET", "/fapi/v1/premiumIndexKlines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "100.0", "101.0", "99.0", "100.5", "0"],
+                    [1704067260000_i64, "100.5", "102.0", "100.0", "101.5", "0"]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _brackets = server
+            .mock("GET", "/fapi/v1/leverageBracket")
+            .match_header("x-mbx-apikey", "test-key")
+            .match_query(Matcher::Regex(
+                "symbol=BTCUSDT.*timestamp=1704067200000.*signature=".into(),
+            ))
+            .with_status(200)
+            .with_body(
+                json!([
+                    {
+                        "symbol": "BTCUSDT",
+                        "brackets": [
+                            {
+                                "initialLeverage": 20,
+                                "notionalFloor": "0",
+                                "notionalCap": "100000",
+                                "maintMarginRatio": "0.01",
+                                "cum": "0"
+                            }
+                        ]
+                    }
+                ])
+                .to_string(),
+            )
+            .create();
+
+        env::set_var("PALMSCRIPT_BINANCE_USDM_API_KEY", "test-key");
+        env::set_var("PALMSCRIPT_BINANCE_USDM_API_SECRET", "test-secret");
+        let source = sample_source(SourceTemplate::BinanceUsdm, "BTCUSDT");
+        let context = fetch_perp_backtest_context(
+            &source,
+            Interval::Min1,
+            1704067200000,
+            1704067320000,
+            &ExchangeEndpoints {
+                binance_spot_base_url: String::new(),
+                binance_usdm_base_url: server.url(),
+                hyperliquid_info_url: String::new(),
+            },
+        )
+        .expect("context")
+        .expect("perp context");
+        env::remove_var("PALMSCRIPT_BINANCE_USDM_API_KEY");
+        env::remove_var("PALMSCRIPT_BINANCE_USDM_API_SECRET");
+
+        assert_eq!(
+            context.mark_price_basis,
+            MarkPriceBasis::BinancePremiumIndexKlines
+        );
+        match context.risk_snapshot {
+            VenueRiskSnapshot::BinanceUsdm(snapshot) => {
+                assert_eq!(snapshot.symbol, "BTCUSDT");
+                assert_eq!(snapshot.brackets.len(), 1);
+                assert_eq!(snapshot.brackets[0].maintenance_margin_rate, 0.01);
+            }
+            other => panic!("unexpected snapshot: {other:?}"),
+        }
     }
 
     #[test]

@@ -225,7 +225,7 @@ fn parses_last_exit_namespaces_and_exit_kind_literals() {
     compile(
         "interval 1m
 source src = binance.spot(\"BTCUSDT\")
-entry long = last_long_exit.kind == exit_kind.target or last_exit.side == position_side.long
+entry long = last_long_exit.kind == exit_kind.target or last_exit.kind == exit_kind.liquidation or last_exit.side == position_side.long
 export last_short_price = last_short_exit.price
 plot(src.close)",
     )

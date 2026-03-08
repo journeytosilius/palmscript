@@ -30,18 +30,22 @@ pub mod vm;
 pub use backtest::{
     run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
     BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
-    BacktestSummary, BoolExportDiagnosticSummary, EquityPoint, ExportDiagnosticSummary,
-    ExportValueType, FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric,
+    BacktestSummary, BinanceUsdmRiskSnapshot, BoolExportDiagnosticSummary, EquityPoint,
+    ExportDiagnosticSummary, ExportValueType, FeatureSnapshot, FeatureValue, Fill, FillAction,
+    ForwardReturnMetric, HyperliquidPerpsRiskSnapshot, MarkPriceBasis,
     NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind, OrderDiagnostic,
-    OrderEndReason, OrderRecord, OrderStatus, PositionSnapshot, SideDiagnosticSummary, Trade,
-    TradeDiagnostic, TradeExitClassification, WalkForwardConfig, WalkForwardEquityPoint,
-    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardSegmentResult,
-    WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    OrderEndReason, OrderRecord, OrderStatus, PerpBacktestConfig, PerpBacktestContext,
+    PerpBacktestMetadata, PerpMarginMode, PositionSnapshot, RiskTier, SideDiagnosticSummary, Trade,
+    TradeDiagnostic, TradeExitClassification, VenueRiskSnapshot, WalkForwardConfig,
+    WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, CompiledProgram};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
-pub use exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
+pub use exchange::{
+    fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError,
+};
 pub use ide::{
     analyze_document, format_document, CompletionEntry, CompletionKind, DefinitionTarget,
     DocumentSymbolInfo, HoverInfo, SemanticDocument, Symbol, SymbolKind,
