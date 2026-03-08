@@ -28,7 +28,7 @@ Checked-in `.palm` strategies live under `examples/strategies/`.
 Representative files:
 
 - `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe long-only backtest strategy that stays flat in bearish higher-timeframe regimes, uses breakout `market()` entries, applies a short cooldown after `protect long` exits, keeps a slower 4h trend-rollover `exit long`, a hybrid fixed-or-ATR `target long`, and ATR-based `protect long` chandelier exits
-- `examples/strategies/usdm_long_short_backtest.palm`: Binance USD-M BTCUSDT long/short strategy with stricter multi-timeframe regime filters, fractional entry sizing, attached mark-triggered ATR `protect` exits, and partial hybrid `target` exits on both sides
+- `examples/strategies/usdm_long_short_backtest.palm`: Binance USD-M BTCUSDT long-biased perp strategy with multi-timeframe breakout `market()` entries, mark-triggered ATR `protect long` chandelier exits, a hybrid fixed-or-ATR `target long`, and shorts intentionally disabled because tested hedge variants reduced profit under the current public risk snapshot path
 - `examples/strategies/sma_cross.palm`: single-source market-mode strategy
 - `examples/strategies/weekly_bias.palm`: single-source supplemental-interval strategy
 - `examples/strategies/macd_tuple.palm`: tuple destructuring and `ma_type`
