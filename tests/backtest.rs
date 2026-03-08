@@ -896,6 +896,11 @@ export last_kind = last_long_exit.kind == exit_kind.liquidation",
                     101.0,
                     101.0,
                 ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    101.0,
+                    101.0,
+                ),
             ],
         }],
     };
@@ -907,12 +912,20 @@ export last_kind = last_long_exit.kind == exit_kind.liquidation",
             100.0,
         ),
         Bar {
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 0.0,
+            time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+        },
+        Bar {
             open: 85.0,
             high: 86.0,
             low: 80.0,
             close: 84.0,
             volume: 0.0,
-            time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+            time: (support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS) as f64,
         },
     ];
 
@@ -957,6 +970,65 @@ export last_kind = last_long_exit.kind == exit_kind.liquidation",
 }
 
 #[test]
+fn isolated_perp_does_not_liquidate_on_entry_bar_range() {
+    let compiled = compile(
+        "interval 1m
+source perp = binance.usdm(\"BTCUSDT\")
+entry long = perp.close > perp.close[1]
+plot(perp.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                    100.0,
+                    101.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    101.0,
+                    101.0,
+                ),
+            ],
+        }],
+    };
+    let mark_bars = vec![
+        bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+        Bar {
+            open: 100.0,
+            high: 105.0,
+            low: 80.0,
+            close: 100.0,
+            volume: 0.0,
+            time: (support::JAN_1_2024_UTC_MS + support::MINUTE_MS) as f64,
+        },
+        bar(
+            support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+            101.0,
+            101.0,
+        ),
+    ];
+
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        binance_perp_config("perp", 5.0, mark_bars),
+    )
+    .expect("perp liquidation backtest should succeed");
+
+    assert_eq!(result.diagnostics.summary.liquidation_exit_count, 0);
+    assert!(result.trades.is_empty());
+    assert!(result.open_position.is_some());
+}
+
+#[test]
 fn isolated_perp_liquidation_caps_loss_to_isolated_margin() {
     let compiled = compile(
         "interval 1m
@@ -992,6 +1064,11 @@ plot(perp.close)",
                     102.0,
                     103.0,
                 ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 5 * support::MINUTE_MS,
+                    103.0,
+                    103.0,
+                ),
             ],
         }],
     };
@@ -1003,20 +1080,28 @@ plot(perp.close)",
             100.0,
         ),
         Bar {
+            open: 100.0,
+            high: 101.0,
+            low: 99.0,
+            close: 100.0,
+            volume: 0.0,
+            time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+        },
+        Bar {
             open: 40.0,
             high: 45.0,
             low: 35.0,
             close: 40.0,
             volume: 0.0,
-            time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+            time: (support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS) as f64,
         },
         bar(
-            support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+            support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
             102.0,
             102.0,
         ),
         bar(
-            support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+            support::JAN_1_2024_UTC_MS + 5 * support::MINUTE_MS,
             103.0,
             103.0,
         ),

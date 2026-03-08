@@ -376,43 +376,45 @@ pub(crate) fn simulate_backtest(
 
             if let (Some(mark_bar), Some(position_state)) = (current_mark, position.as_mut()) {
                 refresh_position_risk(position_state, &accounting, mark_bar.close);
-                if let Some(liquidation_price) = liquidation_trigger_price(
-                    position_state,
-                    mark_bar.open,
-                    mark_bar.high,
-                    mark_bar.low,
-                ) {
-                    let liquidation_outcome = force_liquidation(
-                        position_state.side,
-                        execution_cursor,
-                        bar.time,
-                        liquidation_price,
-                        fee_rate,
-                        &mut cash,
-                        &mut position,
-                        &mut open_trade,
-                        &mut fills,
-                        &mut trades,
-                        &mut trade_diagnostics,
-                        &mut total_realized_pnl,
-                    );
-                    if let Some(snapshot) = liquidation_outcome.snapshot {
-                        set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
-                        update_last_exit_snapshots(
-                            &mut last_exit,
-                            &mut last_long_exit,
-                            &mut last_short_exit,
-                            snapshot,
+                if position_state.entry_bar_index < execution_cursor {
+                    if let Some(liquidation_price) = liquidation_trigger_price(
+                        position_state,
+                        mark_bar.open,
+                        mark_bar.high,
+                        mark_bar.low,
+                    ) {
+                        let liquidation_outcome = force_liquidation(
+                            position_state.side,
+                            execution_cursor,
+                            bar.time,
+                            liquidation_price,
+                            fee_rate,
+                            &mut cash,
+                            &mut position,
+                            &mut open_trade,
+                            &mut fills,
+                            &mut trades,
+                            &mut trade_diagnostics,
+                            &mut total_realized_pnl,
                         );
-                    }
-                    if let Some(side) = liquidation_outcome.fully_closed_side {
-                        reset_target_consumption(&mut target_consumption, side);
-                        cancel_orders_for_closed_side(
-                            &mut active_orders,
-                            side,
-                            liquidation_signal_role(side),
-                            &mut orders,
-                        );
+                        if let Some(snapshot) = liquidation_outcome.snapshot {
+                            set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                            update_last_exit_snapshots(
+                                &mut last_exit,
+                                &mut last_long_exit,
+                                &mut last_short_exit,
+                                snapshot,
+                            );
+                        }
+                        if let Some(side) = liquidation_outcome.fully_closed_side {
+                            reset_target_consumption(&mut target_consumption, side);
+                            cancel_orders_for_closed_side(
+                                &mut active_orders,
+                                side,
+                                liquidation_signal_role(side),
+                                &mut orders,
+                            );
+                        }
                     }
                 }
             }
