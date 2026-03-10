@@ -4,16 +4,11 @@ function wirePalmScriptHeaderHomeLink() {
     return;
   }
 
-  const label = topic.textContent.trim();
-  if (!label) {
-    return;
-  }
-
   const link = document.createElement("a");
   link.href = "https://palmscript.dev/";
   link.className = "ps-home-link";
   link.setAttribute("aria-label", "PalmScript home");
-  link.textContent = label;
+  link.textContent = "PalmScript";
 
   topic.replaceChildren(link);
 }

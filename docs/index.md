@@ -39,3 +39,6 @@ PalmScript supports:
 Start with `Learn` if you are writing PalmScript for the first time.
 
 Use `Reference` when you need exact rules for syntax, semantics, builtins, intervals, or outputs.
+
+The header title stays labeled `PalmScript` across scroll states and links back
+to the main site homepage.
