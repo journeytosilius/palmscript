@@ -24,10 +24,15 @@ Start here:
 - [Language Reference](docs/reference/overview.md)
 - [Indicators Reference](docs/reference/indicators.md)
 
+Repo-local tooling docs:
+
+- [Browser IDE](docs-private/tooling/browser-ide.md)
+
 ## Common Commands
 
 ```bash
 cargo build --bin palmscript
+cargo build --bin palmscript-ide-server
 target/debug/palmscript check examples/strategies/sma_cross.palm
 target/debug/palmscript run market examples/strategies/sma_cross.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000

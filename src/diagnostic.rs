@@ -7,9 +7,10 @@
 use crate::bytecode::OpCode;
 use crate::span::Span;
 use crate::Interval;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiagnosticKind {
     Lex,
     Parse,
@@ -17,7 +18,7 @@ pub enum DiagnosticKind {
     Compile,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub kind: DiagnosticKind,
     pub message: String,

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PalmScript IDE</title>
+    <link rel="stylesheet" href="/ide/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="toolbar">
+        <div class="brand">PalmScript IDE</div>
+        <select id="dataset-select"></select>
+        <button id="new-button">New</button>
+        <button id="load-example-button">Load Example</button>
+        <button id="import-button">Import</button>
+        <button id="export-button">Export</button>
+        <button id="check-button">Check</button>
+        <button id="run-button" class="primary">Run Backtest</button>
+        <span id="status-text">Ready</span>
+      </header>
+      <main class="workspace">
+        <aside class="sidebar">
+          <h2>Examples</h2>
+          <div id="examples-list"></div>
+          <h2>Help</h2>
+          <p class="muted">
+            Public IDE runs curated BTCUSDT Binance spot datasets only.
+          </p>
+        </aside>
+        <section class="editor-column">
+          <div id="editor"></div>
+          <section class="panel diagnostics-panel">
+            <div class="panel-header">Diagnostics</div>
+            <div id="diagnostics-list" class="list"></div>
+          </section>
+        </section>
+        <aside class="results-column">
+          <section class="panel">
+            <div class="panel-header">Backtest Summary</div>
+            <pre id="summary-output" class="summary-output">No run yet.</pre>
+          </section>
+          <section class="panel">
+            <div class="panel-header">Equity Curve</div>
+            <svg id="equity-chart" viewBox="0 0 480 180" preserveAspectRatio="none"></svg>
+          </section>
+          <section class="panel">
+            <div class="tabs">
+              <button data-tab="trades" class="tab-button active">Trades</button>
+              <button data-tab="orders" class="tab-button">Orders</button>
+              <button data-tab="json" class="tab-button">Raw JSON</button>
+            </div>
+            <div id="tab-trades" class="tab-panel active"></div>
+            <div id="tab-orders" class="tab-panel"></div>
+            <pre id="tab-json" class="tab-panel"></pre>
+          </section>
+        </aside>
+      </main>
+    </div>
+    <input id="file-input" type="file" accept=".palm,text/plain" hidden />
+    <script type="module" src="/ide/app.js"></script>
+  </body>
+</html>

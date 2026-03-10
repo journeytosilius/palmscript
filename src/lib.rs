@@ -7,12 +7,14 @@
 
 pub mod ast;
 pub mod backtest;
+pub mod browser_ide;
 pub mod builtins;
 pub mod bytecode;
 pub mod compiler;
 pub mod diagnostic;
 pub mod exchange;
 pub mod ide;
+pub mod ide_lsp;
 mod indicators;
 pub mod interval;
 pub mod lexer;
@@ -45,6 +47,12 @@ pub use backtest::{
     WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
     WalkForwardSweepResult, WalkForwardWindowSummary,
 };
+pub use browser_ide::{
+    browser_ide_router, build_public_dataset_cache, public_dataset_catalog, public_examples,
+    BacktestRequest, BacktestResponse, BrowserIdeError, BrowserSessionId, CachedPublicDataset,
+    CheckRequest, CheckResponse, PublicDataset, PublicDatasetCatalog, PublicDatasetId,
+    PublicExample, PublicIdeServerConfig, PublicIdeState,
+};
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, compile_with_input_overrides, CompiledProgram};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
@@ -55,6 +63,7 @@ pub use ide::{
     analyze_document, format_document, CompletionEntry, CompletionKind, DefinitionTarget,
     DocumentSymbolInfo, HoverInfo, SemanticDocument, Symbol, SymbolKind,
 };
+pub use ide_lsp::{server_capabilities as lsp_server_capabilities, IdeLspSession, OpenDocument};
 pub use interval::{
     DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
     SourceTemplate, INTERVAL_SPECS,

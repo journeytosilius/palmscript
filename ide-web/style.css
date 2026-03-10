@@ -1,0 +1,245 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f6ef;
+  --panel: #fffef7;
+  --panel-border: #d8d2b8;
+  --text: #232116;
+  --muted: #6d6550;
+  --accent: #276749;
+  --accent-strong: #1f5338;
+  --accent-soft: #d9f2e4;
+  --danger: #b9392f;
+  --shadow: 0 10px 30px rgba(35, 33, 22, 0.08);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #f4f0de 0%, var(--bg) 100%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(255, 254, 247, 0.94);
+  backdrop-filter: blur(16px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  font-weight: 700;
+  margin-right: 0.5rem;
+}
+
+.toolbar button,
+.toolbar select {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.65rem;
+  background: white;
+  color: var(--text);
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+}
+
+.toolbar button.primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+#status-text {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 420px;
+  gap: 1rem;
+  padding: 1rem;
+  min-height: calc(100vh - 74px);
+}
+
+.sidebar,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.sidebar {
+  padding: 1rem;
+}
+
+.sidebar h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.example-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  background: white;
+  cursor: pointer;
+}
+
+.example-card:hover {
+  border-color: var(--accent);
+}
+
+.example-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.editor-column {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 220px;
+  gap: 1rem;
+}
+
+#editor,
+.diagnostics-panel,
+.results-column .panel {
+  min-height: 0;
+}
+
+#editor {
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--shadow);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+  font-weight: 600;
+}
+
+.list,
+.summary-output,
+.tab-panel {
+  padding: 0.9rem 1rem;
+  overflow: auto;
+  min-height: 0;
+}
+
+.diagnostic-item,
+.trade-item,
+.order-item {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(216, 210, 184, 0.5);
+}
+
+.diagnostic-item:last-child,
+.trade-item:last-child,
+.order-item:last-child {
+  border-bottom: 0;
+}
+
+.diagnostic-item strong {
+  color: var(--danger);
+}
+
+.results-column {
+  display: grid;
+  grid-template-rows: 220px 220px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.summary-output,
+#tab-json {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.85rem;
+}
+
+#equity-chart {
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.tab-button {
+  background: transparent;
+  border: 0;
+  padding: 0.8rem 1rem;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab-button.active {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+@media (max-width: 1200px) {
+  .workspace {
+    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 420px;
+  }
+
+  .results-column {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .results-column {
+    display: flex;
+    flex-direction: column;
+  }
+}

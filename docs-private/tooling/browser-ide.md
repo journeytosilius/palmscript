@@ -1,0 +1,51 @@
+# Browser IDE
+
+The hosted PalmScript browser IDE is backed by:
+
+- `palmscript-ide-server` for HTTP, websocket LSP transport, curated examples, and curated backtests
+- the shared `IdeLspSession` library core for both stdio LSP and browser websocket sessions
+- a single-file browser workspace with Monaco-based editing, diagnostics, hover, completion, formatting, and curated backtest execution
+
+## Run locally
+
+```bash
+cargo build --bin palmscript-ide-server
+target/debug/palmscript-ide-server
+```
+
+Default bind address:
+
+- `127.0.0.1:8080`
+
+Override with:
+
+```bash
+PALMSCRIPT_IDE_BIND=0.0.0.0:8080 target/debug/palmscript-ide-server
+```
+
+## Public IDE constraints
+
+The first public IDE release is intentionally narrow:
+
+- one `.palm` buffer
+- anonymous ephemeral browser sessions
+- curated BTCUSDT Binance spot datasets only
+- `check` and `backtest` only
+- no walk-forward, optimize, market mode, or arbitrary exchange fetches
+
+## HTTP surface
+
+- `GET /api/healthz`
+- `GET /api/examples`
+- `GET /api/datasets`
+- `POST /api/check`
+- `POST /api/backtest`
+- `WS /api/lsp`
+
+## Session and resource limits
+
+- max script size: `128 KiB`
+- max one active backtest per session
+- backtest timeout: `30s`
+- bounded backtest worker pool
+- bounded concurrent websocket LSP sessions
