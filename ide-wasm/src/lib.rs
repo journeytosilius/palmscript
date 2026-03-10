@@ -52,6 +52,8 @@ struct IdeApp {
     to_date: Date,
     show_from_picker: bool,
     show_to_picker: bool,
+    suppress_from_open_once: bool,
+    suppress_to_open_once: bool,
     status: String,
     next_check_request_id: u64,
     latest_check_request_id: u64,
@@ -70,6 +72,8 @@ impl Default for IdeApp {
             to_date: Date::default(),
             show_from_picker: false,
             show_to_picker: false,
+            suppress_from_open_once: false,
+            suppress_to_open_once: false,
             status: "Loading curated dataset…".to_string(),
             next_check_request_id: 0,
             latest_check_request_id: 0,
@@ -166,30 +170,36 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::ChooseFromDate => {
-            state.show_from_picker = true;
+            state.show_from_picker =
+                consume_picker_open(&mut state.suppress_from_open_once, state.show_from_picker);
             Task::none()
         }
         Message::CancelFromDate => {
             state.show_from_picker = false;
+            state.suppress_from_open_once = true;
             Task::none()
         }
         Message::SubmitFromDate(date) => {
             state.from_date = date;
             state.show_from_picker = false;
+            state.suppress_from_open_once = true;
             normalize_dates(state, PickedDate::From);
             Task::none()
         }
         Message::ChooseToDate => {
-            state.show_to_picker = true;
+            state.show_to_picker =
+                consume_picker_open(&mut state.suppress_to_open_once, state.show_to_picker);
             Task::none()
         }
         Message::CancelToDate => {
             state.show_to_picker = false;
+            state.suppress_to_open_once = true;
             Task::none()
         }
         Message::SubmitToDate(date) => {
             state.to_date = date;
             state.show_to_picker = false;
+            state.suppress_to_open_once = true;
             normalize_dates(state, PickedDate::To);
             Task::none()
         }
@@ -582,6 +592,14 @@ fn normalize_dates(state: &mut IdeApp, picked: PickedDate) {
         PickedDate::From => state.to_date = state.from_date,
         PickedDate::To => state.from_date = state.to_date,
     }
+}
+
+fn consume_picker_open(suppress_open_once: &mut bool, currently_open: bool) -> bool {
+    if *suppress_open_once {
+        *suppress_open_once = false;
+        return currently_open;
+    }
+    true
 }
 
 fn selected_window(
@@ -1095,8 +1113,8 @@ enum PickedDate {
 #[cfg(test)]
 mod tests {
     use super::{
-        date_from_ms, format_date_ms, format_number, format_percent, selected_window,
-        PublicDataset, PublicDatasetId,
+        date_from_ms, format_date_ms, format_number, format_percent, selected_window, update,
+        IdeApp, Message, PublicDataset, PublicDatasetId,
     };
     use iced_aw::date_picker::Date;
 
@@ -1140,5 +1158,26 @@ mod tests {
         assert_eq!(date.year, 2023);
         assert_eq!(date.month, 11);
         assert_eq!(date.day, 14);
+    }
+
+    #[test]
+    fn picker_submit_suppresses_immediate_reopen() {
+        let mut app = IdeApp::default();
+        let _ = update(&mut app, Message::ChooseFromDate);
+        assert!(app.show_from_picker);
+
+        let _ = update(
+            &mut app,
+            Message::SubmitFromDate(Date::from_ymd(2024, 1, 15)),
+        );
+        assert!(!app.show_from_picker);
+        assert!(app.suppress_from_open_once);
+
+        let _ = update(&mut app, Message::ChooseFromDate);
+        assert!(!app.show_from_picker);
+        assert!(!app.suppress_from_open_once);
+
+        let _ = update(&mut app, Message::ChooseFromDate);
+        assert!(app.show_from_picker);
     }
 }
