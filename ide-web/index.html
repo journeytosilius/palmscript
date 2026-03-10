@@ -25,15 +25,15 @@
       <main class="workspace">
         <section class="editor-column">
           <div id="editor"></div>
+        </section>
+        <aside class="results-column">
           <section class="panel diagnostics-panel">
             <div class="panel-header">Diagnostics</div>
             <div id="diagnostics-list" class="list"></div>
           </section>
-        </section>
-        <aside class="results-column">
           <section class="panel">
             <div class="panel-header">Backtest Summary</div>
-            <pre id="summary-output" class="summary-output">No run yet.</pre>
+            <div id="summary-output" class="summary-output summary-empty">No run yet.</div>
           </section>
           <section class="panel">
             <div class="panel-header">Equity Curve</div>
@@ -43,11 +43,9 @@
             <div class="tabs">
               <button data-tab="trades" class="tab-button active">Trades</button>
               <button data-tab="orders" class="tab-button">Orders</button>
-              <button data-tab="json" class="tab-button">Raw JSON</button>
             </div>
             <div id="tab-trades" class="tab-panel active"></div>
             <div id="tab-orders" class="tab-panel"></div>
-            <pre id="tab-json" class="tab-panel"></pre>
           </section>
         </aside>
       </main>

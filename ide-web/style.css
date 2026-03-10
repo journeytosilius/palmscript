@@ -138,9 +138,7 @@ body {
 }
 
 .editor-column {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) 220px;
-  gap: 1rem;
+  min-height: 0;
 }
 
 #editor,
@@ -196,17 +194,54 @@ body {
 
 .results-column {
   display: grid;
-  grid-template-rows: 220px 220px minmax(0, 1fr);
+  grid-template-rows: 180px 220px 220px minmax(0, 1fr);
   gap: 1rem;
 }
 
-.summary-output,
-#tab-json {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.85rem;
+.summary-output {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem 1rem;
+  align-content: start;
+}
+
+.summary-empty {
+  color: var(--ps-text-subtle);
+}
+
+.summary-card {
+  border: 1px solid rgba(24, 50, 71, 0.08);
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, rgba(234, 243, 255, 0.42) 0%, rgba(255, 255, 255, 0.92) 100%);
+  padding: 0.85rem 0.9rem;
+}
+
+.summary-card.wide {
+  grid-column: 1 / -1;
+}
+
+.summary-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--ps-text-subtle);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.summary-value {
   color: var(--ps-text-main);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.summary-value.negative {
+  color: var(--ps-danger);
+}
+
+.summary-value.positive {
+  color: var(--ps-link-dark);
 }
 
 #equity-chart {
@@ -258,7 +293,7 @@ body {
   }
 
   .results-column {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: none;
   }
 }

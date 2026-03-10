@@ -41,7 +41,7 @@ The first public IDE release is intentionally narrow:
 - minimal demo chrome with calendar date-range inputs and a run action only
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
-- live LSP diagnostics plus curated backtest execution
+- live LSP diagnostics shown above a formatted backtest summary plus curated backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 
 ## HTTP surface

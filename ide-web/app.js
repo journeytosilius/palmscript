@@ -508,6 +508,32 @@ function renderList(containerId, items, formatter) {
   }
 }
 
+function formatSummaryNumber(value, digits = 2) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "NA";
+  }
+  return value.toFixed(digits);
+}
+
+function formatSummaryPercent(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "NA";
+  }
+  return `${value.toFixed(2)}%`;
+}
+
+function summaryValueClass(value) {
+  if (typeof value !== "number" || Number.isNaN(value) || value === 0) {
+    return "summary-value";
+  }
+  return value > 0 ? "summary-value positive" : "summary-value negative";
+}
+
+function renderSummaryCard(label, value, extraClass = "") {
+  const className = extraClass ? `summary-card ${extraClass}` : "summary-card";
+  return `<div class="${className}"><span class="summary-label">${label}</span><div class="summary-value">${value}</div></div>`;
+}
+
 async function loadCatalogs() {
   const datasets = await fetchJson("/api/datasets");
   state.datasets = datasets.datasets;
@@ -577,18 +603,17 @@ async function runBacktest() {
 function renderBacktest(response) {
   state.lastBacktest = response;
   const summary = response.result.summary;
-  document.getElementById("summary-output").textContent = JSON.stringify(
-    {
-      dataset: renderSummaryDatasetLabel(response),
-      ending_equity: summary.ending_equity,
-      total_return_pct: summary.total_return * 100,
-      trade_count: summary.trade_count,
-      win_rate_pct: summary.win_rate * 100,
-      max_drawdown: summary.max_drawdown,
-    },
-    null,
-    2,
-  );
+  const totalReturnPct = summary.total_return * 100;
+  const summaryOutput = document.getElementById("summary-output");
+  summaryOutput.classList.remove("summary-empty");
+  summaryOutput.innerHTML = [
+    renderSummaryCard("Dataset", renderSummaryDatasetLabel(response), "wide"),
+    renderSummaryCard("Ending Equity", formatSummaryNumber(summary.ending_equity)),
+    renderSummaryCard("Trades", `${summary.trade_count}`),
+    `<div class="summary-card"><span class="summary-label">Total Return</span><div class="${summaryValueClass(totalReturnPct)}">${formatSummaryPercent(totalReturnPct)}</div></div>`,
+    renderSummaryCard("Win Rate", formatSummaryPercent(summary.win_rate * 100)),
+    renderSummaryCard("Max Drawdown", formatSummaryNumber(summary.max_drawdown), "wide"),
+  ].join("");
   renderEquityChart(response.result);
   renderList("tab-trades", response.result.trades, (trade) => {
     return `<strong>${trade.side}</strong> ${new Date(trade.entry.time).toISOString().slice(0, 10)} -> ${new Date(trade.exit.time).toISOString().slice(0, 10)}<div class="muted">entry ${trade.entry.price.toFixed(2)} / exit ${trade.exit.price.toFixed(2)} / pnl ${trade.realized_pnl.toFixed(2)}</div>`;
@@ -596,7 +621,6 @@ function renderBacktest(response) {
   renderList("tab-orders", response.result.orders, (order) => {
     return `<strong>${order.role}</strong> ${order.kind} / ${order.status}<div class="muted">placed ${order.placed_time ?? "na"} fill ${order.fill_price ?? "na"}</div>`;
   });
-  document.getElementById("tab-json").textContent = JSON.stringify(response, null, 2);
 }
 
 async function setupEditor() {
