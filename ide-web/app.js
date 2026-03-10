@@ -268,23 +268,35 @@ function bindMonacoProviders() {
     base: "vs",
     inherit: true,
     rules: [
-      { token: "keyword", foreground: "276749", fontStyle: "bold" },
-      { token: "string", foreground: "b35c1e" },
-      { token: "number", foreground: "2b6cb0" },
-      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-      { token: "operator", foreground: "2d3748" },
-      { token: "delimiter", foreground: "4a5568" },
-      { token: "type", foreground: "975a16" },
-      { token: "function", foreground: "0f766e" },
-      { token: "variable", foreground: "1f2937" },
-      { token: "parameter", foreground: "7c3aed" },
-      { token: "namespace", foreground: "0c4a6e" },
+      { token: "keyword", foreground: "156fbe", fontStyle: "bold" },
+      { token: "string", foreground: "177bc8" },
+      { token: "number", foreground: "2e9cf3" },
+      { token: "comment", foreground: "647b92", fontStyle: "italic" },
+      { token: "operator", foreground: "183247" },
+      { token: "delimiter", foreground: "647b92" },
+      { token: "type", foreground: "0f5f9f" },
+      { token: "function", foreground: "156fbe" },
+      { token: "variable", foreground: "183247" },
+      { token: "parameter", foreground: "177bc8" },
+      { token: "namespace", foreground: "0f5f9f" },
     ],
     colors: {
-      "editor.background": "#fffdf8",
-      "editor.lineHighlightBackground": "#f6f1e7",
-      "editor.selectionBackground": "#d7e9dd",
-      "editor.inactiveSelectionBackground": "#e7f0ea",
+      "editor.background": "#fcfdff",
+      "editor.foreground": "#183247",
+      "editor.lineHighlightBackground": "#edf4fc",
+      "editor.selectionBackground": "#d6e9fa",
+      "editor.inactiveSelectionBackground": "#e8f3fd",
+      "editorCursor.foreground": "#156fbe",
+      "editorLineNumber.foreground": "#8ca4bb",
+      "editorLineNumber.activeForeground": "#156fbe",
+      "editorIndentGuide.background1": "#d8e4f1",
+      "editorIndentGuide.activeBackground1": "#9dc5ea",
+      "editorWidget.background": "#ffffff",
+      "editorWidget.border": "#c9daeb",
+      "editorSuggestWidget.background": "#ffffff",
+      "editorSuggestWidget.border": "#c9daeb",
+      "editorHoverWidget.background": "#ffffff",
+      "editorHoverWidget.border": "#c9daeb",
     },
   });
   monaco.languages.registerCompletionItemProvider("palmscript", {
@@ -439,7 +451,7 @@ function renderEquityChart(result) {
     .join(" ");
   const area = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   area.setAttribute("fill", "none");
-  area.setAttribute("stroke", "#276749");
+  area.setAttribute("stroke", "#156fbe");
   area.setAttribute("stroke-width", "3");
   area.setAttribute("points", polyline);
   svg.appendChild(area);

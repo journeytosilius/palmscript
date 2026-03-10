@@ -46,3 +46,6 @@ mkdocs build --strict
 docker build -f Dockerfile.ide -t palmscript-ide .
 docker run --rm -p 8080:8080 palmscript-ide
 ```
+
+The browser IDE shell uses the same blue-grey and accent-blue visual language
+as the published docs at <https://palmscript.dev/docs/>.
