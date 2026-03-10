@@ -1,7 +1,7 @@
 use iced::widget::canvas::{self, Canvas, Path, Stroke};
 use iced::widget::{button, column, container, row, scrollable, text, text_editor};
 use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Task, Theme};
-use iced_aw::{date_picker::Date, helpers::date_picker, ICED_AW_FONT_BYTES};
+use iced_aw::{date_picker::Date, ICED_AW_FONT_BYTES};
 use serde::Deserialize;
 
 const DEFAULT_SOURCE: &str = r#"interval 4h
@@ -35,10 +35,10 @@ enum Message {
     RunBacktest,
     BacktestFinished(Result<BacktestResponse, String>),
     ChooseFromDate,
-    CancelFromDate,
+    ShiftFromMonth(i32),
     SubmitFromDate(Date),
     ChooseToDate,
-    CancelToDate,
+    ShiftToMonth(i32),
     SubmitToDate(Date),
 }
 
@@ -50,10 +50,10 @@ struct IdeApp {
     dataset: Option<PublicDataset>,
     from_date: Date,
     to_date: Date,
+    from_picker_month: CalendarMonth,
+    to_picker_month: CalendarMonth,
     show_from_picker: bool,
     show_to_picker: bool,
-    suppress_from_open_once: bool,
-    suppress_to_open_once: bool,
     status: String,
     next_check_request_id: u64,
     latest_check_request_id: u64,
@@ -70,10 +70,10 @@ impl Default for IdeApp {
             dataset: None,
             from_date: Date::default(),
             to_date: Date::default(),
+            from_picker_month: CalendarMonth::from_date(Date::default()),
+            to_picker_month: CalendarMonth::from_date(Date::default()),
             show_from_picker: false,
             show_to_picker: false,
-            suppress_from_open_once: false,
-            suppress_to_open_once: false,
             status: "Loading curated dataset…".to_string(),
             next_check_request_id: 0,
             latest_check_request_id: 0,
@@ -125,6 +125,8 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
                         );
                         state.from_date = from_date;
                         state.to_date = to_date;
+                        state.from_picker_month = CalendarMonth::from_date(from_date);
+                        state.to_picker_month = CalendarMonth::from_date(to_date);
                         state.dataset = Some(dataset);
                     } else {
                         state.status = "No curated dataset is available.".to_string();
@@ -170,37 +172,45 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::ChooseFromDate => {
-            state.show_from_picker =
-                consume_picker_open(&mut state.suppress_from_open_once, state.show_from_picker);
+            let opening = !state.show_from_picker;
+            state.show_from_picker = opening;
+            state.show_to_picker = false;
+            if opening {
+                state.from_picker_month = CalendarMonth::from_date(state.from_date);
+            }
             Task::none()
         }
-        Message::CancelFromDate => {
-            state.show_from_picker = false;
-            state.suppress_from_open_once = true;
+        Message::ShiftFromMonth(delta) => {
+            state.from_picker_month = state.from_picker_month.shift(delta);
             Task::none()
         }
         Message::SubmitFromDate(date) => {
             state.from_date = date;
             state.show_from_picker = false;
-            state.suppress_from_open_once = true;
             normalize_dates(state, PickedDate::From);
+            state.from_picker_month = CalendarMonth::from_date(state.from_date);
+            state.to_picker_month = CalendarMonth::from_date(state.to_date);
             Task::none()
         }
         Message::ChooseToDate => {
-            state.show_to_picker =
-                consume_picker_open(&mut state.suppress_to_open_once, state.show_to_picker);
+            let opening = !state.show_to_picker;
+            state.show_to_picker = opening;
+            state.show_from_picker = false;
+            if opening {
+                state.to_picker_month = CalendarMonth::from_date(state.to_date);
+            }
             Task::none()
         }
-        Message::CancelToDate => {
-            state.show_to_picker = false;
-            state.suppress_to_open_once = true;
+        Message::ShiftToMonth(delta) => {
+            state.to_picker_month = state.to_picker_month.shift(delta);
             Task::none()
         }
         Message::SubmitToDate(date) => {
             state.to_date = date;
             state.show_to_picker = false;
-            state.suppress_to_open_once = true;
             normalize_dates(state, PickedDate::To);
+            state.from_picker_month = CalendarMonth::from_date(state.from_date);
+            state.to_picker_month = CalendarMonth::from_date(state.to_date);
             Task::none()
         }
         Message::RunBacktest => {
@@ -258,20 +268,28 @@ fn view(state: &IdeApp) -> Element<'_, Message> {
             text("PalmScript IDE").size(26),
             row![
                 date_field(
-                    "From",
-                    state.from_date,
-                    state.show_from_picker,
-                    Message::ChooseFromDate,
-                    Message::CancelFromDate,
-                    Message::SubmitFromDate
+                    DateFieldProps {
+                        label: "From",
+                        value: state.from_date,
+                        picker_month: state.from_picker_month,
+                        show_picker: state.show_from_picker,
+                        on_toggle: Message::ChooseFromDate,
+                        on_prev_month: Message::ShiftFromMonth(-1),
+                        on_next_month: Message::ShiftFromMonth(1),
+                        on_submit: Message::SubmitFromDate,
+                    }
                 ),
                 date_field(
-                    "To",
-                    state.to_date,
-                    state.show_to_picker,
-                    Message::ChooseToDate,
-                    Message::CancelToDate,
-                    Message::SubmitToDate
+                    DateFieldProps {
+                        label: "To",
+                        value: state.to_date,
+                        picker_month: state.to_picker_month,
+                        show_picker: state.show_to_picker,
+                        on_toggle: Message::ChooseToDate,
+                        on_prev_month: Message::ShiftToMonth(-1),
+                        on_next_month: Message::ShiftToMonth(1),
+                        on_submit: Message::SubmitToDate,
+                    }
                 ),
                 button(text(if state.running_backtest {
                     "Running…"
@@ -526,32 +544,117 @@ fn summary_card(
         .width(Fill)
 }
 
-fn date_field<'a>(
+struct DateFieldProps {
     label: &'static str,
     value: Date,
+    picker_month: CalendarMonth,
     show_picker: bool,
-    on_open: Message,
-    on_cancel: Message,
+    on_toggle: Message,
+    on_prev_month: Message,
+    on_next_month: Message,
     on_submit: fn(Date) -> Message,
-) -> Element<'a, Message> {
+}
+
+fn date_field<'a>(props: DateFieldProps) -> Element<'a, Message> {
     container(
         column![
-            muted(label),
-            date_picker(
-                show_picker,
-                value,
-                button(text(value.to_string()))
-                    .padding([10, 14])
-                    .width(Length::Fixed(140.0))
-                    .style(date_button_style)
-                    .on_press(on_open),
-                on_cancel,
-                on_submit
-            ),
+            muted(props.label),
+            button(text(props.value.to_string()))
+                .padding([10, 14])
+                .width(Length::Fixed(140.0))
+                .style(date_button_style)
+                .on_press(props.on_toggle),
+            if props.show_picker {
+                calendar_picker(
+                    props.picker_month,
+                    props.value,
+                    props.on_prev_month,
+                    props.on_next_month,
+                    props.on_submit,
+                )
+            } else {
+                container(text("")).height(Length::Shrink).into()
+            },
         ]
         .spacing(6),
     )
     .into()
+}
+
+fn calendar_picker<'a>(
+    month: CalendarMonth,
+    selected: Date,
+    on_prev_month: Message,
+    on_next_month: Message,
+    on_submit: fn(Date) -> Message,
+) -> Element<'a, Message> {
+    let header = row![
+        button(text("<"))
+            .width(Length::Fixed(32.0))
+            .padding([6, 0])
+            .style(calendar_nav_button_style)
+            .on_press(on_prev_month),
+        container(text(month.label()).size(15))
+            .width(Length::Fill)
+            .center_x(Length::Fill),
+        button(text(">"))
+            .width(Length::Fixed(32.0))
+            .padding([6, 0])
+            .style(calendar_nav_button_style)
+            .on_press(on_next_month),
+    ]
+    .align_y(Alignment::Center)
+    .spacing(8);
+
+    let weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].into_iter().fold(
+        row!().spacing(4),
+        |row, label| {
+            row.push(
+                container(muted(label))
+                    .width(Length::Fixed(32.0))
+                    .center_x(Length::Fill),
+            )
+        },
+    );
+
+    let first_weekday = weekday_index(month.year, month.month, 1);
+    let total_days =
+        days_in_month(month.year, month.month).expect("calendar month should be valid");
+    let mut day = 1;
+    let mut weeks = column![weekdays].spacing(4);
+
+    for week in 0..6 {
+        let mut row_days = row!().spacing(4);
+        for weekday in 0..7 {
+            let slot = week * 7 + weekday;
+            let cell = if slot < first_weekday as usize || day > total_days {
+                blank_day_cell()
+            } else {
+                let date = Date::from_ymd(month.year, month.month, day);
+                let is_selected = same_date(date, selected);
+                let label = day.to_string();
+                day += 1;
+                button(text(label))
+                    .width(Length::Fixed(32.0))
+                    .padding([6, 0])
+                    .style(if is_selected {
+                        selected_day_button_style
+                    } else {
+                        calendar_day_button_style
+                    })
+                    .on_press(on_submit(date))
+                    .into()
+            };
+            row_days = row_days.push(cell);
+        }
+        weeks = weeks.push(row_days);
+    }
+
+    container(column![header, weeks].spacing(10))
+        .width(Length::Fixed(248.0))
+        .style(calendar_picker_style)
+        .padding(12)
+        .into()
 }
 
 fn muted(content: impl Into<String>) -> iced::widget::Text<'static> {
@@ -592,14 +695,6 @@ fn normalize_dates(state: &mut IdeApp, picked: PickedDate) {
         PickedDate::From => state.to_date = state.from_date,
         PickedDate::To => state.from_date = state.to_date,
     }
-}
-
-fn consume_picker_open(suppress_open_once: &mut bool, currently_open: bool) -> bool {
-    if *suppress_open_once {
-        *suppress_open_once = false;
-        return currently_open;
-    }
-    true
 }
 
 fn selected_window(
@@ -770,6 +865,84 @@ fn date_button_style(_theme: &Theme, status: button::Status) -> button::Style {
         shadow: iced::Shadow::default(),
         snap: false,
     }
+}
+
+fn calendar_picker_style(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::from_rgb8(0xff, 0xff, 0xff))),
+        border: Border {
+            color: Color::from_rgb8(0xc9, 0xda, 0xeb),
+            width: 1.0,
+            radius: 14.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color::from_rgba8(0x18, 0x32, 0x47, 0.08),
+            offset: iced::Vector::new(0.0, 8.0),
+            blur_radius: 18.0,
+        },
+        ..container::Style::default()
+    }
+}
+
+fn calendar_nav_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Hovered => Color::from_rgb8(0xe6, 0xf0, 0xfa),
+        _ => Color::from_rgb8(0xf5, 0xf9, 0xfd),
+    };
+    button::Style {
+        background: Some(Background::Color(background)),
+        text_color: Color::from_rgb8(0x18, 0x32, 0x47),
+        border: Border {
+            color: Color::from_rgb8(0xd6, 0xe5, 0xf3),
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
+fn calendar_day_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Hovered => Color::from_rgb8(0xec, 0xf4, 0xfc),
+        _ => Color::from_rgb8(0xff, 0xff, 0xff),
+    };
+    button::Style {
+        background: Some(Background::Color(background)),
+        text_color: Color::from_rgb8(0x18, 0x32, 0x47),
+        border: Border {
+            color: Color::from_rgb8(0xde, 0xea, 0xf6),
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
+fn selected_day_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Hovered => Color::from_rgb8(0x0f, 0x5f, 0x9f),
+        _ => Color::from_rgb8(0x15, 0x6f, 0xbe),
+    };
+    button::Style {
+        background: Some(Background::Color(background)),
+        text_color: Color::WHITE,
+        border: Border {
+            color: background,
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
+fn blank_day_cell<'a>() -> Element<'a, Message> {
+    container(text(" "))
+        .width(Length::Fixed(32.0))
+        .height(Length::Fixed(32.0))
+        .into()
 }
 
 fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
@@ -1105,16 +1278,70 @@ struct SelectedWindow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CalendarMonth {
+    year: i32,
+    month: u32,
+}
+
+impl CalendarMonth {
+    fn from_date(date: Date) -> Self {
+        Self {
+            year: date.year,
+            month: date.month,
+        }
+    }
+
+    fn shift(self, delta: i32) -> Self {
+        let absolute_month = self.year * 12 + self.month as i32 - 1 + delta;
+        Self {
+            year: absolute_month.div_euclid(12),
+            month: absolute_month.rem_euclid(12) as u32 + 1,
+        }
+    }
+
+    fn label(self) -> String {
+        format!("{} {}", month_name(self.month), self.year)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PickedDate {
     From,
     To,
+}
+
+fn weekday_index(year: i32, month: u32, day: u32) -> u32 {
+    let days = days_from_civil(year, month, day).expect("calendar date should be valid");
+    (days + 4).rem_euclid(7) as u32
+}
+
+fn month_name(month: u32) -> &'static str {
+    match month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        12 => "December",
+        _ => "Unknown",
+    }
+}
+
+fn same_date(left: Date, right: Date) -> bool {
+    left.year == right.year && left.month == right.month && left.day == right.day
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         date_from_ms, format_date_ms, format_number, format_percent, selected_window, update,
-        IdeApp, Message, PublicDataset, PublicDatasetId,
+        CalendarMonth, IdeApp, Message, PublicDataset, PublicDatasetId,
     };
     use iced_aw::date_picker::Date;
 
@@ -1161,7 +1388,7 @@ mod tests {
     }
 
     #[test]
-    fn picker_submit_suppresses_immediate_reopen() {
+    fn picker_day_click_closes_immediately() {
         let mut app = IdeApp::default();
         let _ = update(&mut app, Message::ChooseFromDate);
         assert!(app.show_from_picker);
@@ -1171,13 +1398,53 @@ mod tests {
             Message::SubmitFromDate(Date::from_ymd(2024, 1, 15)),
         );
         assert!(!app.show_from_picker);
-        assert!(app.suppress_from_open_once);
+        assert_eq!(app.from_date.year, 2024);
+        assert_eq!(app.from_date.month, 1);
+        assert_eq!(app.from_date.day, 15);
+    }
+
+    #[test]
+    fn opening_picker_syncs_visible_month_to_selected_date() {
+        let mut app = IdeApp {
+            from_date: Date::from_ymd(2024, 7, 9),
+            from_picker_month: CalendarMonth {
+                year: 2023,
+                month: 1,
+            },
+            ..IdeApp::default()
+        };
 
         let _ = update(&mut app, Message::ChooseFromDate);
-        assert!(!app.show_from_picker);
-        assert!(!app.suppress_from_open_once);
 
-        let _ = update(&mut app, Message::ChooseFromDate);
         assert!(app.show_from_picker);
+        assert_eq!(
+            app.from_picker_month,
+            CalendarMonth {
+                year: 2024,
+                month: 7,
+            }
+        );
+    }
+
+    #[test]
+    fn shifting_picker_month_moves_across_year_boundaries() {
+        let month = CalendarMonth {
+            year: 2024,
+            month: 1,
+        };
+        assert_eq!(
+            month.shift(-1),
+            CalendarMonth {
+                year: 2023,
+                month: 12,
+            }
+        );
+        assert_eq!(
+            month.shift(13),
+            CalendarMonth {
+                year: 2025,
+                month: 2,
+            }
+        );
     }
 }

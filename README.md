@@ -60,7 +60,7 @@ published docs at <https://palmscript.dev/docs/>.
 
 The public demo keeps the chrome intentionally minimal: one editor buffer, a
 calendar date-range picker over the curated BTCUSDT dataset, diagnostics, and
-backtest output panels.
+backtest output panels. Day clicks apply immediately.
 
 The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.
