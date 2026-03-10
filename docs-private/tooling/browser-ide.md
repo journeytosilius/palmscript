@@ -23,6 +23,16 @@ Override with:
 PALMSCRIPT_IDE_BIND=0.0.0.0:8080 target/debug/palmscript-ide-server
 ```
 
+## Container image
+
+```bash
+docker build -f Dockerfile.ide -t palmscript-ide .
+docker run --rm -p 8080:8080 palmscript-ide
+```
+
+The image embeds the browser shell and serves the full IDE from the
+`palmscript-ide-server` binary.
+
 ## Public IDE constraints
 
 The first public IDE release is intentionally narrow:

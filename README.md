@@ -39,3 +39,10 @@ target/debug/palmscript run market examples/strategies/cross_source_spread.palm 
 target/debug/palmscript dump-bytecode examples/strategies/sma_cross.palm
 mkdocs build --strict
 ```
+
+## Browser IDE Container
+
+```bash
+docker build -f Dockerfile.ide -t palmscript-ide .
+docker run --rm -p 8080:8080 palmscript-ide
+```

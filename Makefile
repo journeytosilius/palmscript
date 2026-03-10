@@ -12,3 +12,9 @@ docs-docker-build:
 
 docs-docker-run:
 	docker run --rm -p 8080:8080 palmscript-docs
+
+ide-docker-build:
+	docker build -f Dockerfile.ide -t palmscript-ide .
+
+ide-docker-run:
+	docker run --rm -p 8080:8080 palmscript-ide

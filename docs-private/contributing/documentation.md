@@ -82,4 +82,4 @@ The container publishes the static docs site under `http://127.0.0.1:8080/docs/`
 - keep `examples/README.md` and `editors/vscode/README.md` as short entrypoint notes, not parallel documentation sets
 - keep commands, flags, filenames, and example snippets synchronized with the implementation
 - docs changes belong in the same change as the behavior change they describe
-- keep `Dockerfile.docs`, `docker/docs-nginx.conf`, and Docker docs instructions in sync when the docs build or serving model changes
+- keep `Dockerfile.docs`, `Dockerfile.ide`, `docker/docs-nginx.conf`, and Docker-related instructions in sync when the docs or hosted IDE serving model changes
