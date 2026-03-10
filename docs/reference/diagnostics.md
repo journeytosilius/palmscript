@@ -1,6 +1,6 @@
 # Diagnostics
 
-PalmScript surfaces diagnostics and errors from four distinct layers.
+PalmScript surfaces diagnostics and errors from three public layers.
 
 ## 1. Compile Diagnostics
 
@@ -29,14 +29,10 @@ These diagnostics surface through:
 - `palmscript check`
 - `palmscript run market`
 - `palmscript dump-bytecode`
-- `palmscript-lsp`
-- the VS Code extension
 
 ## 2. Market Fetch Errors
 
-After successful compilation, market mode may fail while constructing venue-backed feeds.
-
-Owned by: exchange adapters and feed-fetch assembly.
+After successful compilation, `run market` may fail while preparing the required historical feeds.
 
 Examples:
 
@@ -45,22 +41,19 @@ Examples:
 - an exchange request fails
 - a venue response is malformed
 - a required feed returns no data in the requested window
-- a Hyperliquid spot symbol cannot be resolved
+- a symbol cannot be resolved by the selected venue
 
 ## 3. Runtime Errors
 
-Runtime errors occur after feed preparation begins or during VM execution.
-
-Owned by: runtime feed validation, VM execution, and output materialization.
+Runtime errors occur after feed preparation begins or during execution.
 
 Examples:
 
 - feed alignment errors
-- unsorted or duplicate prepared interval feeds
 - missing or duplicate runtime feeds
 - instruction-budget exhaustion
 - stack underflow
-- type mismatch in the VM
+- type mismatch during execution
 - invalid local or series slot
 - history-capacity overflow
 - output type mismatch during output collection
@@ -71,56 +64,6 @@ The owning layer for a failure is part of the contract:
 
 - syntax and semantic validity belong to compilation
 - exchange/network/response validity belong to market fetch
-- prepared-feed consistency and bytecode execution belong to runtime
+- feed consistency and execution validity belong to runtime
 
 PalmScript fails explicitly instead of silently degrading semantics.
-
-## 4. Backtest Diagnostics
-
-Successful backtests also return a structured diagnostics payload intended for
-machine analysis and strategy iteration.
-
-The backtest diagnostics surface includes:
-
-- `order_diagnostics`: per-order snapshots at signal, placement, and fill time
-- `trade_diagnostics`: per-trade entry/exit context, MAE, MFE, and exit classification
-- `summary`: aggregate order and trade statistics
-- `capture_summary`: execution-asset return, time spent flat or in market, and opportunity-cost return while flat
-- `export_summaries`: one summary per exported series
-- `opportunity_events`: bounded activation and signal-decision events with forward-return context
-
-Export summaries use all named `export` series automatically:
-
-- numeric exports report `min`, `max`, `mean`, `entry_mean`, and `exit_mean`
-- bool exports report true/false counts, rising and falling edges, time spent true while flat or in market, and trade stats for entries taken while that export was true
-
-Opportunity events are bounded and deterministic:
-
-- every exported bool series emits an activation event on `false/na -> true`
-- consumed backtest signals emit decision events such as queued, ignored same-side, ignored while flat, conflict, or replacement
-- each event includes fixed forward-return horizons over `1`, `6`, and `24` execution bars
-
-Backtest diagnostics are not compile failures or runtime errors. They are part
-of the successful result surface returned by `palmscript run backtest` and
-`run_backtest_with_sources`.
-
-## 5. Walk-Forward Segment Diagnostics
-
-Walk-forward evaluation reuses the same backtest engine and now also surfaces a
-compact diagnostics payload for each out-of-sample segment.
-
-Each segment includes:
-
-- `in_sample`: the rolling training-window summary
-- `out_of_sample`: the trailing test-window summary
-- `out_of_sample_diagnostics`: compact diagnostics for the test slice only
-
-The `out_of_sample_diagnostics` payload includes:
-
-- `summary`: out-of-sample order/trade aggregates such as fill rate, average bars held, and signal/protect/target/reversal/liquidation exit counts
-- `capture_summary`: out-of-sample exposure mix plus execution-asset return context
-- `export_summaries`: out-of-sample export-state summaries computed only from the test slice
-- `opportunity_event_count`: bounded count of out-of-sample opportunity events in that segment
-
-This is intended for regime comparison across weak and strong segments without
-rerunning each slice manually.

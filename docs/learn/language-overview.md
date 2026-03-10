@@ -1,12 +1,12 @@
 # Language Overview
 
-PalmScript strategies are top-level source files made of declarations and statements.
+PalmScript scripts are top-level source files made of declarations and statements.
 
 Common building blocks:
 
 - `interval <...>` for the base execution clock
-- `source` declarations for exchange-backed markets
-- optional supplemental `use <alias> <interval>` declarations for higher or equal intervals
+- `source` declarations for market-backed series
+- optional supplemental `use <alias> <interval>` declarations
 - top-level functions
 - `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, `entry` / `exit`, and `order`
 - `if / else if / else`
@@ -16,7 +16,7 @@ Common building blocks:
 
 ## Script Shape
 
-Executable PalmScript scripts name exchange-backed markets explicitly:
+Executable PalmScript scripts name data sources explicitly:
 
 ```palmscript
 interval 1m
@@ -28,19 +28,19 @@ plot(bn.close - hl.close)
 
 ## Mental Model
 
-- the script always has exactly one base interval
-- every executable script declares at least one `source`
+- every script has one base interval
+- executable scripts declare one or more `source` bindings
 - market series are always source-qualified
 - series values evolve over time
 - higher intervals update only when those candles fully close
 - missing history or missing aligned source data appears as `na`
-- `plot`, `export`, `trigger`, and first-class strategy signals emit results after each execution step
+- `plot`, `export`, `trigger`, and strategy declarations emit results after each execution step
 
 ## Where To Go For Exact Rules
 
 - syntax and tokens: [Lexical Structure](../reference/lexical-structure.md) and [Grammar](../reference/grammar.md)
 - declarations and visibility: [Declarations and Scope](../reference/declarations-and-scope.md)
-- expressions and runtime meaning: [Evaluation Semantics](../reference/evaluation-semantics.md)
+- expressions and semantics: [Evaluation Semantics](../reference/evaluation-semantics.md)
 - market series rules: [Intervals and Sources](../reference/intervals-and-sources.md)
 - indicators and helper builtins: [Indicators](../reference/indicators.md) and [Builtins](../reference/builtins.md)
 - outputs: [Outputs](../reference/outputs.md)

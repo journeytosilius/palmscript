@@ -1,6 +1,6 @@
 # Grammar
 
-This page is the normative grammar for PalmScript as implemented in this repository.
+This page is the normative grammar for PalmScript.
 
 The productions below define the accepted parser surface. Rules that depend on name resolution, interval ordering, or typing are defined in later reference chapters.
 

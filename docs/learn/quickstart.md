@@ -1,44 +1,31 @@
 # Quickstart
 
-## 1. Build The Binaries
+## 1. Validate A Script
 
 ```bash
-cargo build --bin palmscript --bin palmscript-lsp
+palmscript check strategy.palm
 ```
 
-## 2. Validate A Strategy
+## 2. Run A Market-Backed Script
 
 ```bash
-target/debug/palmscript check strategy.palm
-```
-
-## 3. Run A Market-Backed Strategy
-
-```bash
-target/debug/palmscript run market strategy.palm \
-  --from 1704067200000 \
-  --to 1704153600000
-```
-## 4. Run Another Exchange-Backed Strategy
-
-```bash
-target/debug/palmscript run market spread_strategy.palm \
+palmscript run market strategy.palm \
   --from 1704067200000 \
   --to 1704153600000
 ```
 
-See [Market Mode](../tooling/market-mode.md) for supported source templates and fetch behavior.
-
-## 5. Inspect Compiled Output
+## 3. Run Another Exchange-Backed Script
 
 ```bash
-target/debug/palmscript dump-bytecode strategy.palm
+palmscript run market spread_strategy.palm \
+  --from 1704067200000 \
+  --to 1704153600000
 ```
 
-## 6. Use The Editor Tooling
+## 4. Inspect Compiled Output
 
-- install or build the PalmScript VS Code extension
-- open a `.palm` file
-- use diagnostics, formatting, hover, completion, definitions, and document symbols from `palmscript-lsp`
+```bash
+palmscript dump-bytecode strategy.palm
+```
 
 Next: [First Strategy](first-strategy.md)

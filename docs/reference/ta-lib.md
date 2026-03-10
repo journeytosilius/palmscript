@@ -2,13 +2,12 @@
 
 PalmScript now includes a typed TA-Lib integration layer anchored to upstream TA-Lib commit `1bdf54384036852952b8b4cb97c09359ae407bd0`.
 
-This repository does not yet expose the entire TA-Lib function catalog at runtime, but it does pin the upstream metadata source and uses typed language features that are required for the broader port:
+PalmScript does not yet expose the entire TA-Lib function catalog as executable language surface, but it does reserve the broader catalog and uses the typed language features required for that surface:
 
 - `ma_type.<variant>` enum literals
 - tuple destructuring for multi-output TA-Lib builtins
-- TA-Lib metadata snapshot in `src/talib.rs`
-- importer tooling under `tools/`
-- a generated 161-function catalog in `src/talib_generated.rs`
+- a pinned TA-Lib metadata snapshot
+- a generated 161-function catalog
 
 Current metadata-driven surface behavior:
 

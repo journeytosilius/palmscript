@@ -1,81 +1,23 @@
 # Installation
 
-## Build the CLI and Language Server
+PalmScript is used through the `palmscript` CLI.
 
-From the repository root:
+Before following the Learn examples, make sure:
 
-```bash
-cargo build --bin palmscript --bin palmscript-lsp
-```
+- `palmscript` is installed
+- the binary is available on your `PATH`
 
-The binaries will be available at:
-
-- `target/debug/palmscript`
-- `target/debug/palmscript-lsp`
-
-Use `--release` for optimized builds:
+Verify it:
 
 ```bash
-cargo build --release --bin palmscript --bin palmscript-lsp
+palmscript --help
 ```
 
-## Install Python Dependencies for Documentation
+The examples in this documentation assume commands are run as:
 
 ```bash
-python -m venv .venv-docs
-source .venv-docs/bin/activate
-pip install -r requirements-docs.txt
+palmscript check strategy.palm
+palmscript run market strategy.palm --from 1704067200000 --to 1704153600000
 ```
 
-Then serve or build the docs:
-
-```bash
-mkdocs serve
-mkdocs build --strict
-```
-
-Or use the repository `Makefile` helpers:
-
-```bash
-make docs-serve
-make docs-build-strict
-```
-
-## Serve Documentation with Docker and nginx
-
-The repository also provides a dedicated docs container image. It builds the MkDocs site and serves the static output through nginx.
-
-Build the image:
-
-```bash
-docker build -f Dockerfile.docs -t palmscript-docs .
-```
-
-Run it locally:
-
-```bash
-docker run --rm -p 8080:8080 palmscript-docs
-```
-
-Then open:
-
-```text
-http://127.0.0.1:8080/docs/
-```
-
-Equivalent `Makefile` helpers:
-
-```bash
-make docs-docker-build
-make docs-docker-run
-```
-
-## Install VS Code Extension Dependencies
-
-```bash
-cd editors/vscode
-npm install
-npm run compile
-```
-
-The extension can use bundled `palmscript-lsp` binaries or fall back to a locally built repo binary during development.
+If you are working from a local development checkout, use the build and packaging workflow provided by your environment to make the `palmscript` binary available before continuing.

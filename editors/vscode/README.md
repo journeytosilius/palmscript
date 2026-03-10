@@ -1,12 +1,12 @@
 # PalmScript VS Code Extension
 
-The canonical documentation for the editor stack now lives in the MkDocs site:
+This file is a short repository-local development note for the VS Code extension.
 
-- [VS Code Extension](../../docs/tooling/vscode.md)
-- [Language Server](../../docs/tooling/language-server.md)
-- [Release Workflows](../../docs/contributing/releases.md)
+The public PalmScript documentation site is language-focused and does not publish editor-stack internals. Private repo-only notes now live under:
 
-This file remains the short repository-local development note. The language semantics and user workflow live in the MkDocs site, not in this file.
+- `../../docs-private/tooling/vscode.md`
+- `../../docs-private/tooling/language-server.md`
+- `../../docs-private/contributing/releases.md`
 
 ## Development
 

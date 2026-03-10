@@ -1,51 +1,38 @@
 # PalmScript Documentation
 
-PalmScript is a deterministic DSL for financial time-series programs. Scripts compile to bytecode and execute inside a bounded-history VM with no filesystem, network, wall-clock, or randomness access during strategy execution.
-
-This site is the canonical documentation source for the repository.
+PalmScript is a language for financial time-series strategies. This site focuses on the language itself: syntax, semantics, builtins, code examples, and the basic CLI flow for checking and running scripts.
 
 ## Documentation Map
 
-- `Learn` teaches how to write and run PalmScript strategies.
-- `Reference` is the normative definition of PalmScript syntax and semantics.
-- `Tooling` explains the CLI, execution modes, and editor integrations.
-- `Tooling` also covers the library backtesting surface built on top of runtime outputs.
-- `Internals` documents compiler, bytecode, VM, and runtime architecture.
-- `Contributing` covers repository workflow, testing, releases, and docs maintenance.
+- `Learn` teaches the language through short examples and runnable workflows.
+- `Reference` defines the accepted syntax and language semantics.
+- `Tooling` covers the public `palmscript` CLI surface needed to work with PalmScript scripts.
 
 ## Start Here
 
 - New to PalmScript: [Learn Overview](learn/overview.md)
-- Want a first runnable strategy: [Quickstart](learn/quickstart.md)
+- Want a first runnable script: [Quickstart](learn/quickstart.md)
 - Need the formal language definition: [Reference Overview](reference/overview.md)
 - Looking for indicator contracts: [Indicators Overview](reference/indicators.md)
 - Running scripts from the CLI: [CLI](tooling/cli.md)
-- Integrating the library backtester: [Backtesting](tooling/backtesting.md)
-- Understanding the editor workflow: [VS Code Extension](tooling/vscode.md)
 
-## Current Capabilities
+## Language Highlights
 
-PalmScript currently implements:
+PalmScript supports:
 
-- a mandatory base `interval <...>` declaration
-- one or more named exchange-backed `source` declarations per executable script
-- source-qualified market series such as `spot.close` and `hl.1h.close`
-- source-scoped `use <alias> <interval>` declarations for supplemental intervals
-- numeric, boolean, string-in-source-declaration, and `na` literals
-- top-level expression-bodied `fn` declarations
-- `let`, tuple destructuring, `export`, and `trigger`
+- a required base `interval <...>` declaration
+- named `source` declarations for market data
+- source-qualified series such as `spot.close` and `perp.1h.close`
+- optional `use <alias> <interval>` declarations for supplemental intervals
+- literals, arithmetic, comparisons, unary operators, `and`, and `or`
+- `let`, `const`, `input`, tuple destructuring, `export`, and `trigger`
 - `if / else if / else`
-- arithmetic, comparisons, unary operators, `and`, and `or`
-- series indexing with literal offsets
-- builtins: indicators, signal helpers, event-memory helpers, `plot`, and a partially executable TA-Lib-style catalog
-- exchange-backed execution through market mode
-- library backtesting through `run_backtest_with_sources`
-- a CLI, language server, and first-party VS Code extension
+- literal-offset series indexing
+- indicators, signal helpers, event-memory helpers, and TA-Lib-style builtins
+- first-class strategy declarations such as `entry`, `exit`, `order`, `protect`, and `target`
 
-## Reading Strategy
+## How To Read The Docs
 
-If you want to learn PalmScript, start in `Learn`.
+Start with `Learn` if you are writing PalmScript for the first time.
 
-If you need exact rules for what the compiler accepts or what the runtime does, use `Reference`.
-
-If you are changing the implementation, use `Internals` and `Contributing`.
+Use `Reference` when you need exact rules for syntax, semantics, builtins, intervals, or outputs.

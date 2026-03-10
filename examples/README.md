@@ -5,9 +5,9 @@ The canonical examples documentation now lives in the MkDocs site:
 - [Multi-Interval Strategy](../docs/learn/cookbook/multi-interval.md)
 - [Exchange-Backed Sources](../docs/learn/cookbook/exchange-backed-sources.md)
 - [Cross-Source Spread](../docs/learn/cookbook/cross-source-spread.md)
-- [Rust Examples](../docs/internals/rust-examples.md)
+- `Rust Examples` are documented privately in `docs-private/internals/rust-examples.md`
 
-This file remains a short inventory for repository browsing. The canonical explanation of language behavior lives in `docs/`.
+This file remains a short inventory for repository browsing. The canonical public explanation of language behavior lives in `docs/`.
 
 ## Rust Examples
 
@@ -38,9 +38,7 @@ Representative files:
 - `examples/strategies/multi_strategy_backtest.palm`: composite trend, momentum, and breakout backtest strategy using `input`, `const`, and first-class `entry` / `exit` signals
 - `examples/strategies/venue_orders_backtest.palm`: backtest strategy using explicit `order` declarations with `limit(...)` and `stop_market(...)`
 
-The backtester also supports staged entry sizing through `size entry1..3 long|short = ...`, including `risk_pct(pct, stop_price)` for risk-based entry sizing, plus staged partial attached profit-taking through `size target1..3 long|short = ...`.
-
-For runnable commands and workflow guidance, use the linked docs pages above.
+For runnable public examples and workflow guidance, use the linked docs pages above.
 
 Common commands:
 

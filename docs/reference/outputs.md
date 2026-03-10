@@ -76,7 +76,7 @@ Runtime event rule:
 
 ## First-Class Strategy Signals
 
-PalmScript exposes first-class strategy signal declarations for the built-in backtester:
+PalmScript exposes first-class strategy signal declarations for strategy-oriented execution:
 
 ```palmscript
 entry long = spot.close > spot.high[1]
@@ -96,7 +96,7 @@ Rules:
 
 ## Order Declarations
 
-PalmScript also exposes top-level order declarations that parameterize how the built-in backtester executes a signal role:
+PalmScript also exposes top-level order declarations that parameterize how a signal role is executed:
 
 ```palmscript
 entry long = spot.close > spot.high[1]
@@ -165,7 +165,7 @@ Rules:
 
 ## Legacy Trigger Compatibility
 
-Legacy backtest scripts that use trigger names are still supported temporarily:
+Legacy strategy scripts that use trigger names are still supported temporarily:
 
 - `trigger long_entry = ...`
 - `trigger long_exit = ...`
@@ -176,10 +176,7 @@ Compatibility rules:
 
 - if a script declares any first-class `entry` / `exit` signals, the backtester uses those roles directly
 - if a script declares no first-class signals, the backtester falls back to the legacy trigger names above
-- ordinary `trigger` declarations remain valid for alerting or non-backtest consumers
-
-See [Backtesting](../tooling/backtesting.md) for the Rust API and execution
-model.
+- ordinary `trigger` declarations remain valid for alerting or non-strategy consumers
 
 ## Runtime Output Collections
 
