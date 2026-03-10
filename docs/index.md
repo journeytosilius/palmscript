@@ -17,7 +17,8 @@ PalmScript is a language for financial time-series strategies. This site focuses
 The hosted browser IDE demo keeps a minimal shell: one editor buffer, a
 Rust/`iced` WASM shell with calendar date-range pickers over the curated BTCUSDT dataset,
 live diagnostics, backtest output panels, and trades/orders results without a
-raw JSON pane. Day clicks apply and close immediately.
+raw JSON pane. Day clicks apply and close immediately, and the calendar panels
+float over the toolbar instead of stretching it.
 The hosted entrypoint is `/app/`. `https://palmscript.dev/app` redirects there.
 
 ## Language Highlights

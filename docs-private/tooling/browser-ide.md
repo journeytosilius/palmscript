@@ -43,6 +43,7 @@ The first public IDE release is intentionally narrow:
 - one `.palm` buffer
 - minimal demo chrome with calendar date-range pickers and a run action only
 - day clicks apply and close immediately
+- calendar panels float above the toolbar instead of changing its height
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
