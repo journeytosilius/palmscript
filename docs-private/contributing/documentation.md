@@ -75,6 +75,8 @@ docker run --rm -p 8080:8080 palmscript-docs
 ```
 
 The container publishes the static docs site under `http://127.0.0.1:8080/docs/`.
+It does not serve the site homepage at `/`; that host-level routing belongs to
+the external front proxy.
 
 ## Repository-Local Docs
 
