@@ -218,7 +218,11 @@ export function registerPalmScriptLanguageProviders(monaco: Monaco): void {
                 value: entry.documentation,
               }
             : undefined,
-          insertText: entry.label,
+          insertText: entry.insert_text,
+          insertTextRules:
+            entry.insert_text_format === "snippet"
+              ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+              : undefined,
           range,
         })),
       };

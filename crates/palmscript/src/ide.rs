@@ -96,7 +96,7 @@ pub struct DocumentSymbolInfo {
     pub children: Vec<DocumentSymbolInfo>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CompletionKind {
     Keyword,
     Builtin,
@@ -108,12 +108,21 @@ pub enum CompletionKind {
     Variable,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionInsertTextFormat {
+    PlainText,
+    Snippet,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompletionEntry {
     pub label: String,
     pub kind: CompletionKind,
     pub detail: Option<String>,
     pub documentation: Option<String>,
+    pub insert_text: String,
+    pub insert_text_format: CompletionInsertTextFormat,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +228,8 @@ impl SemanticDocument {
                             kind: CompletionKind::Field,
                             detail: Some(detail.to_string()),
                             documentation: Some(detail.to_string()),
+                            insert_text: label.to_string(),
+                            insert_text_format: CompletionInsertTextFormat::PlainText,
                         },
                     );
                 }
@@ -235,6 +246,8 @@ impl SemanticDocument {
                                 "`{}`\n\nBinance-supported interval literal.",
                                 spec.text
                             )),
+                            insert_text: spec.text.to_string(),
+                            insert_text_format: CompletionInsertTextFormat::PlainText,
                         },
                     );
                 }
@@ -248,6 +261,8 @@ impl SemanticDocument {
                             kind: CompletionKind::Keyword,
                             detail: Some(detail.to_string()),
                             documentation: Some(detail.to_string()),
+                            insert_text: label.to_string(),
+                            insert_text_format: CompletionInsertTextFormat::PlainText,
                         },
                     );
                 }
@@ -259,6 +274,8 @@ impl SemanticDocument {
                             kind: CompletionKind::Keyword,
                             detail: Some(detail.to_string()),
                             documentation: Some(detail.to_string()),
+                            insert_text: label.to_string(),
+                            insert_text_format: CompletionInsertTextFormat::PlainText,
                         },
                     );
                 }
@@ -276,6 +293,8 @@ impl SemanticDocument {
                                 "`{}`\n\nBinance-supported interval literal.",
                                 spec.text
                             )),
+                            insert_text: spec.text.to_string(),
+                            insert_text_format: CompletionInsertTextFormat::PlainText,
                         });
                 }
                 for definition in &self.definitions {
@@ -291,6 +310,15 @@ impl SemanticDocument {
                             kind,
                             detail: definition.detail.clone(),
                             documentation: Some(definition_hover(definition)),
+                            insert_text: completion_insert_text(
+                                &definition.name,
+                                kind,
+                                definition.detail.as_deref(),
+                            ),
+                            insert_text_format: completion_insert_text_format(
+                                kind,
+                                definition.detail.as_deref(),
+                            ),
                         });
                 }
             }
@@ -918,6 +946,15 @@ fn builtin_completions() -> Vec<CompletionEntry> {
             kind: CompletionKind::Builtin,
             detail: Some(builtin.signature().to_string()),
             documentation: Some(builtin_hover(builtin)),
+            insert_text: completion_insert_text(
+                builtin.as_str(),
+                CompletionKind::Builtin,
+                Some(builtin.signature()),
+            ),
+            insert_text_format: completion_insert_text_format(
+                CompletionKind::Builtin,
+                Some(builtin.signature()),
+            ),
         })
         .map(|entry| (entry.label.clone(), entry))
         .collect();
@@ -929,9 +966,97 @@ fn builtin_completions() -> Vec<CompletionEntry> {
                 kind: CompletionKind::Builtin,
                 detail: Some(metadata.signature.to_string()),
                 documentation: Some(talib_hover(metadata)),
+                insert_text: completion_insert_text(
+                    metadata.name,
+                    CompletionKind::Builtin,
+                    Some(metadata.signature),
+                ),
+                insert_text_format: completion_insert_text_format(
+                    CompletionKind::Builtin,
+                    Some(metadata.signature),
+                ),
             });
     }
     entries.into_values().collect()
+}
+
+fn completion_insert_text(label: &str, kind: CompletionKind, detail: Option<&str>) -> String {
+    completion_snippet(label, kind, detail).unwrap_or_else(|| label.to_string())
+}
+
+fn completion_insert_text_format(
+    kind: CompletionKind,
+    detail: Option<&str>,
+) -> CompletionInsertTextFormat {
+    if completion_snippet_supported(kind, detail) {
+        CompletionInsertTextFormat::Snippet
+    } else {
+        CompletionInsertTextFormat::PlainText
+    }
+}
+
+fn completion_snippet_supported(kind: CompletionKind, detail: Option<&str>) -> bool {
+    match kind {
+        CompletionKind::Builtin => detail.and_then(signature_snippet_name).is_some(),
+        CompletionKind::Function => true,
+        _ => false,
+    }
+}
+
+fn completion_snippet(label: &str, kind: CompletionKind, detail: Option<&str>) -> Option<String> {
+    match kind {
+        CompletionKind::Builtin => detail.and_then(|signature| signature_snippet(label, signature)),
+        CompletionKind::Function => Some(format!("{label}($0)")),
+        _ => None,
+    }
+}
+
+fn signature_snippet(label: &str, signature: &str) -> Option<String> {
+    if label.is_empty() {
+        return signature_snippet_name(signature);
+    }
+    let (name, args) = parse_signature(signature)?;
+    if name != label {
+        return None;
+    }
+    Some(build_signature_snippet(name, args))
+}
+
+fn signature_snippet_name(signature: &str) -> Option<String> {
+    let (name, args) = parse_signature(signature)?;
+    Some(build_signature_snippet(name, args))
+}
+
+fn parse_signature(signature: &str) -> Option<(&str, Vec<&str>)> {
+    let open = signature.find('(')?;
+    let close = signature.rfind(')')?;
+    let name = signature[..open].trim();
+    let args = signature[open + 1..close]
+        .split(',')
+        .map(str::trim)
+        .filter(|arg| !arg.is_empty())
+        .collect::<Vec<_>>();
+    Some((name, args))
+}
+
+fn build_signature_snippet(name: &str, args: Vec<&str>) -> String {
+    if args.is_empty() {
+        return format!("{name}($0)");
+    }
+
+    let placeholders = args
+        .into_iter()
+        .enumerate()
+        .map(|(index, arg)| {
+            let placeholder = arg
+                .split_once('=')
+                .map(|(_, value)| value.trim())
+                .unwrap_or(arg);
+            format!("${{{}:{}}}", index + 1, placeholder)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{name}({placeholders})")
 }
 
 fn talib_hover(metadata: &crate::talib::TalibFunctionMetadata) -> String {
@@ -1586,8 +1711,8 @@ fn render_market_field(field: MarketField) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_document, format_document, highlight_document, talib_hover, CompletionKind,
-        HighlightKind,
+        analyze_document, format_document, highlight_document, talib_hover,
+        CompletionInsertTextFormat, CompletionKind, HighlightKind,
     };
     use crate::talib::metadata_by_name as talib_metadata_by_name;
 
@@ -1645,6 +1770,11 @@ mod tests {
             .as_deref()
             .expect("builtin docs")
             .contains("crosses above"));
+        assert_eq!(crossover.insert_text, "crossover(${1:a}, ${2:b})");
+        assert_eq!(
+            crossover.insert_text_format,
+            CompletionInsertTextFormat::Snippet
+        );
     }
 
     #[test]

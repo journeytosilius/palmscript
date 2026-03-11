@@ -78,6 +78,8 @@ export interface CompletionEntry {
   kind: CompletionKind;
   detail: string | null;
   documentation: string | null;
+  insert_text: string;
+  insert_text_format: "plain_text" | "snippet";
 }
 
 export interface CompletionsRequest {

@@ -18,11 +18,14 @@ Marketplace identity:
 - diagnostics
 - hover
 - completions
+- callable completion snippets
 - definitions
 - document symbols
 - formatting
 
-The extension is intentionally thin. Language semantics, diagnostics, completion data, and formatting come from `palmscript-lsp` rather than a second parser or analyzer inside the extension.
+The extension is intentionally thin. Language semantics, diagnostics,
+completion data, callable completion snippets, and formatting come from
+`palmscript-lsp` rather than a second parser or analyzer inside the extension.
 
 ## Language Server Resolution
 

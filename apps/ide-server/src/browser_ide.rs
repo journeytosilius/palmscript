@@ -1116,6 +1116,11 @@ plot(spot.close)
             .find(|entry| entry.label == "crossover")
             .expect("builtin completion");
         assert_eq!(crossover.detail.as_deref(), Some("crossover(a, b)"));
+        assert_eq!(crossover.insert_text, "crossover(${1:a}, ${2:b})");
+        assert_eq!(
+            crossover.insert_text_format,
+            palmscript::ide::CompletionInsertTextFormat::Snippet
+        );
         assert!(crossover
             .documentation
             .as_deref()

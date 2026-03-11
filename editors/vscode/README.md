@@ -8,6 +8,10 @@ The public PalmScript documentation site is language-focused and does not publis
 - `../../web/docs/docs-private/tooling/language-server.md`
 - `../../web/docs/docs-private/contributing/releases.md`
 
+The extension now gets callable completion snippets such as `sar(...)` and
+`crossover(...)` from the shared PalmScript language server metadata, so VS
+Code and the hosted Monaco editor accept the same function-call completions.
+
 ## Development
 
 From the repository root:
