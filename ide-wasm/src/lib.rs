@@ -6,8 +6,12 @@ use iced::widget::{button, column, container, row, scrollable, text, text_editor
 use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Task, Theme};
 use iced_aw::drop_down::{Alignment as DropDownAlignment, Offset as DropDownOffset};
 use iced_aw::{date_picker::Date, DropDown, ICED_AW_FONT_BYTES};
+#[cfg(target_arch = "wasm32")]
+use js_sys::{Function, Promise, Reflect};
 use serde::Deserialize;
 use std::ops::Range;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 
 const DEFAULT_SOURCE: &str = r#"interval 4h
 source spot = binance.spot("BTCUSDT")
@@ -1158,8 +1162,10 @@ fn start_browser_clipboard_write(contents: String) -> Task<Message> {
             "Clipboard is unavailable in this browser context.".to_string(),
         )));
     };
-    let clipboard = window.navigator().clipboard();
-    let promise = clipboard.write_text(&contents);
+    let promise = match clipboard_text_promise(&window, "writeText", Some(contents.as_str())) {
+        Ok(promise) => promise,
+        Err(error) => return Task::done(Message::ClipboardWriteFinished(Err(error))),
+    };
 
     Task::perform(
         async move {
@@ -1185,8 +1191,10 @@ fn start_browser_clipboard_read() -> Task<Message> {
             "Clipboard is unavailable in this browser context.".to_string(),
         )));
     };
-    let clipboard = window.navigator().clipboard();
-    let promise = clipboard.read_text();
+    let promise = match clipboard_text_promise(&window, "readText", None) {
+        Ok(promise) => promise,
+        Err(error) => return Task::done(Message::ClipboardReadFinished(Err(error))),
+    };
 
     Task::perform(
         async move {
@@ -1205,6 +1213,29 @@ fn start_browser_clipboard_read() -> Task<Message> {
 #[allow(dead_code)]
 fn start_browser_clipboard_read() -> Task<Message> {
     Task::none()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn clipboard_text_promise(
+    window: &web_sys::Window,
+    method_name: &str,
+    arg: Option<&str>,
+) -> Result<Promise, String> {
+    let navigator = window.navigator();
+    let clipboard = Reflect::get(&navigator, &wasm_bindgen::JsValue::from_str("clipboard"))
+        .map_err(|error| format!("Clipboard is unavailable in this browser context: {error:?}"))?;
+    let method = Reflect::get(&clipboard, &wasm_bindgen::JsValue::from_str(method_name))
+        .map_err(|error| format!("Clipboard method `{method_name}` is unavailable: {error:?}"))?
+        .dyn_into::<Function>()
+        .map_err(|_| format!("Clipboard method `{method_name}` is not callable."))?;
+    let result = match arg {
+        Some(value) => method.call1(&clipboard, &wasm_bindgen::JsValue::from_str(value)),
+        None => method.call0(&clipboard),
+    }
+    .map_err(|error| format!("Clipboard method `{method_name}` failed to start: {error:?}"))?;
+    result
+        .dyn_into::<Promise>()
+        .map_err(|_| format!("Clipboard method `{method_name}` did not return a promise."))
 }
 
 async fn fetch_dataset_catalog() -> Result<PublicDatasetCatalog, String> {
@@ -1807,5 +1838,12 @@ mod tests {
         assert_eq!(settings.lines[0][0].range, 0..3);
         assert_eq!(settings.lines[0][1].range, 4..8);
         assert_eq!(settings.lines[1][0].range, 0..4);
+    }
+
+    #[test]
+    fn checked_in_bundle_avoids_direct_clipboard_method_imports() {
+        let bundle = include_str!("../dist/palmscript_ide.js");
+        assert!(!bundle.contains("__wbg_writeText_"));
+        assert!(!bundle.contains("__wbg_readText_"));
     }
 }
