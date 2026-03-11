@@ -217,114 +217,14 @@ impl SemanticDocument {
     }
 
     pub fn completions_at(&self, offset: usize) -> Vec<CompletionEntry> {
-        let mut items = BTreeMap::new();
-        match completion_context(&self.source, offset) {
-            CompletionContext::Field => {
-                for (label, detail) in MARKET_FIELDS {
-                    items.insert(
-                        label.to_string(),
-                        CompletionEntry {
-                            label: label.to_string(),
-                            kind: CompletionKind::Field,
-                            detail: Some(detail.to_string()),
-                            documentation: Some(detail.to_string()),
-                            insert_text: label.to_string(),
-                            insert_text_format: CompletionInsertTextFormat::PlainText,
-                        },
-                    );
-                }
-            }
-            CompletionContext::Interval => {
-                for spec in INTERVAL_SPECS {
-                    items.insert(
-                        spec.text.to_string(),
-                        CompletionEntry {
-                            label: spec.text.to_string(),
-                            kind: CompletionKind::Interval,
-                            detail: Some("Binance-supported interval literal".to_string()),
-                            documentation: Some(format!(
-                                "`{}`\n\nBinance-supported interval literal.",
-                                spec.text
-                            )),
-                            insert_text: spec.text.to_string(),
-                            insert_text_format: CompletionInsertTextFormat::PlainText,
-                        },
-                    );
-                }
-            }
-            CompletionContext::General => {
-                for (label, detail) in KEYWORD_COMPLETIONS {
-                    items.insert(
-                        label.to_string(),
-                        CompletionEntry {
-                            label: label.to_string(),
-                            kind: CompletionKind::Keyword,
-                            detail: Some(detail.to_string()),
-                            documentation: Some(detail.to_string()),
-                            insert_text: label.to_string(),
-                            insert_text_format: CompletionInsertTextFormat::PlainText,
-                        },
-                    );
-                }
-                for (label, detail) in LITERAL_COMPLETIONS {
-                    items.insert(
-                        label.to_string(),
-                        CompletionEntry {
-                            label: label.to_string(),
-                            kind: CompletionKind::Keyword,
-                            detail: Some(detail.to_string()),
-                            documentation: Some(detail.to_string()),
-                            insert_text: label.to_string(),
-                            insert_text_format: CompletionInsertTextFormat::PlainText,
-                        },
-                    );
-                }
-                for builtin in builtin_completions() {
-                    items.insert(builtin.label.clone(), builtin);
-                }
-                for spec in INTERVAL_SPECS {
-                    items
-                        .entry(spec.text.to_string())
-                        .or_insert(CompletionEntry {
-                            label: spec.text.to_string(),
-                            kind: CompletionKind::Interval,
-                            detail: Some("Binance-supported interval literal".to_string()),
-                            documentation: Some(format!(
-                                "`{}`\n\nBinance-supported interval literal.",
-                                spec.text
-                            )),
-                            insert_text: spec.text.to_string(),
-                            insert_text_format: CompletionInsertTextFormat::PlainText,
-                        });
-                }
-                for definition in &self.definitions {
-                    let kind = match definition.kind {
-                        SymbolKind::Function => CompletionKind::Function,
-                        SymbolKind::Source => CompletionKind::Source,
-                        _ => CompletionKind::Variable,
-                    };
-                    items
-                        .entry(definition.name.clone())
-                        .or_insert(CompletionEntry {
-                            label: definition.name.clone(),
-                            kind,
-                            detail: definition.detail.clone(),
-                            documentation: Some(definition_hover(definition)),
-                            insert_text: completion_insert_text(
-                                &definition.name,
-                                kind,
-                                definition.detail.as_deref(),
-                            ),
-                            insert_text_format: completion_insert_text_format(
-                                kind,
-                                definition.detail.as_deref(),
-                            ),
-                        });
-                }
-            }
-        }
+        completions_for_source(&self.source, offset, Some(&self.definitions))
+    }
+}
 
-        items.into_values().collect()
+pub fn complete_document(source: &str, offset: usize) -> Vec<CompletionEntry> {
+    match analyze_document(source) {
+        Ok(semantic) => semantic.completions_at(offset),
+        Err(_) => completions_for_source(source, offset, None),
     }
 }
 
@@ -980,6 +880,104 @@ fn builtin_completions() -> Vec<CompletionEntry> {
     entries.into_values().collect()
 }
 
+fn completions_for_source(
+    source: &str,
+    offset: usize,
+    definitions: Option<&[DefinitionTarget]>,
+) -> Vec<CompletionEntry> {
+    let mut items = BTreeMap::new();
+    match completion_context(source, offset) {
+        CompletionContext::Field => {
+            for (label, detail) in MARKET_FIELDS {
+                items.insert(
+                    label.to_string(),
+                    plain_completion(label, CompletionKind::Field, detail),
+                );
+            }
+        }
+        CompletionContext::Interval => {
+            for spec in INTERVAL_SPECS {
+                items.insert(spec.text.to_string(), interval_completion(spec.text));
+            }
+        }
+        CompletionContext::General => {
+            for (label, detail) in KEYWORD_COMPLETIONS {
+                items.insert(
+                    label.to_string(),
+                    plain_completion(label, CompletionKind::Keyword, detail),
+                );
+            }
+            for (label, detail) in LITERAL_COMPLETIONS {
+                items.insert(
+                    label.to_string(),
+                    plain_completion(label, CompletionKind::Keyword, detail),
+                );
+            }
+            for builtin in builtin_completions() {
+                items.insert(builtin.label.clone(), builtin);
+            }
+            for spec in INTERVAL_SPECS {
+                items
+                    .entry(spec.text.to_string())
+                    .or_insert_with(|| interval_completion(spec.text));
+            }
+            if let Some(definitions) = definitions {
+                for definition in definitions {
+                    let kind = match definition.kind {
+                        SymbolKind::Function => CompletionKind::Function,
+                        SymbolKind::Source => CompletionKind::Source,
+                        _ => CompletionKind::Variable,
+                    };
+                    items
+                        .entry(definition.name.clone())
+                        .or_insert(CompletionEntry {
+                            label: definition.name.clone(),
+                            kind,
+                            detail: definition.detail.clone(),
+                            documentation: Some(definition_hover(definition)),
+                            insert_text: completion_insert_text(
+                                &definition.name,
+                                kind,
+                                definition.detail.as_deref(),
+                            ),
+                            insert_text_format: completion_insert_text_format(
+                                kind,
+                                definition.detail.as_deref(),
+                            ),
+                        });
+                }
+            }
+        }
+    }
+
+    items.into_values().collect()
+}
+
+fn plain_completion(label: &str, kind: CompletionKind, detail: &str) -> CompletionEntry {
+    CompletionEntry {
+        label: label.to_string(),
+        kind,
+        detail: Some(detail.to_string()),
+        documentation: Some(detail.to_string()),
+        insert_text: label.to_string(),
+        insert_text_format: CompletionInsertTextFormat::PlainText,
+    }
+}
+
+fn interval_completion(label: &str) -> CompletionEntry {
+    CompletionEntry {
+        label: label.to_string(),
+        kind: CompletionKind::Interval,
+        detail: Some("Binance-supported interval literal".to_string()),
+        documentation: Some(format!(
+            "`{}`\n\nBinance-supported interval literal.",
+            label
+        )),
+        insert_text: label.to_string(),
+        insert_text_format: CompletionInsertTextFormat::PlainText,
+    }
+}
+
 fn completion_insert_text(label: &str, kind: CompletionKind, detail: Option<&str>) -> String {
     completion_snippet(label, kind, detail).unwrap_or_else(|| label.to_string())
 }
@@ -1048,10 +1046,11 @@ fn build_signature_snippet(name: &str, args: Vec<&str>) -> String {
         .into_iter()
         .enumerate()
         .map(|(index, arg)| {
-            let placeholder = arg
+            let cleaned = arg.trim_matches(|ch| ch == '[' || ch == ']').trim();
+            let placeholder = cleaned
                 .split_once('=')
                 .map(|(_, value)| value.trim())
-                .unwrap_or(arg);
+                .unwrap_or(cleaned);
             format!("${{{}:{}}}", index + 1, placeholder)
         })
         .collect::<Vec<_>>()
@@ -1711,7 +1710,7 @@ fn render_market_field(field: MarketField) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_document, format_document, highlight_document, talib_hover,
+        analyze_document, complete_document, format_document, highlight_document, talib_hover,
         CompletionInsertTextFormat, CompletionKind, HighlightKind,
     };
     use crate::talib::metadata_by_name as talib_metadata_by_name;
@@ -1775,6 +1774,30 @@ mod tests {
             crossover.insert_text_format,
             CompletionInsertTextFormat::Snippet
         );
+    }
+
+    #[test]
+    fn completions_fall_back_to_builtins_for_incomplete_assignments() {
+        let source = r#"interval 1m
+source spot = binance.spot("BTCUSDT")
+
+let sar_fast = sar
+"#;
+        let items = complete_document(source, source.len());
+        let sar = items
+            .iter()
+            .find(|entry| entry.label == "sar")
+            .expect("sar builtin completion");
+        assert!(sar
+            .detail
+            .as_deref()
+            .expect("sar detail")
+            .starts_with("sar("));
+        assert_eq!(
+            sar.insert_text,
+            "sar(${1:high}, ${2:low}, ${3:0.02}, ${4:0.2})"
+        );
+        assert_eq!(sar.insert_text_format, CompletionInsertTextFormat::Snippet);
     }
 
     #[test]

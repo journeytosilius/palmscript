@@ -25,7 +25,9 @@ use tower_http::cors::CorsLayer;
 use palmscript::backtest::{BacktestConfig, BacktestResult};
 use palmscript::compiler::{compile, CompiledProgram};
 use palmscript::exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
-use palmscript::ide::{analyze_document, CompletionEntry, HighlightToken, HoverInfo};
+use palmscript::ide::{
+    analyze_document, complete_document, CompletionEntry, HighlightToken, HoverInfo,
+};
 use palmscript::ide_lsp::IdeLspSession;
 use palmscript::interval::{Interval, SourceTemplate};
 use palmscript::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
@@ -580,10 +582,7 @@ async fn completions(
     if let Some(session) = session_id_from_headers(&headers) {
         state.mark_session_active(&session);
     }
-    let items = analyze_document(&request.script)
-        .ok()
-        .map(|semantic| semantic.completions_at(request.offset))
-        .unwrap_or_default();
+    let items = complete_document(&request.script, request.offset);
     Ok(Json(CompletionsResponse { items }))
 }
 
@@ -1126,6 +1125,44 @@ plot(spot.close)
             .as_deref()
             .expect("completion docs")
             .contains("crosses above"));
+    }
+
+    #[tokio::test]
+    async fn completions_endpoint_returns_builtins_for_incomplete_scripts() {
+        let app = browser_ide_router(fixture_state());
+        let script = "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nlet sar_fast = sar";
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&CompletionsRequest {
+                            script: script.to_string(),
+                            offset: script.len(),
+                        })
+                        .expect("request body"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: CompletionsResponse =
+            serde_json::from_slice(&body).expect("completions response should deserialize");
+        let sar = payload
+            .items
+            .iter()
+            .find(|entry| entry.label == "sar")
+            .expect("sar completion");
+        assert_eq!(
+            sar.insert_text,
+            "sar(${1:high}, ${2:low}, ${3:0.02}, ${4:0.2})"
+        );
     }
 
     #[tokio::test]

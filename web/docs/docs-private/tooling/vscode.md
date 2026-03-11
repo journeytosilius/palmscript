@@ -26,6 +26,8 @@ Marketplace identity:
 The extension is intentionally thin. Language semantics, diagnostics,
 completion data, callable completion snippets, and formatting come from
 `palmscript-lsp` rather than a second parser or analyzer inside the extension.
+Builtin completions remain available even while the current line is incomplete,
+so typing through partial assignments still keeps the language suggestions open.
 
 ## Language Server Resolution
 

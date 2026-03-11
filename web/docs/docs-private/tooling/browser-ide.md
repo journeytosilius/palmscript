@@ -57,7 +57,8 @@ The first public IDE release is intentionally narrow:
 Dark mode uses a VS Code-like shell palette with a Dracula-style Monaco theme.
 VS Code and the hosted Monaco editor now share builtin signatures, summaries,
 and callable completion snippets through the same `ide.rs` metadata and LSP
-completion items.
+completion items. Completion fallback stays active even while the current line
+is syntactically incomplete, so builtin suggestions remain available mid-edit.
 
 The websocket endpoint remains available on the backend, but the current React
 shell does not yet wire the browser UI into the websocket LSP transport.

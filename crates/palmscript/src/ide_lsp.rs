@@ -30,7 +30,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
 use crate::ide::{
-    analyze_document, classify_highlight, format_document, CompletionEntry,
+    analyze_document, classify_highlight, complete_document, format_document, CompletionEntry,
     CompletionInsertTextFormat, CompletionKind, DefinitionTarget, DocumentSymbolInfo,
     HighlightKind, HoverInfo, SemanticDocument,
 };
@@ -202,11 +202,7 @@ impl IdeLspSession {
                 };
                 let offset =
                     offset_from_position(&document.text, params.text_document_position.position);
-                let items = document
-                    .semantic
-                    .as_ref()
-                    .map(|semantic| semantic.completions_at(offset))
-                    .unwrap_or_default()
+                let items = complete_document(&document.text, offset)
                     .into_iter()
                     .map(completion_item)
                     .collect::<Vec<_>>();
@@ -765,5 +761,45 @@ mod tests {
             Some("crossover(${1:a}, ${2:b})")
         );
         assert_eq!(crossover["insertTextFormat"].as_u64(), Some(2));
+    }
+
+    #[test]
+    fn completion_request_keeps_builtins_available_for_incomplete_documents() {
+        let mut session = IdeLspSession::new();
+        let source = "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nlet sar_fast = sar";
+        session.handle_message(Message::Notification(Notification::new(
+            "textDocument/didOpen".to_string(),
+            json!({
+                "textDocument": {
+                    "uri": "inmemory:///strategy.ps",
+                    "languageId": "palmscript",
+                    "version": 1,
+                    "text": source
+                }
+            }),
+        )));
+        let messages = session.handle_message(Message::Request(Request {
+            id: 4.into(),
+            method: "textDocument/completion".to_string(),
+            params: json!({
+                "textDocument": { "uri": "inmemory:///strategy.ps" },
+                "position": { "line": 2, "character": 18 }
+            }),
+        }));
+        let Message::Response(response) = &messages[0] else {
+            panic!("expected response");
+        };
+        let items = response.result.as_ref().expect("completion result");
+        let sar = items
+            .as_array()
+            .expect("completion array")
+            .iter()
+            .find(|item| item["label"] == "sar")
+            .expect("sar builtin completion");
+        assert_eq!(
+            sar["insertText"].as_str(),
+            Some("sar(${1:high}, ${2:low}, ${3:0.02}, ${4:0.2})")
+        );
+        assert_eq!(sar["insertTextFormat"].as_u64(), Some(2));
     }
 }

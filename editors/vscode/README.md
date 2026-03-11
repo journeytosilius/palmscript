@@ -10,7 +10,8 @@ The public PalmScript documentation site is language-focused and does not publis
 
 The extension now gets callable completion snippets such as `sar(...)` and
 `crossover(...)` from the shared PalmScript language server metadata, so VS
-Code and the hosted Monaco editor accept the same function-call completions.
+Code and the hosted Monaco editor accept the same function-call completions,
+including while the active line is still syntactically incomplete.
 
 ## Development
 
