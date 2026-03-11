@@ -27,7 +27,7 @@ const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
 const DATE_BUTTON_WIDTH: f32 = 140.0;
 const DATE_BUTTON_HEIGHT: f32 = 40.0;
 const DATE_FIELD_SPACING: f32 = 6.0;
-const DATE_PICKER_WIDTH: f32 = 248.0;
+const DATE_PICKER_WIDTH: f32 = 272.0;
 const DAY_CELL_SIZE: f32 = 32.0;
 
 #[derive(Debug, Clone)]
