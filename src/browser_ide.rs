@@ -330,6 +330,8 @@ pub fn browser_ide_router(state: PublicIdeState) -> Router {
         .route("/", get(index_html))
         .route("/app", get(app_root_redirect))
         .route("/app/", get(index_html))
+        .route("/favicon.png", get(ide_favicon_png))
+        .route("/app/favicon.png", get(ide_favicon_png))
         .route("/ide/app.js", get(ide_web_js))
         .route("/app/ide/app.js", get(ide_web_js))
         .route("/ide/app.css", get(ide_web_css))
@@ -409,6 +411,16 @@ async fn ide_logo_png() -> impl IntoResponse {
             HeaderValue::from_static("image/png"),
         )],
         include_bytes!("../docs/assets/palmscript-logo.png").as_slice(),
+    )
+}
+
+async fn ide_favicon_png() -> impl IntoResponse {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static("image/png"),
+        )],
+        include_bytes!("../docs/assets/favicon.png").as_slice(),
     )
 }
 
@@ -907,6 +919,28 @@ export x = spot.close
             .oneshot(
                 Request::builder()
                     .uri("/app/ide/palmscript-logo.png")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("image/png")
+        );
+    }
+
+    #[tokio::test]
+    async fn favicon_asset_route_is_served() {
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/app/favicon.png")
                     .body(Body::empty())
                     .expect("request"),
             )

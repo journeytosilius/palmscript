@@ -46,6 +46,7 @@ The first public IDE release is intentionally narrow:
 - native browser clipboard behavior through Monaco
 - compiler diagnostics rendered into Monaco markers
 - PalmScript logo mark in the header instead of a text heading
+- browser tab favicon generated from the current PalmScript logo
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
