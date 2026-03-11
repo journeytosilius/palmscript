@@ -4,9 +4,9 @@ This file is a short repository-local development note for the VS Code extension
 
 The public PalmScript documentation site is language-focused and does not publish editor-stack internals. Private repo-only notes now live under:
 
-- `../../docs-private/tooling/vscode.md`
-- `../../docs-private/tooling/language-server.md`
-- `../../docs-private/contributing/releases.md`
+- `../../web/docs/docs-private/tooling/vscode.md`
+- `../../web/docs/docs-private/tooling/language-server.md`
+- `../../web/docs/docs-private/contributing/releases.md`
 
 ## Development
 

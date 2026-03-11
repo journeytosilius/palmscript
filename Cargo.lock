@@ -1016,30 +1016,59 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "palmscript"
 version = "0.1.1"
 dependencies = [
- "assert_cmd",
- "axum",
- "clap",
- "futures-util",
  "hex",
  "hmac",
- "http-body-util",
  "lsp-server",
  "lsp-types",
  "mockito",
- "predicates",
  "rand 0.8.5",
  "rand_distr",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "palmscript-cli-app"
+version = "0.1.1"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "mockito",
+ "palmscript",
+ "predicates",
+ "serde_json",
+ "sha2",
  "tempfile",
+]
+
+[[package]]
+name = "palmscript-ide-server-app"
+version = "0.1.1"
+dependencies = [
+ "axum",
+ "futures-util",
+ "http-body-util",
+ "lsp-server",
+ "palmscript",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
- "tokio-stream",
  "tower",
  "tower-http",
- "url",
+]
+
+[[package]]
+name = "palmscript-lsp-app"
+version = "0.1.1"
+dependencies = [
+ "lsp-server",
+ "palmscript",
 ]
 
 [[package]]
@@ -1745,17 +1774,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
- "tokio",
-]
-
-[[package]]
-name = "tokio-stream"
-version = "0.1.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
-dependencies = [
- "futures-core",
- "pin-project-lite",
  "tokio",
 ]
 

@@ -1,0 +1,12 @@
+[package]
+name = "palmscript-lsp-app"
+version = "0.1.1"
+edition = "2021"
+
+[[bin]]
+name = "palmscript-lsp"
+path = "src/main.rs"
+
+[dependencies]
+lsp-server = "0.7"
+palmscript = { path = "../../crates/palmscript" }

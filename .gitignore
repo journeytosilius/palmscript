@@ -1,6 +1,6 @@
 /target/
-/ide-wasm/target/
-/ide-web/node_modules/
+/ide-wasm/
+/web/ide/node_modules/
 /tradelang
 /palmscript
 /site/

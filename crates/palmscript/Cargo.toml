@@ -1,0 +1,21 @@
+[package]
+name = "palmscript"
+version = "0.1.1"
+edition = "2021"
+
+[dependencies]
+hex = "0.4"
+hmac = "0.12"
+lsp-server = "0.7"
+lsp-types = "0.97"
+rand = "0.8"
+rand_distr = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+url = "2.5"
+
+[dev-dependencies]
+mockito = "1.7"
