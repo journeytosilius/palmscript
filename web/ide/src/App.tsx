@@ -259,7 +259,6 @@ export function App() {
         <section className="panel panel--editor">
           <div className="panel__titlebar">
             <h1 className="panel__title">Strategy</h1>
-            <span className="panel__meta">Monaco Editor</span>
           </div>
           <div className="editor-frame">
             <Editor
