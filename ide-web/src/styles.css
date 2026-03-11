@@ -67,7 +67,7 @@ body {
   background: var(--body-bg);
   color: var(--text);
   font-family:
-    "IBM Plex Sans",
+    "Inter",
     "Segoe UI",
     sans-serif;
   transition:

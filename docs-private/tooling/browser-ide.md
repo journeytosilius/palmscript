@@ -43,6 +43,7 @@ The first public IDE release is intentionally narrow:
 - one `.ps` buffer
 - minimal demo chrome with Monaco Editor, calendar date-range pickers, and a run action only
 - light/dark mode switch in the header
+- Inter as the shell UI font
 - native browser clipboard behavior through Monaco
 - compiler diagnostics rendered into Monaco markers
 - PalmScript logo mark in the header instead of a text heading
