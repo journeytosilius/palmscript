@@ -21,7 +21,7 @@ raw JSON pane. Day clicks apply and close immediately, and the calendar panels
 float over the toolbar instead of stretching it. The editor supports browser
 clipboard shortcuts and semantic token coloring. Fresh hosted sessions also
 attempt a clipboard-read preflight so paste permission is warmed before the
-first editor paste in browsers that allow it. The toolbar uses a right-aligned
+first editor paste in browsers that allow it. The toolbar uses a centered
 PalmScript logo mark inside the left header slot instead of a text title.
 The hosted entrypoint is `/app/`. `https://palmscript.dev/app` redirects there.
 

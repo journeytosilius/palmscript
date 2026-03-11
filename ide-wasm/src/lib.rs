@@ -1866,7 +1866,8 @@ mod tests {
         assert!(shell.contains("palmscript-ide-clipboard-preflight"));
         assert!(shell.contains("ide-brand-slot"));
         assert!(shell.contains("object-fit: contain"));
-        assert!(shell.contains("justify-content: flex-end"));
-        assert!(shell.contains("object-position: right center"));
+        assert!(shell.contains("justify-content: center"));
+        assert!(shell.contains("object-position: center center"));
+        assert!(shell.contains("max-width: 112px"));
     }
 }
