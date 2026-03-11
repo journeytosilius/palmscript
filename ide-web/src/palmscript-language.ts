@@ -114,4 +114,27 @@ export function configurePalmScriptLanguage(monaco: Monaco): void {
       "editor.inactiveSelectionBackground": "#dbeaf6",
     },
   });
+
+  monaco.editor.defineTheme("palmscript-dracula", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "ff79c6", fontStyle: "bold" },
+      { token: "predefined", foreground: "8be9fd" },
+      { token: "identifier", foreground: "f8f8f2" },
+      { token: "number", foreground: "bd93f9" },
+      { token: "string", foreground: "f1fa8c" },
+      { token: "comment", foreground: "6272a4" },
+      { token: "operator", foreground: "ff79c6" },
+    ],
+    colors: {
+      "editor.background": "#282a36",
+      "editor.foreground": "#f8f8f2",
+      "editor.lineHighlightBackground": "#313445",
+      "editorLineNumber.foreground": "#6272a4",
+      "editorCursor.foreground": "#ff79c6",
+      "editor.selectionBackground": "#44475a",
+      "editor.inactiveSelectionBackground": "#3a3c4d",
+    },
+  });
 }

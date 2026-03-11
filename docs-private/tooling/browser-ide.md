@@ -42,6 +42,7 @@ The first public IDE release is intentionally narrow:
 
 - one `.ps` buffer
 - minimal demo chrome with Monaco Editor, calendar date-range pickers, and a run action only
+- light/dark mode switch in the header
 - native browser clipboard behavior through Monaco
 - compiler diagnostics rendered into Monaco markers
 - PalmScript logo mark in the header instead of a text heading
@@ -49,6 +50,8 @@ The first public IDE release is intentionally narrow:
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
+
+Dark mode uses a VS Code-like shell palette with a Dracula-style Monaco theme.
 
 The websocket endpoint remains available on the backend, but the current React
 shell does not yet wire the browser UI into the websocket LSP transport.

@@ -18,7 +18,8 @@ The hosted browser IDE demo keeps a minimal shell: one editor buffer, a
 React and TypeScript shell with Monaco Editor, calendar date-range pickers over
 the curated BTCUSDT dataset, live diagnostics, backtest output panels, and
 trades/orders results without a raw JSON pane. The toolbar keeps the PalmScript
-logo inside the header instead of a text title.
+logo inside the header instead of a text title, plus a light/dark mode switch.
+Dark mode uses a VS Code-like shell with a Dracula-style editor theme.
 The hosted entrypoint is `/app/`. `https://palmscript.dev/app` redirects there.
 
 ## Language Highlights

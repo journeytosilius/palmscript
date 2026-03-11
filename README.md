@@ -61,7 +61,9 @@ published docs at <https://palmscript.dev/docs/>.
 The public demo keeps the chrome intentionally minimal: one editor buffer, a
 calendar date-range picker over the curated BTCUSDT dataset, Monaco editing,
 compile diagnostics, and backtest output panels. The toolbar keeps the
-PalmScript logo inside the header instead of a text title.
+PalmScript logo inside the header instead of a text title, plus a light/dark
+mode switch. Dark mode uses a VS Code-like shell with a Dracula-inspired Monaco
+theme.
 
 The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.

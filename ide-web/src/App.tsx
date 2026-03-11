@@ -21,6 +21,24 @@ import type {
 } from "./types";
 
 const CHECK_DEBOUNCE_MS = 250;
+const THEME_STORAGE_KEY = "palmscript.ide.theme";
+
+type ThemeMode = "light" | "dark";
+
+function initialThemeMode(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "light" || stored === "dark") {
+    return stored;
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
 
 export function App() {
   const [script, setScript] = useState(DEFAULT_SOURCE);
@@ -32,6 +50,7 @@ export function App() {
   const [status, setStatus] = useState("Loading curated dataset...");
   const [checking, setChecking] = useState(true);
   const [running, setRunning] = useState(false);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemeMode);
   const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const checkRequestId = useRef(0);
@@ -124,6 +143,12 @@ export function App() {
     );
   }, [diagnostics]);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    document.documentElement.style.colorScheme = themeMode;
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }, [themeMode]);
+
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -166,6 +191,8 @@ export function App() {
 
   const statusClassName =
     diagnostics.length > 0 ? "app__status app__status--error" : "app__status";
+  const editorTheme =
+    themeMode === "dark" ? "palmscript-dracula" : "palmscript-docs";
 
   return (
     <div className="app-shell">
@@ -198,6 +225,20 @@ export function App() {
               onChange={(event) => setToDate(event.target.value)}
             />
           </label>
+          <button
+            aria-label={
+              themeMode === "dark"
+                ? "Switch to light mode"
+                : "Switch to dark mode"
+            }
+            className="theme-toggle"
+            type="button"
+            onClick={() =>
+              setThemeMode((current) => (current === "dark" ? "light" : "dark"))
+            }
+          >
+            {themeMode === "dark" ? "Light Mode" : "Dark Mode"}
+          </button>
           <button
             className="run-button"
             type="button"
@@ -234,7 +275,7 @@ export function App() {
                 smoothScrolling: true,
                 wordWrap: "on",
               }}
-              theme="palmscript-docs"
+              theme={editorTheme}
               value={script}
             />
           </div>

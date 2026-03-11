@@ -11,6 +11,45 @@
   --positive: #1c8f65;
   --negative: #b5483d;
   --editor-bg: #f6f9fc;
+  --surface: rgba(247, 251, 255, 0.92);
+  --surface-soft: rgba(255, 255, 255, 0.88);
+  --surface-empty: rgba(244, 249, 253, 0.8);
+  --surface-card: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(238, 246, 253, 0.92));
+  --input-bg: #f3f8fd;
+  --diagnostic-bg: rgba(255, 244, 242, 0.92);
+  --diagnostic-border: rgba(181, 72, 61, 0.26);
+  --chart-bg: #f5f9fd;
+  --chart-stroke: #d7e5f1;
+  --body-bg:
+    radial-gradient(circle at top right, rgba(31, 141, 225, 0.14), transparent 24rem),
+    linear-gradient(180deg, #f4f8fc 0%, var(--bg) 100%);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1e1e1e;
+  --panel: #252526;
+  --panel-border: #3c3c3c;
+  --panel-shadow: rgba(0, 0, 0, 0.34);
+  --text: #d4d4d4;
+  --muted: #9da3ad;
+  --accent: #3794ff;
+  --accent-strong: #1f6feb;
+  --positive: #4ec9b0;
+  --negative: #f48771;
+  --editor-bg: #282a36;
+  --surface: rgba(37, 37, 38, 0.96);
+  --surface-soft: rgba(30, 30, 30, 0.92);
+  --surface-empty: rgba(31, 31, 31, 0.82);
+  --surface-card: linear-gradient(180deg, rgba(37, 37, 38, 0.96), rgba(30, 30, 30, 0.96));
+  --input-bg: #1f1f1f;
+  --diagnostic-bg: rgba(63, 30, 35, 0.94);
+  --diagnostic-border: rgba(244, 135, 113, 0.28);
+  --chart-bg: #1f1f1f;
+  --chart-stroke: #33363b;
+  --body-bg:
+    radial-gradient(circle at top right, rgba(55, 148, 255, 0.16), transparent 22rem),
+    linear-gradient(180deg, #252526 0%, var(--bg) 100%);
 }
 
 * {
@@ -25,14 +64,15 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(circle at top right, rgba(31, 141, 225, 0.14), transparent 24rem),
-    linear-gradient(180deg, #f4f8fc 0%, var(--bg) 100%);
+  background: var(--body-bg);
   color: var(--text);
   font-family:
     "IBM Plex Sans",
     "Segoe UI",
     sans-serif;
+  transition:
+    background 180ms ease,
+    color 180ms ease;
 }
 
 button,
@@ -52,7 +92,7 @@ input {
 .panel {
   border: 1px solid var(--panel-border);
   border-radius: 1.25rem;
-  background: rgba(247, 251, 255, 0.92);
+  background: var(--surface);
   box-shadow: 0 14px 30px var(--panel-shadow);
 }
 
@@ -113,19 +153,41 @@ input {
   min-width: 9rem;
   border: 1px solid var(--panel-border);
   border-radius: 0.9rem;
-  background: #f3f8fd;
+  background: var(--input-bg);
   padding: 0.8rem 1rem;
   color: var(--text);
 }
 
+.theme-toggle,
 .run-button {
   border: none;
   border-radius: 0.95rem;
-  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
-  color: white;
   cursor: pointer;
   padding: 0.85rem 1.2rem;
   font-weight: 600;
+}
+
+.theme-toggle {
+  border: 1px solid var(--panel-border);
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.run-button {
+  background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+  color: white;
+}
+
+.theme-toggle:hover,
+.run-button:hover:not(:disabled) {
+  filter: brightness(1.03);
+}
+
+.theme-toggle:focus-visible,
+.run-button:focus-visible,
+.field__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .run-button:disabled {
@@ -192,7 +254,7 @@ input {
   justify-content: space-between;
   border: 1px solid var(--panel-border);
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(238, 246, 253, 0.92));
+  background: var(--surface-card);
   padding: 0.9rem 1rem;
 }
 
@@ -223,13 +285,13 @@ input {
   gap: 0.35rem;
   border: 1px solid var(--panel-border);
   border-radius: 0.95rem;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--surface-soft);
   padding: 0.85rem 0.95rem;
 }
 
 .list-card--diagnostic {
-  border-color: rgba(181, 72, 61, 0.26);
-  background: rgba(255, 244, 242, 0.92);
+  border-color: var(--diagnostic-border);
+  background: var(--diagnostic-bg);
 }
 
 .empty-state {
@@ -239,7 +301,7 @@ input {
   justify-content: center;
   border: 1px dashed var(--panel-border);
   border-radius: 1rem;
-  background: rgba(244, 249, 253, 0.8);
+  background: var(--surface-empty);
 }
 
 .equity-chart {
@@ -248,8 +310,8 @@ input {
 }
 
 .equity-chart__bg {
-  fill: #f5f9fd;
-  stroke: #d7e5f1;
+  fill: var(--chart-bg);
+  stroke: var(--chart-stroke);
 }
 
 .equity-chart__area {
