@@ -15,6 +15,23 @@ function wirePalmScriptHeaderHomeLink() {
   topic.replaceChildren(link);
 }
 
+function isExternalHref(href) {
+  if (!href || href.startsWith("#")) {
+    return false;
+  }
+
+  if (href.startsWith("mailto:") || href.startsWith("tel:")) {
+    return true;
+  }
+
+  try {
+    const url = new URL(href, window.location.href);
+    return url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function wirePalmScriptDocsLinks() {
   const links = document.querySelectorAll("a[href]");
   for (const link of links) {
@@ -23,8 +40,14 @@ function wirePalmScriptDocsLinks() {
       continue;
     }
 
-    link.setAttribute("target", "_blank");
-    link.setAttribute("rel", "noopener noreferrer");
+    if (isExternalHref(href)) {
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
+      continue;
+    }
+
+    link.removeAttribute("target");
+    link.removeAttribute("rel");
   }
 }
 

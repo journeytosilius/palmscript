@@ -101,6 +101,9 @@ It also serves translated locales under `http://127.0.0.1:8080/{lang}/docs/`.
 It does not serve the site homepage at `/`; that host-level routing belongs to
 the external front proxy.
 
+The docs UI keeps internal documentation navigation in the current tab. Only
+external links are rewritten to open in a new tab.
+
 ## Repository-Local Docs
 
 - keep the root `README.md` short and link into the canonical docs site
