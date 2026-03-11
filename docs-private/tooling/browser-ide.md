@@ -4,12 +4,12 @@ The hosted PalmScript browser IDE is backed by:
 
 - `palmscript-ide-server` for HTTP, websocket LSP transport, curated dataset metadata, and curated backtests
 - the shared `IdeLspSession` library core for both stdio LSP and browser websocket sessions
-- an `iced` Rust frontend compiled to WASM and embedded by the server for editing, diagnostics, summary rendering, and curated backtest execution
+- a Vite-built React and TypeScript frontend with Monaco Editor, embedded by the server for editing, diagnostics, summary rendering, and curated backtest execution
 
 ## Run locally
 
 ```bash
-bash scripts/build_ide_wasm.sh
+bash scripts/build_ide_web.sh
 cargo build --bin palmscript-ide-server
 target/debug/palmscript-ide-server
 ```
@@ -41,21 +41,17 @@ The image embeds the browser shell and serves the full IDE from the
 The first public IDE release is intentionally narrow:
 
 - one `.ps` buffer
-- minimal demo chrome with calendar date-range pickers and a run action only
-- day clicks apply and close immediately
-- calendar panels float above the toolbar instead of changing its height
-- browser copy/cut/paste shortcuts wired through the web clipboard API
-- fresh hosted sessions attempt a clipboard-read preflight before the first paste when the browser allows it
-- semantic token coloring from the shared IDE analysis pipeline
-- left-anchored PalmScript logo mark inside the header slot instead of a text heading
+- minimal demo chrome with Monaco Editor, calendar date-range pickers, and a run action only
+- native browser clipboard behavior through Monaco
+- compiler diagnostics rendered into Monaco markers
+- PalmScript logo mark in the header instead of a text heading
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 
-The current WASM shell does not yet recreate Monaco or the websocket LSP client
-inside the browser UI. The websocket endpoint remains available on the backend
-for future editor work and for parity with the shared IDE transport layer.
+The websocket endpoint remains available on the backend, but the current React
+shell does not yet wire the browser UI into the websocket LSP transport.
 
 ## HTTP surface
 

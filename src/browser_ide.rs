@@ -330,10 +330,10 @@ pub fn browser_ide_router(state: PublicIdeState) -> Router {
         .route("/", get(index_html))
         .route("/app", get(app_root_redirect))
         .route("/app/", get(index_html))
-        .route("/ide/palmscript_ide.js", get(ide_wasm_js))
-        .route("/app/ide/palmscript_ide.js", get(ide_wasm_js))
-        .route("/ide/palmscript_ide_bg.wasm", get(ide_wasm_binary))
-        .route("/app/ide/palmscript_ide_bg.wasm", get(ide_wasm_binary))
+        .route("/ide/app.js", get(ide_web_js))
+        .route("/app/ide/app.js", get(ide_web_js))
+        .route("/ide/app.css", get(ide_web_css))
+        .route("/app/ide/app.css", get(ide_web_css))
         .route("/ide/palmscript-logo.png", get(ide_logo_png))
         .route("/app/ide/palmscript-logo.png", get(ide_logo_png))
         .route("/api/healthz", get(healthz))
@@ -362,7 +362,7 @@ async fn index_html() -> impl IntoResponse {
             axum::http::header::CACHE_CONTROL,
             HeaderValue::from_static("no-store"),
         )],
-        Html(include_str!("../ide-wasm/index.html")),
+        Html(include_str!("../ide-web/server-index.html")),
     )
 }
 
@@ -370,7 +370,7 @@ async fn app_root_redirect() -> impl IntoResponse {
     Redirect::permanent("/app/")
 }
 
-async fn ide_wasm_js() -> impl IntoResponse {
+async fn ide_web_js() -> impl IntoResponse {
     (
         [
             (
@@ -382,23 +382,23 @@ async fn ide_wasm_js() -> impl IntoResponse {
                 HeaderValue::from_static("no-store"),
             ),
         ],
-        include_str!("../ide-wasm/dist/palmscript_ide.js"),
+        include_str!("../ide-web/dist/app.js"),
     )
 }
 
-async fn ide_wasm_binary() -> impl IntoResponse {
+async fn ide_web_css() -> impl IntoResponse {
     (
         [
             (
                 axum::http::header::CONTENT_TYPE,
-                HeaderValue::from_static("application/wasm"),
+                HeaderValue::from_static("text/css; charset=utf-8"),
             ),
             (
                 axum::http::header::CACHE_CONTROL,
                 HeaderValue::from_static("no-store"),
             ),
         ],
-        include_bytes!("../ide-wasm/dist/palmscript_ide_bg.wasm").as_slice(),
+        include_str!("../ide-web/dist/app.css"),
     )
 }
 
@@ -850,12 +850,12 @@ export x = spot.close
     }
 
     #[tokio::test]
-    async fn wasm_asset_route_is_served() {
+    async fn web_js_asset_route_is_served() {
         let app = browser_ide_router(fixture_state());
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/app/ide/palmscript_ide.js")
+                    .uri("/app/ide/app.js")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -875,6 +875,28 @@ export x = spot.close
                 .get(axum::http::header::CACHE_CONTROL)
                 .and_then(|value| value.to_str().ok()),
             Some("no-store")
+        );
+    }
+
+    #[tokio::test]
+    async fn web_css_asset_route_is_served() {
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/app/ide/app.css")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/css; charset=utf-8")
         );
     }
 
