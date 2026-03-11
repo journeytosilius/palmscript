@@ -1,7 +1,8 @@
 use iced::widget::canvas::{self, Canvas, Path, Stroke};
-use iced::widget::{button, column, container, pin, row, scrollable, text, text_editor};
+use iced::widget::{button, column, container, row, scrollable, text, text_editor};
 use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Task, Theme};
-use iced_aw::{date_picker::Date, ICED_AW_FONT_BYTES};
+use iced_aw::drop_down::{Alignment as DropDownAlignment, Offset as DropDownOffset};
+use iced_aw::{date_picker::Date, DropDown, ICED_AW_FONT_BYTES};
 use serde::Deserialize;
 
 const DEFAULT_SOURCE: &str = r#"interval 4h
@@ -27,8 +28,6 @@ const DATE_BUTTON_WIDTH: f32 = 140.0;
 const DATE_BUTTON_HEIGHT: f32 = 40.0;
 const DATE_FIELD_SPACING: f32 = 6.0;
 const DATE_PICKER_WIDTH: f32 = 248.0;
-const DATE_PICKER_OFFSET_Y: f32 = 64.0;
-const DATE_PICKER_OVERLAY_HEIGHT: f32 = 360.0;
 const DAY_CELL_SIZE: f32 = 32.0;
 
 #[derive(Debug, Clone)]
@@ -42,9 +41,11 @@ enum Message {
     RunBacktest,
     BacktestFinished(Result<BacktestResponse, String>),
     ChooseFromDate,
+    DismissFromDatePicker,
     ShiftFromMonth(i32),
     SubmitFromDate(Date),
     ChooseToDate,
+    DismissToDatePicker,
     ShiftToMonth(i32),
     SubmitToDate(Date),
 }
@@ -187,6 +188,10 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             }
             Task::none()
         }
+        Message::DismissFromDatePicker => {
+            state.show_from_picker = false;
+            Task::none()
+        }
         Message::ShiftFromMonth(delta) => {
             state.from_picker_month = state.from_picker_month.shift(delta);
             Task::none()
@@ -206,6 +211,10 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             if opening {
                 state.to_picker_month = CalendarMonth::from_date(state.to_date);
             }
+            Task::none()
+        }
+        Message::DismissToDatePicker => {
+            state.show_to_picker = false;
             Task::none()
         }
         Message::ShiftToMonth(delta) => {
@@ -280,6 +289,7 @@ fn view(state: &IdeApp) -> Element<'_, Message> {
                     picker_month: state.from_picker_month,
                     show_picker: state.show_from_picker,
                     on_toggle: Message::ChooseFromDate,
+                    on_dismiss: Message::DismissFromDatePicker,
                     on_prev_month: Message::ShiftFromMonth(-1),
                     on_next_month: Message::ShiftFromMonth(1),
                     on_submit: Message::SubmitFromDate,
@@ -290,6 +300,7 @@ fn view(state: &IdeApp) -> Element<'_, Message> {
                     picker_month: state.to_picker_month,
                     show_picker: state.show_to_picker,
                     on_toggle: Message::ChooseToDate,
+                    on_dismiss: Message::DismissToDatePicker,
                     on_prev_month: Message::ShiftToMonth(-1),
                     on_next_month: Message::ShiftToMonth(1),
                     on_submit: Message::SubmitToDate,
@@ -553,6 +564,7 @@ struct DateFieldProps {
     picker_month: CalendarMonth,
     show_picker: bool,
     on_toggle: Message,
+    on_dismiss: Message,
     on_prev_month: Message,
     on_next_month: Message,
     on_submit: fn(Date) -> Message,
@@ -562,13 +574,12 @@ fn date_field<'a>(props: DateFieldProps) -> Element<'a, Message> {
     let trigger = column![
         muted(props.label),
         button(
-            container(text(props.value.to_string()))
+            text(props.value.to_string())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
+                .center()
         )
-        .padding([0, 14])
+        .padding(0)
         .width(Length::Fixed(DATE_BUTTON_WIDTH))
         .height(Length::Fixed(DATE_BUTTON_HEIGHT))
         .style(date_button_style)
@@ -576,25 +587,22 @@ fn date_field<'a>(props: DateFieldProps) -> Element<'a, Message> {
     ]
     .spacing(DATE_FIELD_SPACING);
 
-    if props.show_picker {
-        iced::widget::stack([
-            Element::from(trigger),
-            pin(calendar_picker(
-                props.picker_month,
-                props.value,
-                props.on_prev_month,
-                props.on_next_month,
-                props.on_submit,
-            ))
-            .width(Length::Fixed(DATE_PICKER_WIDTH))
-            .height(Length::Fixed(DATE_PICKER_OVERLAY_HEIGHT))
-            .y(DATE_PICKER_OFFSET_Y)
-            .into(),
-        ])
-        .into()
-    } else {
-        trigger.into()
-    }
+    DropDown::new(
+        trigger,
+        calendar_picker(
+            props.picker_month,
+            props.value,
+            props.on_prev_month,
+            props.on_next_month,
+            props.on_submit,
+        ),
+        props.show_picker,
+    )
+    .alignment(DropDownAlignment::BottomStart)
+    .offset(DropDownOffset::new(0.0, DATE_FIELD_SPACING))
+    .width(Length::Fixed(DATE_PICKER_WIDTH))
+    .on_dismiss(props.on_dismiss)
+    .into()
 }
 
 fn calendar_picker<'a>(
@@ -605,33 +613,32 @@ fn calendar_picker<'a>(
     on_submit: fn(Date) -> Message,
 ) -> Element<'a, Message> {
     let header = row![
-        button(text("<"))
+        button(text("<").width(Length::Fill).height(Length::Fill).center())
             .width(Length::Fixed(32.0))
-            .padding([6, 0])
+            .height(Length::Fixed(32.0))
+            .padding(0)
             .style(calendar_nav_button_style)
             .on_press(on_prev_month),
-        container(text(month.label()).size(15))
+        text(month.label())
+            .size(15)
             .width(Length::Fill)
-            .center_x(Length::Fill),
-        button(text(">"))
+            .height(Length::Fixed(32.0))
+            .center(),
+        button(text(">").width(Length::Fill).height(Length::Fill).center())
             .width(Length::Fixed(32.0))
-            .padding([6, 0])
+            .height(Length::Fixed(32.0))
+            .padding(0)
             .style(calendar_nav_button_style)
             .on_press(on_next_month),
     ]
     .align_y(Alignment::Center)
     .spacing(8);
 
-    let weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].into_iter().fold(
-        row!().spacing(4),
-        |row, label| {
-            row.push(
-                container(muted(label))
-                    .width(Length::Fixed(DAY_CELL_SIZE))
-                    .center_x(Length::Fill),
-            )
-        },
-    );
+    let weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+        .into_iter()
+        .fold(row!().spacing(4), |row, label| {
+            row.push(muted(label).width(Length::Fixed(DAY_CELL_SIZE)).center())
+        });
 
     let first_weekday = weekday_index(month.year, month.month, 1);
     let total_days =
@@ -651,11 +658,10 @@ fn calendar_picker<'a>(
                 let label = day.to_string();
                 day += 1;
                 button(
-                    container(text(label))
+                    text(label)
                         .width(Length::Fill)
                         .height(Length::Fill)
-                        .center_x(Length::Fill)
-                        .center_y(Length::Fill),
+                        .center(),
                 )
                 .width(Length::Fixed(DAY_CELL_SIZE))
                 .height(Length::Fixed(DAY_CELL_SIZE))
@@ -962,7 +968,7 @@ fn selected_day_button_style(_theme: &Theme, status: button::Status) -> button::
 }
 
 fn blank_day_cell<'a>() -> Element<'a, Message> {
-    container(text(" "))
+    container(text(" ").width(Length::Fill).height(Length::Fill).center())
         .width(Length::Fixed(DAY_CELL_SIZE))
         .height(Length::Fixed(DAY_CELL_SIZE))
         .into()
