@@ -185,8 +185,10 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             match result {
                 Ok(response) => {
                     state.diagnostics = response.diagnostics;
-                    state.highlight_settings =
-                        EditorHighlightSettings::from_source(&state.script.text(), &response.highlights);
+                    state.highlight_settings = EditorHighlightSettings::from_source(
+                        &state.script.text(),
+                        &response.highlights,
+                    );
                     if state.diagnostics.is_empty() {
                         state.status = if state.running_backtest {
                             "Running backtest…".to_string()
@@ -236,10 +238,7 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             };
             let delete_task =
                 apply_editor_action(state, EditorAction::Edit(text_editor::Edit::Delete));
-            Task::batch([
-                delete_task,
-                start_browser_clipboard_write(selection),
-            ])
+            Task::batch([delete_task, start_browser_clipboard_write(selection)])
         }
         #[cfg(target_arch = "wasm32")]
         Message::PasteFromClipboard => start_browser_clipboard_read(),
@@ -758,7 +757,10 @@ fn calendar_picker<'a>(
 fn editor_key_binding(key_press: EditorKeyPress) -> Option<EditorBinding<Message>> {
     #[cfg(target_arch = "wasm32")]
     {
-        if matches!(key_press.status, iced::widget::text_editor::Status::Focused { .. }) {
+        if matches!(
+            key_press.status,
+            iced::widget::text_editor::Status::Focused { .. }
+        ) {
             match key_press.key.to_latin(key_press.physical_key) {
                 Some('c') if key_press.modifiers.command() => {
                     return Some(EditorBinding::Custom(Message::CopySelection));
@@ -1826,8 +1828,14 @@ mod tests {
                 },
                 HighlightToken {
                     span: HighlightSpan {
-                        start: HighlightPosition { offset: 29, line: 2 },
-                        end: HighlightPosition { offset: 33, line: 2 },
+                        start: HighlightPosition {
+                            offset: 29,
+                            line: 2,
+                        },
+                        end: HighlightPosition {
+                            offset: 33,
+                            line: 2,
+                        },
                     },
                     kind: HighlightKind::Function,
                 },
@@ -1845,5 +1853,13 @@ mod tests {
         let bundle = include_str!("../dist/palmscript_ide.js");
         assert!(!bundle.contains("__wbg_writeText_"));
         assert!(!bundle.contains("__wbg_readText_"));
+    }
+
+    #[test]
+    fn checked_in_shell_primes_clipboard_on_load() {
+        let shell = include_str!("../index.html");
+        assert!(shell.contains("primeClipboardAccess"));
+        assert!(shell.contains("navigator.clipboard?.readText"));
+        assert!(shell.contains("palmscript-ide-clipboard-preflight"));
     }
 }

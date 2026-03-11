@@ -38,9 +38,87 @@
   <body>
     <img class="ide-brandmark" src="./ide/palmscript-logo.png" alt="PalmScript" />
     <script type="module">
-      const assetVersion = "20260311-clipboard-import-fix";
+      const assetVersion = "20260311-clipboard-preflight";
+      const clipboardPreflightKey = `palmscript-ide-clipboard-preflight:${assetVersion}`;
+      const clipboardPreflightTtlMs = 30 * 24 * 60 * 60 * 1000;
+
+      function shouldPrimeClipboard() {
+        try {
+          const raw = window.localStorage.getItem(clipboardPreflightKey);
+          if (!raw) {
+            return true;
+          }
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed.attemptedAt !== "number") {
+            return true;
+          }
+          return Date.now() - parsed.attemptedAt >= clipboardPreflightTtlMs;
+        } catch {
+          return true;
+        }
+      }
+
+      function markClipboardPreflightAttempt() {
+        try {
+          window.localStorage.setItem(
+            clipboardPreflightKey,
+            JSON.stringify({ attemptedAt: Date.now() }),
+          );
+        } catch {
+          // Ignore storage failures; the next load will retry the preflight.
+        }
+      }
+
+      async function tryClipboardReadPreflight() {
+        if (!navigator.clipboard?.readText) {
+          return false;
+        }
+        try {
+          await navigator.clipboard.readText();
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      function scheduleClipboardInteractionPreflight() {
+        let completed = false;
+
+        const clear = () => {
+          window.removeEventListener("pointerdown", run, true);
+          window.removeEventListener("keydown", run, true);
+        };
+
+        const run = async () => {
+          if (completed) {
+            return;
+          }
+          completed = true;
+          clear();
+          await tryClipboardReadPreflight();
+          markClipboardPreflightAttempt();
+        };
+
+        window.addEventListener("pointerdown", run, { capture: true, once: true });
+        window.addEventListener("keydown", run, { capture: true, once: true });
+      }
+
+      async function primeClipboardAccess() {
+        if (!shouldPrimeClipboard()) {
+          return;
+        }
+
+        if (await tryClipboardReadPreflight()) {
+          markClipboardPreflightAttempt();
+          return;
+        }
+
+        scheduleClipboardInteractionPreflight();
+      }
+
       const { default: init } = await import(`./ide/palmscript_ide.js?v=${assetVersion}`);
 
+      void primeClipboardAccess();
       init(`./ide/palmscript_ide_bg.wasm?v=${assetVersion}`);
     </script>
   </body>

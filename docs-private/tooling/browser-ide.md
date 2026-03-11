@@ -45,6 +45,7 @@ The first public IDE release is intentionally narrow:
 - day clicks apply and close immediately
 - calendar panels float above the toolbar instead of changing its height
 - browser copy/cut/paste shortcuts wired through the web clipboard API
+- fresh hosted sessions attempt a clipboard-read preflight before the first paste when the browser allows it
 - semantic token coloring from the shared IDE analysis pipeline
 - PalmScript logo mark in the toolbar instead of a text heading
 - anonymous ephemeral browser sessions

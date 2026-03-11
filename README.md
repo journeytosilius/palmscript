@@ -63,8 +63,10 @@ calendar date-range picker over the curated BTCUSDT dataset, diagnostics, and
 backtest output panels. Day clicks apply immediately and the calendar panels
 float over the toolbar instead of resizing it. The editor supports browser
 copy/cut/paste shortcuts and semantic token coloring backed by the shared IDE
-analysis pipeline. The toolbar uses the PalmScript logo mark instead of a text
-title.
+analysis pipeline. On a fresh hosted session, the shell also attempts a
+clipboard-read preflight so paste permission is warmed before the first editor
+paste in browsers that allow it. The toolbar uses the PalmScript logo mark
+instead of a text title.
 
 The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.
