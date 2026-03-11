@@ -36,6 +36,10 @@ Update documentation whenever a change affects:
 - released artifacts or workflows
 - examples or checked-in fixtures used in docs
 
+When a page has published translations, update the English source and every
+current locale equivalent in the same change. Do not leave translated pages
+stale after a user-visible behavior change.
+
 ## Reference-First Rules
 
 - language behavior changes must update `Reference` first
