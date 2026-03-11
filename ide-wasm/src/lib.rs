@@ -223,7 +223,7 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             let Some(selection) = state.script.selection() else {
                 return Task::none();
             };
-            Task::perform(write_browser_clipboard(selection), Message::ClipboardWriteFinished)
+            start_browser_clipboard_write(selection)
         }
         #[cfg(target_arch = "wasm32")]
         Message::CutSelection => {
@@ -234,13 +234,11 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
                 apply_editor_action(state, EditorAction::Edit(text_editor::Edit::Delete));
             Task::batch([
                 delete_task,
-                Task::perform(write_browser_clipboard(selection), Message::ClipboardWriteFinished),
+                start_browser_clipboard_write(selection),
             ])
         }
         #[cfg(target_arch = "wasm32")]
-        Message::PasteFromClipboard => {
-            Task::perform(read_browser_clipboard(), Message::ClipboardReadFinished)
-        }
+        Message::PasteFromClipboard => start_browser_clipboard_read(),
         Message::ChooseFromDate => {
             let opening = !state.show_from_picker;
             state.show_from_picker = opening;
@@ -1154,41 +1152,59 @@ async fn check_script_request(
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn write_browser_clipboard(contents: String) -> Result<(), String> {
+fn start_browser_clipboard_write(contents: String) -> Task<Message> {
     let Some(window) = web_sys::window() else {
-        return Err("Clipboard is unavailable in this browser context.".to_string());
+        return Task::done(Message::ClipboardWriteFinished(Err(
+            "Clipboard is unavailable in this browser context.".to_string(),
+        )));
     };
     let clipboard = window.navigator().clipboard();
-    wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&contents))
-        .await
-        .map(|_| ())
-        .map_err(|error| format!("Failed to write to the browser clipboard: {error:?}"))
+    let promise = clipboard.write_text(&contents);
+
+    Task::perform(
+        async move {
+            wasm_bindgen_futures::JsFuture::from(promise)
+                .await
+                .map(|_| ())
+                .map_err(|error| format!("Failed to write to the browser clipboard: {error:?}"))
+        },
+        Message::ClipboardWriteFinished,
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-async fn write_browser_clipboard(_contents: String) -> Result<(), String> {
-    Ok(())
+fn start_browser_clipboard_write(_contents: String) -> Task<Message> {
+    Task::none()
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn read_browser_clipboard() -> Result<String, String> {
+fn start_browser_clipboard_read() -> Task<Message> {
     let Some(window) = web_sys::window() else {
-        return Err("Clipboard is unavailable in this browser context.".to_string());
+        return Task::done(Message::ClipboardReadFinished(Err(
+            "Clipboard is unavailable in this browser context.".to_string(),
+        )));
     };
     let clipboard = window.navigator().clipboard();
-    let value = wasm_bindgen_futures::JsFuture::from(clipboard.read_text())
-        .await
-        .map_err(|error| format!("Failed to read from the browser clipboard: {error:?}"))?;
-    value
-        .as_string()
-        .ok_or_else(|| "The browser clipboard did not return text.".to_string())
+    let promise = clipboard.read_text();
+
+    Task::perform(
+        async move {
+            let value = wasm_bindgen_futures::JsFuture::from(promise)
+                .await
+                .map_err(|error| format!("Failed to read from the browser clipboard: {error:?}"))?;
+            value
+                .as_string()
+                .ok_or_else(|| "The browser clipboard did not return text.".to_string())
+        },
+        Message::ClipboardReadFinished,
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
-async fn read_browser_clipboard() -> Result<String, String> {
-    Err("Clipboard paste is only available in the web IDE.".to_string())
+fn start_browser_clipboard_read() -> Task<Message> {
+    Task::none()
 }
 
 async fn fetch_dataset_catalog() -> Result<PublicDatasetCatalog, String> {
