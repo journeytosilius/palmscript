@@ -38,17 +38,17 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
 #[test]
 fn referenced_docs_examples_compile() {
     let examples = [
-        "examples/strategies/adaptive_trend_backtest.palm",
-        "examples/strategies/sma_cross.palm",
-        "examples/strategies/volume_breakout.palm",
-        "examples/strategies/signal_helpers.palm",
-        "examples/strategies/event_memory.palm",
-        "examples/strategies/macd_tuple.palm",
-        "examples/strategies/weekly_bias.palm",
-        "examples/strategies/cross_source_spread.palm",
-        "examples/strategies/exchange_backed_sources.palm",
-        "examples/strategies/multi_strategy_backtest.palm",
-        "examples/strategies/venue_orders_backtest.palm",
+        "examples/strategies/adaptive_trend_backtest.ps",
+        "examples/strategies/sma_cross.ps",
+        "examples/strategies/volume_breakout.ps",
+        "examples/strategies/signal_helpers.ps",
+        "examples/strategies/event_memory.ps",
+        "examples/strategies/macd_tuple.ps",
+        "examples/strategies/weekly_bias.ps",
+        "examples/strategies/cross_source_spread.ps",
+        "examples/strategies/exchange_backed_sources.ps",
+        "examples/strategies/multi_strategy_backtest.ps",
+        "examples/strategies/venue_orders_backtest.ps",
     ];
 
     for path in examples {
@@ -59,11 +59,11 @@ fn referenced_docs_examples_compile() {
 #[test]
 fn single_source_docs_examples_run_with_local_feeds() {
     let minute_examples = [
-        "examples/strategies/sma_cross.palm",
-        "examples/strategies/volume_breakout.palm",
-        "examples/strategies/signal_helpers.palm",
-        "examples/strategies/event_memory.palm",
-        "examples/strategies/macd_tuple.palm",
+        "examples/strategies/sma_cross.ps",
+        "examples/strategies/volume_breakout.ps",
+        "examples/strategies/signal_helpers.ps",
+        "examples/strategies/event_memory.ps",
+        "examples/strategies/macd_tuple.ps",
     ];
     let minute_bars = bars(JAN_1_2024_UTC_MS, MINUTE_MS, 80, 100.0);
 
@@ -94,7 +94,7 @@ fn single_source_docs_examples_run_with_local_feeds() {
 
 #[test]
 fn supplemental_interval_docs_example_runs_with_local_feeds() {
-    let path = "examples/strategies/weekly_bias.palm";
+    let path = "examples/strategies/weekly_bias.ps";
     let compiled = compile(&read_strategy(path)).expect("weekly_bias should compile");
     let daily_bars = bars(JAN_1_2024_UTC_MS, DAY_MS, 21, 100.0);
     let outputs = run_with_sources(
@@ -123,8 +123,8 @@ fn supplemental_interval_docs_example_runs_with_local_feeds() {
 #[test]
 fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
     let paths = [
-        "examples/strategies/multi_strategy_backtest.palm",
-        "examples/strategies/adaptive_trend_backtest.palm",
+        "examples/strategies/multi_strategy_backtest.ps",
+        "examples/strategies/adaptive_trend_backtest.ps",
     ];
 
     for path in paths {
@@ -196,7 +196,7 @@ fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
 
 #[test]
 fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
-    let path = "examples/strategies/venue_orders_backtest.palm";
+    let path = "examples/strategies/venue_orders_backtest.ps";
     let compiled = compile(&read_strategy(path)).expect("venue_orders_backtest should compile");
     let runtime = SourceRuntimeConfig {
         base_interval: palmscript::Interval::Hour1,
@@ -231,10 +231,8 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
 
 #[test]
 fn source_aware_docs_examples_run_with_local_feeds() {
-    let spread = compile(&read_strategy(
-        "examples/strategies/cross_source_spread.palm",
-    ))
-    .expect("cross_source_spread should compile");
+    let spread = compile(&read_strategy("examples/strategies/cross_source_spread.ps"))
+        .expect("cross_source_spread should compile");
     let spread_outputs = run_with_sources(
         &spread,
         SourceRuntimeConfig {
@@ -263,7 +261,7 @@ fn source_aware_docs_examples_run_with_local_feeds() {
         .all(|point| point.value == Some(5.0)));
 
     let exchange = compile(&read_strategy(
-        "examples/strategies/exchange_backed_sources.palm",
+        "examples/strategies/exchange_backed_sources.ps",
     ))
     .expect("exchange_backed_sources should compile");
     let exchange_outputs = run_with_sources(

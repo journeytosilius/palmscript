@@ -15,7 +15,7 @@ Typical flow:
 ## Validate Without Running
 
 ```bash
-palmscript check strategy.palm
+palmscript check strategy.ps
 ```
 
 This compiles the script and reports source diagnostics without executing it.
@@ -23,7 +23,7 @@ This compiles the script and reports source diagnostics without executing it.
 ## Run A Script
 
 ```bash
-palmscript run market strategy.palm \
+palmscript run market strategy.ps \
   --from 1704067200000 \
   --to 1704153600000
 ```
@@ -38,8 +38,8 @@ When a script uses multiple sources or supplemental intervals, PalmScript fetche
 ## Inspect Compiled Output
 
 ```bash
-palmscript dump-bytecode strategy.palm
-palmscript dump-bytecode strategy.palm --format json
+palmscript dump-bytecode strategy.ps
+palmscript dump-bytecode strategy.ps --format json
 ```
 
 This prints the compiled form rather than executing the script.

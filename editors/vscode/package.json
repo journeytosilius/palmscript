@@ -30,7 +30,7 @@
           "palmscript"
         ],
         "extensions": [
-          ".palm"
+          ".ps"
         ],
         "configuration": "./language-configuration.json"
       }

@@ -40,7 +40,7 @@ The image embeds the browser shell and serves the full IDE from the
 
 The first public IDE release is intentionally narrow:
 
-- one `.palm` buffer
+- one `.ps` buffer
 - minimal demo chrome with calendar date-range pickers and a run action only
 - day clicks apply and close immediately
 - calendar panels float above the toolbar instead of changing its height

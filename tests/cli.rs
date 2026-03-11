@@ -75,14 +75,14 @@ fn check_reports_success_for_valid_script() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "valid.palm",
+        "valid.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(sma(bn.close, 3))",
     );
     let mut cmd = palmscript_cmd();
     cmd.args(["check", script.to_str().unwrap()]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("valid.palm: ok"));
+        .stdout(predicate::str::contains("valid.ps: ok"));
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn check_reports_compile_diagnostics() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "invalid.palm",
+        "invalid.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nif true { plot(1) }",
     );
     let mut cmd = palmscript_cmd();
@@ -105,7 +105,7 @@ fn check_reports_multiple_compile_diagnostics() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "invalid.palm",
+        "invalid.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nlet x = bn.close\nlet x = bn.close[1]\nplot(true + 1)",
     );
     let mut cmd = palmscript_cmd();
@@ -125,7 +125,7 @@ fn dump_bytecode_text_contains_sections() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "script.palm",
+        "script.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(sma(bn.close, 3))",
     );
     let mut cmd = palmscript_cmd();
@@ -143,7 +143,7 @@ fn dump_bytecode_json_serializes_compiled_program() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "script.palm",
+        "script.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(bn.close)",
     );
     let output = palmscript_cmd()
@@ -181,7 +181,7 @@ fn run_market_executes_source_aware_script() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "market.palm",
+        "market.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(bn.close)",
     );
 
@@ -219,7 +219,7 @@ fn run_market_supports_text_output() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "market.palm",
+        "market.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nexport rising = bn.close > bn.close[1]\ntrigger bullish = bn.close > bn.open\nplot(bn.close)",
     );
 
@@ -307,7 +307,7 @@ fn checked_in_single_interval_example_runs_via_cli() {
         .args([
             "run",
             "market",
-            repo_path("examples/strategies/sma_cross.palm")
+            repo_path("examples/strategies/sma_cross.ps")
                 .to_str()
                 .unwrap(),
             "--from",
@@ -466,7 +466,7 @@ fn checked_in_multi_interval_example_runs_via_cli() {
         .args([
             "run",
             "market",
-            repo_path("examples/strategies/weekly_bias.palm")
+            repo_path("examples/strategies/weekly_bias.ps")
                 .to_str()
                 .unwrap(),
             "--from",
@@ -504,7 +504,7 @@ fn run_market_reports_fetch_failures_with_cli_prefix() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "market.palm",
+        "market.ps",
         "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(bn.close)",
     );
 
@@ -531,7 +531,7 @@ fn run_market_rejects_hyperliquid_windows_beyond_rest_history_limit() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "market.palm",
+        "market.ps",
         "interval 1m\nsource hl = hyperliquid.perps(\"BTC\")\nplot(hl.close)",
     );
 
@@ -571,7 +571,7 @@ fn run_backtest_executes_single_source_script_with_default_execution_source() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "backtest.palm",
+        "backtest.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\ntrigger long_exit = spot.close < spot.close[1]\nplot(spot.close)",
     );
 
@@ -627,7 +627,7 @@ fn run_backtest_supports_text_output() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "backtest.palm",
+        "backtest.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\ntrigger long_exit = spot.close < spot.close[1]\nplot(spot.close)",
     );
 
@@ -667,7 +667,7 @@ fn run_backtest_rejects_leverage_for_spot_sources() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "spot_backtest.palm",
+        "spot_backtest.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\nplot(spot.close)",
     );
 
@@ -695,7 +695,7 @@ fn run_backtest_requires_execution_source_for_multi_source_scripts() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "backtest.palm",
+        "backtest.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nsource perp = binance.usdm(\"BTCUSDT\")\ntrigger long_entry = spot.close > perp.close\nplot(spot.close - perp.close)",
     );
 
@@ -735,7 +735,7 @@ fn run_walk_forward_emits_segmented_json() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "walk_forward.palm",
+        "walk_forward.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\nplot(spot.close)",
     );
 
@@ -796,7 +796,7 @@ fn run_walk_forward_supports_text_output() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "walk_forward.palm",
+        "walk_forward.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\nplot(spot.close)",
     );
 
@@ -854,7 +854,7 @@ fn run_walk_forward_sweep_emits_ranked_json() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "walk_forward_sweep.palm",
+        "walk_forward_sweep.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
     );
 
@@ -917,7 +917,7 @@ fn run_walk_forward_sweep_supports_text_output() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "walk_forward_sweep.palm",
+        "walk_forward_sweep.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
     );
 
@@ -977,7 +977,7 @@ fn run_optimize_emits_ranked_json() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "optimize.palm",
+        "optimize.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
     );
 
@@ -1045,7 +1045,7 @@ fn run_optimize_supports_text_output_and_presets() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
         dir.path(),
-        "optimize.palm",
+        "optimize.ps",
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
     );
     let preset = dir.path().join("best.json");

@@ -2,7 +2,7 @@
 
 The first-party VS Code extension provides editor support for PalmScript source files.
 
-- source extension: `.palm`
+- source extension: `.ps`
 
 Marketplace identity:
 

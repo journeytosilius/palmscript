@@ -665,7 +665,7 @@ mod tests {
             "textDocument/didOpen".to_string(),
             json!({
                 "textDocument": {
-                    "uri": "inmemory:///strategy.palm",
+                    "uri": "inmemory:///strategy.ps",
                     "languageId": "palmscript",
                     "version": 1,
                     "text": "interval"
@@ -694,7 +694,7 @@ mod tests {
             "textDocument/didOpen".to_string(),
             json!({
                 "textDocument": {
-                    "uri": "inmemory:///strategy.palm",
+                    "uri": "inmemory:///strategy.ps",
                     "languageId": "palmscript",
                     "version": 1,
                     "text": "interval 4h\nsource spot = binance.spot(\"BTCUSDT\")\nlet fast = ema(spot.close, 13)\n"
@@ -705,7 +705,7 @@ mod tests {
             id: 2.into(),
             method: "textDocument/semanticTokens/full".to_string(),
             params: json!({
-                "textDocument": { "uri": "inmemory:///strategy.palm" }
+                "textDocument": { "uri": "inmemory:///strategy.ps" }
             }),
         }));
         let Message::Response(response) = &messages[0] else {

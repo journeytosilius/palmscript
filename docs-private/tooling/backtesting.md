@@ -23,7 +23,7 @@ bounded hyper-parameter search over selected numeric `input`s.
 Run a backtest end to end:
 
 ```bash
-palmscript run backtest strategy.palm \
+palmscript run backtest strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --fee-bps 10 \
@@ -39,7 +39,7 @@ backtester itself.
 Perp execution sources also accept isolated-margin controls:
 
 ```bash
-palmscript run backtest strategy.palm \
+palmscript run backtest strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --execution-source perp \
@@ -50,7 +50,7 @@ palmscript run backtest strategy.palm \
 Run a rolling walk-forward evaluation:
 
 ```bash
-palmscript run walk-forward strategy.palm \
+palmscript run walk-forward strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --train-bars 252 \
@@ -68,7 +68,7 @@ V1 notes:
 Run a bounded walk-forward sweep:
 
 ```bash
-palmscript run walk-forward-sweep strategy.palm \
+palmscript run walk-forward-sweep strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --train-bars 252 \
@@ -91,7 +91,7 @@ V1 sweep notes:
 Run seeded optimization:
 
 ```bash
-palmscript run optimize strategy.palm \
+palmscript run optimize strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --train-bars 252 \

@@ -5,7 +5,7 @@
 ## Invocation
 
 ```bash
-palmscript run market strategy.palm --from 1704067200000 --to 1704153600000
+palmscript run market strategy.ps --from 1704067200000 --to 1704153600000
 ```
 
 Rules:

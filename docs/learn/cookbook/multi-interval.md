@@ -19,7 +19,7 @@ if spot.close > weekly_basis {
 ## Run It
 
 ```bash
-palmscript run market strategy.palm \
+palmscript run market strategy.ps \
   --from 1704067200000 \
   --to 1705276800000
 ```

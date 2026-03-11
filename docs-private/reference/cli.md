@@ -5,19 +5,19 @@ This page is the compact public command reference for the `palmscript` CLI. For 
 ## `palmscript check`
 
 ```bash
-palmscript check <script.palm>
+palmscript check <script.ps>
 ```
 
 Compiles and validates a script without executing it.
 
 Arguments:
 
-- `<script.palm>`: path to the PalmScript source file
+- `<script.ps>`: path to the PalmScript source file
 
 ## `palmscript run market`
 
 ```bash
-palmscript run market <script.palm> --from <unix_ms> --to <unix_ms> \
+palmscript run market <script.ps> --from <unix_ms> --to <unix_ms> \
   [--format json|text] \
   [--max-instructions-per-bar <N>] \
   [--max-history-capacity <N>]
@@ -25,7 +25,7 @@ palmscript run market <script.palm> --from <unix_ms> --to <unix_ms> \
 
 Arguments and flags:
 
-- `<script.palm>`: path to the PalmScript source file
+- `<script.ps>`: path to the PalmScript source file
 - `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--format json|text`: output rendering format, default `json`
@@ -40,10 +40,10 @@ Requirements:
 ## `palmscript dump-bytecode`
 
 ```bash
-palmscript dump-bytecode <script.palm> [--format text|json]
+palmscript dump-bytecode <script.ps> [--format text|json]
 ```
 
 Arguments and flags:
 
-- `<script.palm>`: path to the PalmScript source file
+- `<script.ps>`: path to the PalmScript source file
 - `--format text|json`: bytecode output format, default `text`

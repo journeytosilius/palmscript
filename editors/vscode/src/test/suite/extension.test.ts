@@ -24,7 +24,7 @@ suite("PalmScript extension", () => {
 
     test("activates and publishes diagnostics for invalid documents", async () => {
         const uri = vscode.Uri.file(
-            path.resolve(__dirname, "..", "..", "..", "test-fixtures", "invalid.palm"),
+            path.resolve(__dirname, "..", "..", "..", "test-fixtures", "invalid.ps"),
         );
         const document = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(document);
@@ -37,7 +37,7 @@ suite("PalmScript extension", () => {
 
     test("provides hover, definitions, and completions", async () => {
         const uri = vscode.Uri.file(
-            path.resolve(__dirname, "..", "..", "..", "test-fixtures", "valid.palm"),
+            path.resolve(__dirname, "..", "..", "..", "test-fixtures", "valid.ps"),
         );
         const document = await vscode.workspace.openTextDocument(uri);
         const editor = await vscode.window.showTextDocument(document);

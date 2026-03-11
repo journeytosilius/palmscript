@@ -295,7 +295,7 @@ export trend_long_state = trend_long
             id: "adaptive".to_string(),
             name: "Adaptive Trend".to_string(),
             description: "The checked-in BTC spot adaptive trend example.".to_string(),
-            source: include_str!("../examples/strategies/adaptive_trend_backtest.palm").to_string(),
+            source: include_str!("../examples/strategies/adaptive_trend_backtest.ps").to_string(),
         },
     ]
 }

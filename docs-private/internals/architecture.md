@@ -8,7 +8,7 @@ PalmScript is structured as a library-first repository. Tooling layers reuse the
 - `cli/`: CLI binary
 - `lsp/`: language server binary
 - `editors/vscode/`: VS Code extension
-- `examples/`: Rust examples, `.palm` strategies, and fixtures
+- `examples/`: Rust examples, `.ps` strategies, and fixtures
 - `tests/`: integration and CLI coverage
 - `docs/`: canonical documentation source
 

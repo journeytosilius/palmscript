@@ -16,7 +16,7 @@ plot(hl.1h.close)
 ## Run It
 
 ```bash
-palmscript run market strategy.palm \
+palmscript run market strategy.ps \
   --from 1704067200000 \
   --to 1704153600000
 ```

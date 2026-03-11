@@ -9,7 +9,7 @@ PalmScript public documentation is organized around:
 
 Typical workflow:
 
-1. write a `.palm` script
+1. write a `.ps` script
 2. declare a base `interval`
 3. declare one or more `source` bindings
 4. validate the script
