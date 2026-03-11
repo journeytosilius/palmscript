@@ -26,17 +26,16 @@ Examples:
 
 These diagnostics surface through:
 
-- `palmscript check`
-- `palmscript run market`
-- `palmscript dump-bytecode`
+- the browser IDE editor diagnostics panel
+- backtest requests issued by the hosted app
 
 ## 2. Market Fetch Errors
 
-After successful compilation, `run market` may fail while preparing the required historical feeds.
+After successful compilation, runtime preparation may fail while assembling the required historical feeds.
 
 Examples:
 
-- `--from` is not less than `--to`
+- the requested time window is invalid
 - the script has no `source` declarations
 - an exchange request fails
 - a venue response is malformed

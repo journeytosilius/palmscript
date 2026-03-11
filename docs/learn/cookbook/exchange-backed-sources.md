@@ -13,20 +13,16 @@ plot(bn.close)
 plot(hl.1h.close)
 ```
 
-## Run It
+## Try It In The Browser IDE
 
-```bash
-palmscript run market strategy.ps \
-  --from 1704067200000 \
-  --to 1704153600000
-```
+Open `https://palmscript.dev/app/`, paste the example into the editor, and run it against the curated dataset window in the app.
 
 ## What To Watch For
 
 - source-aware scripts must use source-qualified market series
 - `use hl 1h` is required before `hl.1h.close`
 - the script still has one global base `interval`
-- market mode fetches each required `(source, interval)` directly from the venue
+- the runtime resolves each required `(source, interval)` feed before execution
 
 Reference:
 

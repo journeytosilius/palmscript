@@ -18,7 +18,7 @@ A built-in exchange/venue constructor such as `binance.spot` or `hyperliquid.per
 
 ## Market Mode
 
-The CLI execution mode invoked as `palmscript run market ...`.
+Execution against historical market-backed source feeds.
 
 ## No Lookahead
 
@@ -30,4 +30,4 @@ A named per-step result emitted by `export` or `trigger`.
 
 ## Union Of Base Timestamps
 
-The market-mode execution timeline built from the union of all declared-source base-interval candle open times.
+The execution timeline built from the union of all declared-source base-interval candle open times.

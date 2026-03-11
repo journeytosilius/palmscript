@@ -12,8 +12,8 @@ Typical workflow:
 1. write a `.ps` script
 2. declare a base `interval`
 3. declare one or more `source` bindings
-4. validate the script
-5. run it over historical data
+4. validate it in the browser IDE
+5. run it over historical data in the app
 
 ## What To Read Next
 

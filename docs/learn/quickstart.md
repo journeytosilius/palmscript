@@ -1,31 +1,28 @@
 # Quickstart
 
-## 1. Validate A Script
+## 1. Open The Browser IDE
 
-```bash
-palmscript check strategy.ps
+Use the hosted IDE at `https://palmscript.dev/app/`.
+
+## 2. Paste A Script
+
+```palmscript
+interval 1m
+source spot = binance.spot("BTCUSDT")
+
+let fast = ema(spot.close, 5)
+let slow = sma(spot.close, 10)
+
+export trend = fast > slow
+plot(spot.close)
 ```
 
-## 2. Run A Market-Backed Script
+## 3. Review Diagnostics
 
-```bash
-palmscript run market strategy.ps \
-  --from 1704067200000 \
-  --to 1704153600000
-```
+The editor checks the script as you type and shows any compile diagnostics in the right-hand panel.
 
-## 3. Run Another Exchange-Backed Script
+## 4. Run A Backtest
 
-```bash
-palmscript run market spread_strategy.ps \
-  --from 1704067200000 \
-  --to 1704153600000
-```
-
-## 4. Inspect Compiled Output
-
-```bash
-palmscript dump-bytecode strategy.ps
-```
+Pick a date range and press `Run Backtest` to execute the script against the curated dataset in the app.
 
 Next: [First Strategy](first-strategy.md)

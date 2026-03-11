@@ -16,7 +16,6 @@ If a guide page and a reference page ever differ, the reference page is authorit
 - builtin and indicator contracts
 - output semantics
 - diagnostics classes
-- the public CLI command surface
 
 ## Implemented Today
 

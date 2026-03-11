@@ -1,23 +1,13 @@
 # Installation
 
-PalmScript is used through the `palmscript` CLI.
+PalmScript is currently demonstrated publicly through the hosted browser IDE:
+
+`https://palmscript.dev/app/`
 
 Before following the Learn examples, make sure:
 
-- `palmscript` is installed
-- the binary is available on your `PATH`
+- you can reach the hosted app
+- your browser allows JavaScript and WebAssembly
+- you can edit and run scripts in the IDE
 
-Verify it:
-
-```bash
-palmscript --help
-```
-
-The examples in this documentation assume commands are run as:
-
-```bash
-palmscript check strategy.ps
-palmscript run market strategy.ps --from 1704067200000 --to 1704153600000
-```
-
-If you are working from a local development checkout, use the build and packaging workflow provided by your environment to make the `palmscript` binary available before continuing.
+The public Learn examples assume you are writing PalmScript inside the browser IDE, reviewing diagnostics there, and running the curated backtest flow from the app.

@@ -123,7 +123,7 @@ Rules:
 - both forms are top-level only
 - duplicate names in the same scope are rejected
 - both forms are scalar-only in v1: `float`, `bool`, `ma_type`, `tif`, `trigger_ref`, `position_side`, `exit_kind`, or `na`
-- `input` is compile-time only in v1 and does not yet accept CLI overrides
+- `input` is compile-time only in v1
 - `input` values must be scalar literals or enum literals
 - `const` values may reference previously declared `const` / `input` bindings and pure scalar builtins
 - windowed builtins and series indexing accept immutable numeric bindings anywhere an integer literal is required

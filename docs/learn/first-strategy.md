@@ -28,13 +28,9 @@ if trend {
 - `plot` emits chart-style numeric output
 - `if / else` controls which values are emitted
 
-## Run It
+## Try It In The Browser IDE
 
-```bash
-palmscript run market strategy.ps \
-  --from 1704067200000 \
-  --to 1704153600000
-```
+Open `https://palmscript.dev/app/`, paste the script into the editor, and run it over the curated dataset window with the date controls in the header.
 
 ## Extend It With Higher-Timeframe Context
 
