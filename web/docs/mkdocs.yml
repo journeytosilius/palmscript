@@ -44,6 +44,9 @@ extra:
     - name: Portugues (Brasil)
       link: /pt-BR/docs/
       lang: pt-BR
+    - name: Deutsch
+      link: /de/docs/
+      lang: de
 
 extra_css:
   - stylesheets/extra.css
@@ -156,6 +159,43 @@ plugins:
             Diagnostics: Diagnosticos
             Interval Table: Tabela De Intervalos
             Glossary: Glossario
+        - locale: de
+          name: Deutsch
+          build: true
+          link: /de/docs/
+          fixed_link: https://palmscript.dev/de/docs/
+          site_url: https://palmscript.dev/de/docs/
+          site_description: PalmScript Sprachdokumentation, Referenz und Beispiele
+          nav_translations:
+            Home: Start
+            Learn: Lernen
+            Overview: Uberblick
+            Installation: Installation
+            Quickstart: Schnellstart
+            First Strategy: Erste Strategie
+            Language Overview: Sprachuberblick
+            Cookbook: Rezepte
+            Multi-Interval Strategy: Multi-Intervall-Strategie
+            Exchange-Backed Sources: Quellen Mit Exchange-Daten
+            Cross-Source Spread: Spread Zwischen Quellen
+            Reference: Referenz
+            Lexical Structure: Lexikalische Struktur
+            Grammar: Grammatik
+            Declarations and Scope: Deklarationen und Gultigkeitsbereich
+            Types and Values: Typen und Werte
+            Series and Indexing: Serien und Indexierung
+            Evaluation Semantics: Auswertungssemantik
+            Intervals and Sources: Intervalle und Quellen
+            Builtins: Builtins
+            Indicators: Indikatoren
+            Trend and Overlap: Trend und Uberlagerung
+            Momentum, Volume, and Volatility: Momentum, Volumen und Volatilitat
+            Math, Price, and Statistics: Mathematik, Preis und Statistik
+            TA-Lib Surface: TA-Lib-Oberflache
+            Outputs: Ausgaben
+            Diagnostics: Diagnosen
+            Interval Table: Intervalltabelle
+            Glossary: Glossar
 
 nav:
   - Home: index.md

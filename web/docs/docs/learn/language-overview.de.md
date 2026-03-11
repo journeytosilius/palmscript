@@ -1,0 +1,47 @@
+# Sprachuberblick
+
+PalmScript-Skripte sind Quelltextdateien auf Top-Level-Ebene und bestehen aus
+Deklarationen und Anweisungen.
+
+Haufige Bausteine:
+
+- `interval <...>` fur den Basis-Ausfuhrungstakt
+- `source`-Deklarationen fur marktgestutzte Serien
+- optionale zusatzliche `use <alias> <interval>`-Deklarationen
+- Top-Level-Funktionen
+- `let`, `const`, `input`, Tupel-Destrukturierung, `export`, `trigger`, `entry` / `exit` und `order`
+- `if / else if / else`
+- Ausdrucke aus Operatoren, Aufrufen und Indexierung
+- Helper-Builtins wie `crossover`, `activated`, `barssince` und `valuewhen`
+- typisierte Enum-Literale `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>` und `exit_kind.<variant>`
+
+## Skriptform
+
+Ausfuhrbare PalmScript-Skripte benennen ihre Datenquellen explizit:
+
+```palmscript
+interval 1m
+source bn = binance.spot("BTCUSDT")
+source hl = hyperliquid.perps("BTC")
+
+plot(bn.close - hl.close)
+```
+
+## Mentales Modell
+
+- jedes Skript hat ein Basisintervall
+- ausfuhrbare Skripte deklarieren eine oder mehrere `source`-Bindungen
+- Marktserien sind immer quellqualifiziert
+- Serienwerte entwickeln sich uber die Zeit
+- hohere Intervalle aktualisieren sich nur, wenn diese Kerzen vollstandig schliessen
+- fehlender Verlauf oder fehlende ausgerichtete Quelldaten erscheinen als `na`
+- `plot`, `export`, `trigger` und Strategiedeklarationen emittieren nach jedem Ausfuhrungsschritt Ergebnisse
+
+## Wohin Fur Exakte Regeln
+
+- Syntax und Tokens: [Lexikalische Struktur](../reference/lexical-structure.md) und [Grammatik](../reference/grammar.md)
+- Deklarationen und Sichtbarkeit: [Deklarationen und Gultigkeitsbereich](../reference/declarations-and-scope.md)
+- Ausdrucke und Semantik: [Auswertungssemantik](../reference/evaluation-semantics.md)
+- Regeln fur Marktserien: [Intervalle und Quellen](../reference/intervals-and-sources.md)
+- Indikatoren und Helper-Builtins: [Indikatoren](../reference/indicators.md) und [Builtins](../reference/builtins.md)
+- Ausgaben: [Ausgaben](../reference/outputs.md)
