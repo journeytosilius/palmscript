@@ -1,6 +1,7 @@
 site_name: PalmScript
 site_description: PalmScript language documentation, reference, and examples
 site_url: !ENV [DOCS_SITE_URL, "https://palmscript.dev/docs/"]
+docs_dir: !ENV [DOCS_DIR, "docs"]
 site_dir: ../../site
 theme:
   name: material
