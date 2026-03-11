@@ -9,7 +9,7 @@ COPY web/docs /app/web/docs
 COPY infra/scripts/build_docs_site.sh /app/infra/scripts/build_docs_site.sh
 COPY README.md /app/README.md
 
-RUN bash /app/infra/scripts/build_docs_site.sh
+RUN sh /app/infra/scripts/build_docs_site.sh
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 

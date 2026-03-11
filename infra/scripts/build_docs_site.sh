@@ -1,14 +1,15 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_PATH="$ROOT_DIR/web/docs/mkdocs.yml"
 SITE_DIR="$ROOT_DIR/site"
 
 build_locale() {
-    local locale="$1"
-    local site_url="$2"
-    local output_dir="$3"
+    locale="$1"
+    site_url="$2"
+    output_dir="$3"
 
     BUILD_ONLY_LOCALE="$locale" \
     DOCS_SITE_URL="$site_url" \

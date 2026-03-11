@@ -8,7 +8,7 @@ docs-build-strict:
 	mkdocs build --strict -f web/docs/mkdocs.yml
 
 docs-build-site:
-	bash infra/scripts/build_docs_site.sh
+	sh infra/scripts/build_docs_site.sh
 
 docs-docker-build:
 	docker build -f infra/docker/Dockerfile.docs -t palmscript-docs .

@@ -45,7 +45,7 @@ target/debug/palmscript run market crates/palmscript/examples/strategies/sma_cro
 target/debug/palmscript run market crates/palmscript/examples/strategies/cross_source_spread.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript dump-bytecode crates/palmscript/examples/strategies/sma_cross.ps
 mkdocs build --strict -f web/docs/mkdocs.yml
-bash infra/scripts/build_docs_site.sh
+sh infra/scripts/build_docs_site.sh
 ```
 
 ## Browser IDE Container

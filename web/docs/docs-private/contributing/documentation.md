@@ -81,12 +81,12 @@ source .venv-docs/bin/activate
 pip install -r web/docs/requirements-docs.txt
 mkdocs serve -f web/docs/mkdocs.yml
 mkdocs build --strict -f web/docs/mkdocs.yml
-bash infra/scripts/build_docs_site.sh
+sh infra/scripts/build_docs_site.sh
 ```
 
 Use `mkdocs build --strict -f web/docs/mkdocs.yml` for config validation and
 local preview of the multilingual source tree. Use
-`bash infra/scripts/build_docs_site.sh` for the production output layout that
+`sh infra/scripts/build_docs_site.sh` for the production output layout that
 publishes English at `/docs/` and translated locales at `/{lang}/docs/`.
 
 For containerized serving or self-hosting:
