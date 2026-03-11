@@ -37,7 +37,8 @@ const DATE_BUTTON_HEIGHT: f32 = 40.0;
 const DATE_FIELD_SPACING: f32 = 6.0;
 const DATE_PICKER_WIDTH: f32 = 272.0;
 const DAY_CELL_SIZE: f32 = 32.0;
-const HEADER_BRAND_WIDTH: f32 = 184.0;
+const HEADER_BRAND_WIDTH: f32 = 360.0;
+const HEADER_BRAND_HEIGHT: f32 = 112.0;
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -344,7 +345,9 @@ fn app_theme(_state: &IdeApp) -> Theme {
 fn view(state: &IdeApp) -> Element<'_, Message> {
     let toolbar = container(
         row![
-            container(text("")).width(Length::Fixed(HEADER_BRAND_WIDTH)),
+            container(text(""))
+                .width(Length::Fixed(HEADER_BRAND_WIDTH))
+                .height(Length::Fixed(HEADER_BRAND_HEIGHT)),
             row![
                 date_field(DateFieldProps {
                     label: "From",
@@ -1863,5 +1866,7 @@ mod tests {
         assert!(shell.contains("palmscript-ide-clipboard-preflight"));
         assert!(shell.contains("ide-brand-slot"));
         assert!(shell.contains("object-fit: contain"));
+        assert!(shell.contains("justify-content: center"));
+        assert!(shell.contains("object-position: center center"));
     }
 }
