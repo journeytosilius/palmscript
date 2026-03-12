@@ -1,22 +1,27 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const DEFAULT_SOURCE = `interval 4h
-source spot = binance.spot("BTCUSDT")
-use spot 1d
-use spot 1w
+source bn = binance.spot("BTCUSDT")
+source bb = bybit.spot("BTCUSDT")
+use bn 1d
+use bb 1d
 
-let fast = ema(spot.close, 13)
-let slow = ema(spot.close, 89)
-let daily_fast = ema(spot.1d.close, 30)
-let daily_slow = ema(spot.1d.close, 80)
-let weekly_fast = ema(spot.1w.close, 5)
-let weekly_slow = ema(spot.1w.close, 13)
+let bn_fast = ema(bn.close, 13)
+let bn_slow = ema(bn.close, 55)
+let bb_fast = ema(bb.close, 13)
+let bb_slow = ema(bb.close, 55)
+let bn_daily = ema(bn.1d.close, 20)
+let bb_daily = ema(bb.1d.close, 20)
+let spread = (bn.close - bb.close) / bb.close
 
-entry long = above(fast, slow) and above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow)
-exit long = below(fast, slow)
+let trend_confirmed = above(bn_fast, bn_slow) and above(bb_fast, bb_slow)
+let daily_confirmed = above(bn.1d.close, bn_daily) and above(bb.1d.close, bb_daily)
 
-plot(fast - slow)
-export trend_long_state = above(fast, slow)
+entry long = trend_confirmed and daily_confirmed and spread < -0.002
+exit long = below(bn_fast, bn_slow) or spread > 0.002
+
+plot(spread * 10000)
+export spread_bps = spread * 10000
 `;
 
 export function dateInputValue(timeMs: number): string {
