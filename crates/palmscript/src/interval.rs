@@ -46,6 +46,10 @@ pub enum MarketField {
 pub enum SourceTemplate {
     BinanceSpot,
     BinanceUsdm,
+    BybitSpot,
+    BybitUsdtPerps,
+    GateSpot,
+    GateUsdtPerps,
     HyperliquidSpot,
     HyperliquidPerps,
 }
@@ -343,6 +347,10 @@ impl SourceTemplate {
         match (exchange, venue) {
             ("binance", "spot") => Some(Self::BinanceSpot),
             ("binance", "usdm") => Some(Self::BinanceUsdm),
+            ("bybit", "spot") => Some(Self::BybitSpot),
+            ("bybit", "usdt_perps") => Some(Self::BybitUsdtPerps),
+            ("gate", "spot") => Some(Self::GateSpot),
+            ("gate", "usdt_perps") => Some(Self::GateUsdtPerps),
             ("hyperliquid", "spot") => Some(Self::HyperliquidSpot),
             ("hyperliquid", "perps") => Some(Self::HyperliquidPerps),
             _ => None,
@@ -352,14 +360,17 @@ impl SourceTemplate {
     pub const fn exchange_name(self) -> &'static str {
         match self {
             Self::BinanceSpot | Self::BinanceUsdm => "binance",
+            Self::BybitSpot | Self::BybitUsdtPerps => "bybit",
+            Self::GateSpot | Self::GateUsdtPerps => "gate",
             Self::HyperliquidSpot | Self::HyperliquidPerps => "hyperliquid",
         }
     }
 
     pub const fn venue_name(self) -> &'static str {
         match self {
-            Self::BinanceSpot | Self::HyperliquidSpot => "spot",
+            Self::BinanceSpot | Self::BybitSpot | Self::GateSpot | Self::HyperliquidSpot => "spot",
             Self::BinanceUsdm => "usdm",
+            Self::BybitUsdtPerps | Self::GateUsdtPerps => "usdt_perps",
             Self::HyperliquidPerps => "perps",
         }
     }
@@ -368,6 +379,10 @@ impl SourceTemplate {
         match self {
             Self::BinanceSpot => "binance.spot",
             Self::BinanceUsdm => "binance.usdm",
+            Self::BybitSpot => "bybit.spot",
+            Self::BybitUsdtPerps => "bybit.usdt_perps",
+            Self::GateSpot => "gate.spot",
+            Self::GateUsdtPerps => "gate.usdt_perps",
             Self::HyperliquidSpot => "hyperliquid.spot",
             Self::HyperliquidPerps => "hyperliquid.perps",
         }
@@ -379,6 +394,46 @@ impl SourceTemplate {
                 let _ = interval;
                 true
             }
+            Self::BybitSpot | Self::BybitUsdtPerps => matches!(
+                interval,
+                Interval::Min1
+                    | Interval::Min3
+                    | Interval::Min5
+                    | Interval::Min15
+                    | Interval::Min30
+                    | Interval::Hour1
+                    | Interval::Hour2
+                    | Interval::Hour4
+                    | Interval::Hour6
+                    | Interval::Hour12
+                    | Interval::Day1
+                    | Interval::Week1
+                    | Interval::Month1
+            ),
+            Self::GateSpot => matches!(
+                interval,
+                Interval::Sec1
+                    | Interval::Min1
+                    | Interval::Min5
+                    | Interval::Min15
+                    | Interval::Min30
+                    | Interval::Hour1
+                    | Interval::Hour4
+                    | Interval::Hour8
+                    | Interval::Day1
+                    | Interval::Month1
+            ),
+            Self::GateUsdtPerps => matches!(
+                interval,
+                Interval::Min1
+                    | Interval::Min5
+                    | Interval::Min15
+                    | Interval::Min30
+                    | Interval::Hour1
+                    | Interval::Hour4
+                    | Interval::Hour8
+                    | Interval::Day1
+            ),
             Self::HyperliquidSpot | Self::HyperliquidPerps => {
                 !matches!(interval, Interval::Sec1 | Interval::Hour6)
             }
@@ -466,6 +521,22 @@ mod tests {
             Some(SourceTemplate::HyperliquidSpot)
         );
         assert_eq!(
+            SourceTemplate::parse("bybit", "spot"),
+            Some(SourceTemplate::BybitSpot)
+        );
+        assert_eq!(
+            SourceTemplate::parse("bybit", "usdt_perps"),
+            Some(SourceTemplate::BybitUsdtPerps)
+        );
+        assert_eq!(
+            SourceTemplate::parse("gate", "spot"),
+            Some(SourceTemplate::GateSpot)
+        );
+        assert_eq!(
+            SourceTemplate::parse("gate", "usdt_perps"),
+            Some(SourceTemplate::GateUsdtPerps)
+        );
+        assert_eq!(
             SourceTemplate::parse("hyperliquid", "perps"),
             Some(SourceTemplate::HyperliquidPerps)
         );
@@ -478,6 +549,26 @@ mod tests {
         assert!(!SourceTemplate::HyperliquidPerps.supports_interval(Interval::Hour6));
         assert!(SourceTemplate::HyperliquidSpot.supports_interval(Interval::Min1));
         assert!(SourceTemplate::HyperliquidPerps.supports_interval(Interval::Hour4));
+    }
+
+    #[test]
+    fn bybit_templates_only_accept_documented_intervals() {
+        assert!(!SourceTemplate::BybitSpot.supports_interval(Interval::Sec1));
+        assert!(!SourceTemplate::BybitUsdtPerps.supports_interval(Interval::Hour8));
+        assert!(!SourceTemplate::BybitUsdtPerps.supports_interval(Interval::Day3));
+        assert!(SourceTemplate::BybitSpot.supports_interval(Interval::Hour6));
+        assert!(SourceTemplate::BybitUsdtPerps.supports_interval(Interval::Month1));
+    }
+
+    #[test]
+    fn gate_templates_only_accept_supported_interval_subsets() {
+        assert!(SourceTemplate::GateSpot.supports_interval(Interval::Sec1));
+        assert!(SourceTemplate::GateSpot.supports_interval(Interval::Hour8));
+        assert!(!SourceTemplate::GateSpot.supports_interval(Interval::Week1));
+        assert!(!SourceTemplate::GateSpot.supports_interval(Interval::Hour2));
+        assert!(SourceTemplate::GateUsdtPerps.supports_interval(Interval::Day1));
+        assert!(!SourceTemplate::GateUsdtPerps.supports_interval(Interval::Sec1));
+        assert!(!SourceTemplate::GateUsdtPerps.supports_interval(Interval::Week1));
     }
 
     #[test]

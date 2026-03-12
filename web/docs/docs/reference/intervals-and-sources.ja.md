@@ -45,6 +45,10 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 
 - `binance.spot("<symbol>")`
 - `binance.usdm("<symbol>")`
+- `bybit.spot("<symbol>")`
+- `bybit.usdt_perps("<symbol>")`
+- `gate.spot("<symbol>")`
+- `gate.usdt_perps("<symbol>")`
 - `hyperliquid.spot("<symbol>")`
 - `hyperliquid.perps("<symbol>")`
 
@@ -52,14 +56,26 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 
 - `binance.spot` は PalmScript の全サポートインターバルを受け付ける
 - `binance.usdm` は PalmScript の全サポートインターバルを受け付ける
+- `bybit.spot` は `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w`, `1M` を受け付ける
+- `bybit.usdt_perps` は `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w`, `1M` を受け付ける
+- `gate.spot` は `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d`, `1M` を受け付ける
+- `gate.usdt_perps` は `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d` を受け付ける
 - `hyperliquid.spot` は `1s` と `6h` を拒否する
 - `hyperliquid.perps` は `1s` と `6h` を拒否する
 
 運用上の取得制約もテンプレートごとに異なります。
 
+- Bybit は `BTCUSDT` のような venue ネイティブシンボルを使う
+- Gate は `BTC_USDT` のような venue ネイティブシンボルを使う
+- Bybit REST の kline は降順で返るため、PalmScript はランタイム整列検証の前に並べ替える
+- Gate のローソク足 API は Unix 秒を使い、PalmScript はそれを UTC の Unix ミリ秒に正規化する
+- Gate spot / futures のページングは、公開 API が `limit` と `from` / `to` を同時に許可しないため時間窓単位で行う
 - Hyperliquid REST は各フィードの直近 `5000` 本のローソク足しか公開しない
 - market mode は、その保持ウィンドウを超える Hyperliquid フィード要求を拒否する
-- Binance フィードは内部でページ分割されるため、同じ全体ウィンドウ上限はない
+- Binance / Bybit / Gate フィードは内部でページ分割されるため、同じ全体ウィンドウ上限はない
+- ベース URL は `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
+  `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
+  `PALMSCRIPT_GATE_BASE_URL`, `PALMSCRIPT_HYPERLIQUID_INFO_URL` で上書きできる
 
 ## ソースフィールド集合
 

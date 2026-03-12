@@ -14,6 +14,21 @@ plot(bn.close)
 plot(hl.1h.close)
 ```
 
+PalmScript prend aussi en charge les templates de source Bybit et Gate :
+
+- `bybit.spot("BTCUSDT")`
+- `bybit.usdt_perps("BTCUSDT")`
+- `gate.spot("BTC_USDT")`
+- `gate.usdt_perps("BTC_USDT")`
+
+Exemples representatifs inclus dans le depot :
+
+- `crates/palmscript/examples/strategies/bybit_spot.ps`
+- `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`
+- `crates/palmscript/examples/strategies/gate_spot.ps`
+- `crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps`
+- `crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps`
+
 ## L'Essayer Dans L'IDE Navigateur
 
 Ouvrez [https://palmscript.dev/app/](https://palmscript.dev/app/), collez
@@ -27,6 +42,11 @@ disponible dans l'application.
 - `use hl 1h` est requis avant `hl.1h.close`
 - le script conserve un seul `interval` de base global
 - le runtime resout chaque flux `(source, interval)` requis avant l'execution
+- Bybit attend des symboles natifs de venue comme `BTCUSDT`
+- Gate attend des symboles natifs de venue comme `BTC_USDT`
+- `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`
+  et `run optimize` resolvent tous les memes declarations de source adossees a
+  un exchange
 
 Reference :
 

@@ -14,7 +14,11 @@
 
 ## ソーステンプレート
 
-`binance.spot` や `hyperliquid.perps` のような組み込みの取引所 / venue コンストラクタ。
+`binance.spot`, `bybit.usdt_perps`, `gate.spot`, `hyperliquid.perps` のような組み込みの取引所 / venue コンストラクタ。
+
+## Venue-Native Symbol
+
+`source` 宣言で使う取引所固有のシンボル文字列。たとえば Bybit の `BTCUSDT` や Gate の `BTC_USDT`。
 
 ## マーケットモード
 

@@ -1855,6 +1855,8 @@ fn accounting_mode(config: &BacktestConfig) -> AccountingMode {
 fn risk_tiers(snapshot: &VenueRiskSnapshot) -> &[crate::backtest::RiskTier] {
     match snapshot {
         VenueRiskSnapshot::BinanceUsdm(snapshot) => &snapshot.brackets,
+        VenueRiskSnapshot::BybitUsdtPerps(snapshot) => &snapshot.tiers,
+        VenueRiskSnapshot::GateUsdtPerps(snapshot) => &snapshot.tiers,
         VenueRiskSnapshot::HyperliquidPerps(snapshot) => &snapshot.tiers,
     }
 }

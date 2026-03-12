@@ -51,6 +51,8 @@ pub struct PerpBacktestConfig {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MarkPriceBasis {
     BinanceMarkPriceKlines,
+    BybitMarkPriceKlines,
+    GateMarkPriceCandlesticks,
     HyperliquidExecutionFallback,
 }
 
@@ -78,6 +80,33 @@ pub struct BinanceUsdmRiskSnapshot {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum BybitUsdtPerpsRiskSource {
+    PublicRiskLimit,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BybitUsdtPerpsRiskSnapshot {
+    pub symbol: String,
+    pub fetched_at_ms: i64,
+    pub source: BybitUsdtPerpsRiskSource,
+    pub tiers: Vec<RiskTier>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum GateUsdtPerpsRiskSource {
+    PublicRiskLimitTiers,
+    PublicContractApproximation,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GateUsdtPerpsRiskSnapshot {
+    pub contract: String,
+    pub fetched_at_ms: i64,
+    pub source: GateUsdtPerpsRiskSource,
+    pub tiers: Vec<RiskTier>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HyperliquidPerpsRiskSnapshot {
     pub coin: String,
     pub fetched_at_ms: i64,
@@ -89,6 +118,8 @@ pub struct HyperliquidPerpsRiskSnapshot {
 #[serde(tag = "venue_kind", rename_all = "snake_case")]
 pub enum VenueRiskSnapshot {
     BinanceUsdm(BinanceUsdmRiskSnapshot),
+    BybitUsdtPerps(BybitUsdtPerpsRiskSnapshot),
+    GateUsdtPerps(GateUsdtPerpsRiskSnapshot),
     HyperliquidPerps(HyperliquidPerpsRiskSnapshot),
 }
 
@@ -536,6 +567,8 @@ pub fn run_backtest_with_sources(
     let execution = bridge::resolve_execution_source(compiled, &config.execution_source_alias)?;
     match execution.template {
         crate::interval::SourceTemplate::BinanceSpot
+        | crate::interval::SourceTemplate::BybitSpot
+        | crate::interval::SourceTemplate::GateSpot
         | crate::interval::SourceTemplate::HyperliquidSpot => {
             if config.perp.is_some() || config.perp_context.is_some() {
                 return Err(BacktestError::SpotPerpConfigMismatch {
@@ -544,6 +577,8 @@ pub fn run_backtest_with_sources(
             }
         }
         crate::interval::SourceTemplate::BinanceUsdm
+        | crate::interval::SourceTemplate::BybitUsdtPerps
+        | crate::interval::SourceTemplate::GateUsdtPerps
         | crate::interval::SourceTemplate::HyperliquidPerps => {
             if config.perp.is_none() {
                 config.perp = Some(PerpBacktestConfig {

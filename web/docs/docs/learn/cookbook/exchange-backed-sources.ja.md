@@ -13,6 +13,21 @@ plot(bn.close)
 plot(hl.1h.close)
 ```
 
+PalmScript は Bybit と Gate のソーステンプレートもサポートします。
+
+- `bybit.spot("BTCUSDT")`
+- `bybit.usdt_perps("BTCUSDT")`
+- `gate.spot("BTC_USDT")`
+- `gate.usdt_perps("BTC_USDT")`
+
+リポジトリ内の代表的なサンプル:
+
+- `crates/palmscript/examples/strategies/bybit_spot.ps`
+- `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`
+- `crates/palmscript/examples/strategies/gate_spot.ps`
+- `crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps`
+- `crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps`
+
 ## ブラウザ IDE で試す
 
 [https://palmscript.dev/app/](https://palmscript.dev/app/) を開き、この例をエディタに貼り付け、アプリで利用可能な BTCUSDT 履歴に対して実行してください。
@@ -23,6 +38,10 @@ plot(hl.1h.close)
 - `hl.1h.close` を使う前に `use hl 1h` が必要
 - スクリプトには依然として一つのグローバルなベース `interval` がある
 - 実行前に、ランタイムは必要な各 `(source, interval)` フィードを解決する
+- Bybit は `BTCUSDT` のような venue ネイティブシンボルを期待する
+- Gate は `BTC_USDT` のような venue ネイティブシンボルを期待する
+- `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`,
+  `run optimize` は同じ exchange-backed source 宣言を解決する
 
 参照:
 

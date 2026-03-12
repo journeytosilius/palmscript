@@ -49,6 +49,10 @@ PalmScript soporta actualmente estos templates de primera clase:
 
 - `binance.spot("<symbol>")`
 - `binance.usdm("<symbol>")`
+- `bybit.spot("<symbol>")`
+- `bybit.usdt_perps("<symbol>")`
+- `gate.spot("<symbol>")`
+- `gate.usdt_perps("<symbol>")`
 - `hyperliquid.spot("<symbol>")`
 - `hyperliquid.perps("<symbol>")`
 
@@ -56,17 +60,30 @@ El soporte de intervalos depende del template:
 
 - `binance.spot` acepta todos los intervalos PalmScript soportados
 - `binance.usdm` acepta todos los intervalos PalmScript soportados
+- `bybit.spot` acepta `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w` y `1M`
+- `bybit.usdt_perps` acepta `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w` y `1M`
+- `gate.spot` acepta `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d` y `1M`
+- `gate.usdt_perps` acepta `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h` y `1d`
 - `hyperliquid.spot` rechaza `1s` y `6h`
 - `hyperliquid.perps` rechaza `1s` y `6h`
 
 Las restricciones operativas de carga tambien dependen del template:
 
+- Bybit usa simbolos nativos del venue como `BTCUSDT`
+- Gate usa simbolos nativos del venue como `BTC_USDT`
+- las klines REST de Bybit llegan en orden descendente y PalmScript las reordena antes de validar la alineacion
+- las APIs de velas de Gate usan Unix seconds y PalmScript las normaliza a Unix milliseconds UTC
+- la paginacion de Gate spot y futures se hace por ventanas de tiempo porque la API publica no permite `limit` junto con `from` / `to`
 - la API REST de Hyperliquid solo expone las `5000` velas mas recientes por
   feed
 - el modo mercado rechaza cualquier solicitud de feed de Hyperliquid que exceda
   esa ventana de retencion
-- los feeds de Binance se paginan internamente y no tienen el mismo limite de
-  retencion para toda la ventana
+- los feeds de Binance, Bybit y Gate se paginan internamente y no tienen el
+  mismo limite de retencion para toda la ventana
+- las URLs base se pueden sobreescribir con
+  `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
+  `PALMSCRIPT_BYBIT_BASE_URL`, `PALMSCRIPT_GATE_BASE_URL` y
+  `PALMSCRIPT_HYPERLIQUID_INFO_URL`
 
 ## Conjunto De Campos De Fuente
 

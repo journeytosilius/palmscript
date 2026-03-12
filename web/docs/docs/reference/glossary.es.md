@@ -16,7 +16,12 @@ Un script que declara al menos una `source`.
 ## Template De Fuente
 
 Un constructor builtin de exchange o venue, como `binance.spot` o
-`hyperliquid.perps`.
+`bybit.usdt_perps`, `gate.spot` o `hyperliquid.perps`.
+
+## Simbolo Nativo Del Venue
+
+La cadena de simbolo especifica del exchange usada en una declaracion `source`,
+como `BTCUSDT` en Bybit o `BTC_USDT` en Gate.
 
 ## Modo Mercado
 

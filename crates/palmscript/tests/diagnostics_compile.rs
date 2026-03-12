@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use palmscript::{compile_with_input_overrides, DiagnosticKind};
+use palmscript::{compile, compile_with_input_overrides, DiagnosticKind};
 
 #[path = "support/mod.rs"]
 mod support;
@@ -256,6 +256,20 @@ fn compile_with_input_overrides_rejects_unknown_inputs() {
     assert!(err.diagnostics[0]
         .message
         .contains("unknown input override `slow_len`"));
+}
+
+#[test]
+fn compile_accepts_new_exchange_backed_source_templates() {
+    let cases = [
+        "interval 1m\nsource a = bybit.spot(\"BTCUSDT\")\nplot(a.close)",
+        "interval 1m\nsource a = bybit.usdt_perps(\"BTCUSDT\")\nplot(a.close)",
+        "interval 1m\nsource a = gate.spot(\"BTC_USDT\")\nplot(a.close)",
+        "interval 1m\nsource a = gate.usdt_perps(\"BTC_USDT\")\nplot(a.close)",
+    ];
+
+    for source in cases {
+        compile(source).expect("new source template should compile");
+    }
 }
 
 #[test]

@@ -130,6 +130,8 @@ fn market_fetch_error_catalog_matches_contract() {
                 &ExchangeEndpoints {
                     binance_spot_base_url: server.url(),
                     binance_usdm_base_url: server.url(),
+                    bybit_base_url: server.url(),
+                    gate_base_url: server.url(),
                     hyperliquid_info_url: format!("{}/info", server.url()),
                 },
             )
@@ -144,6 +146,8 @@ fn market_fetch_error_catalog_matches_contract() {
                 &ExchangeEndpoints {
                     binance_spot_base_url: format!("{}/bad-open", server.url()),
                     binance_usdm_base_url: server.url(),
+                    bybit_base_url: server.url(),
+                    gate_base_url: server.url(),
                     hyperliquid_info_url: format!("{}/info", server.url()),
                 },
             )
@@ -158,6 +162,8 @@ fn market_fetch_error_catalog_matches_contract() {
                 &ExchangeEndpoints {
                     binance_spot_base_url: format!("{}/no-data", server.url()),
                     binance_usdm_base_url: server.url(),
+                    bybit_base_url: server.url(),
+                    gate_base_url: server.url(),
                     hyperliquid_info_url: format!("{}/info", server.url()),
                 },
             )
@@ -172,6 +178,8 @@ fn market_fetch_error_catalog_matches_contract() {
                 &ExchangeEndpoints {
                     binance_spot_base_url: server.url(),
                     binance_usdm_base_url: server.url(),
+                    bybit_base_url: server.url(),
+                    gate_base_url: server.url(),
                     hyperliquid_info_url: format!("{}/missing-spot/info", server.url()),
                 },
             )

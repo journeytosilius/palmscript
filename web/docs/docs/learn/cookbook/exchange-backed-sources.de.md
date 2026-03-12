@@ -14,6 +14,21 @@ plot(bn.close)
 plot(hl.1h.close)
 ```
 
+PalmScript unterstuetzt ausserdem Bybit- und Gate-Quell-Templates:
+
+- `bybit.spot("BTCUSDT")`
+- `bybit.usdt_perps("BTCUSDT")`
+- `gate.spot("BTC_USDT")`
+- `gate.usdt_perps("BTC_USDT")`
+
+Relevante mit eingecheckte Beispiele:
+
+- `crates/palmscript/examples/strategies/bybit_spot.ps`
+- `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`
+- `crates/palmscript/examples/strategies/gate_spot.ps`
+- `crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps`
+- `crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps`
+
 ## Probiere Es In Der Browser-IDE
 
 Oeffne [https://palmscript.dev/app/](https://palmscript.dev/app/), fuege das
@@ -27,6 +42,11 @@ in der App aus.
 - das Skript hat weiterhin genau ein globales Basis-`interval`
 - der Runtime loest jeden benoetigten `(source, interval)`-Feed vor der
   Ausfuehrung auf
+- Bybit erwartet venue-native Symbole wie `BTCUSDT`
+- Gate erwartet venue-native Symbole wie `BTC_USDT`
+- `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`
+  und `run optimize` loesen dieselben exchangegestuetzten Quell-Deklarationen
+  auf
 
 Referenz:
 

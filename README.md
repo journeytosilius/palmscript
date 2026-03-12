@@ -43,10 +43,22 @@ npm --prefix web/ide run build
 target/debug/palmscript check crates/palmscript/examples/strategies/sma_cross.ps
 target/debug/palmscript run market crates/palmscript/examples/strategies/sma_cross.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market crates/palmscript/examples/strategies/cross_source_spread.ps --from 1704067200000 --to 1704153600000
+target/debug/palmscript run market crates/palmscript/examples/strategies/bybit_spot.ps --from 1704067200000 --to 1704153600000
+target/debug/palmscript run market crates/palmscript/examples/strategies/gate_spot.ps --from 1704067200000 --to 1704153600000
+target/debug/palmscript run backtest crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
+target/debug/palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
 target/debug/palmscript dump-bytecode crates/palmscript/examples/strategies/sma_cross.ps
 mkdocs build --strict -f web/docs/mkdocs.yml
 sh infra/scripts/build_docs_site.sh
 ```
+
+Exchange-backed source endpoints can be overridden with environment variables for mock servers and venue-specific routing:
+
+- `PALMSCRIPT_BINANCE_SPOT_BASE_URL`
+- `PALMSCRIPT_BINANCE_USDM_BASE_URL`
+- `PALMSCRIPT_BYBIT_BASE_URL`
+- `PALMSCRIPT_GATE_BASE_URL`
+- `PALMSCRIPT_HYPERLIQUID_INFO_URL`
 
 ## Browser IDE Container
 

@@ -11,6 +11,10 @@ use crate::interval::SourceTemplate;
 pub(crate) enum VenueOrderProfile {
     BinanceSpot,
     BinanceUsdm,
+    BybitSpot,
+    BybitUsdtPerps,
+    GateSpot,
+    GateUsdtPerps,
     HyperliquidSpot,
     HyperliquidPerps,
 }
@@ -20,6 +24,10 @@ impl VenueOrderProfile {
         match template {
             SourceTemplate::BinanceSpot => Self::BinanceSpot,
             SourceTemplate::BinanceUsdm => Self::BinanceUsdm,
+            SourceTemplate::BybitSpot => Self::BybitSpot,
+            SourceTemplate::BybitUsdtPerps => Self::BybitUsdtPerps,
+            SourceTemplate::GateSpot => Self::GateSpot,
+            SourceTemplate::GateUsdtPerps => Self::GateUsdtPerps,
             SourceTemplate::HyperliquidSpot => Self::HyperliquidSpot,
             SourceTemplate::HyperliquidPerps => Self::HyperliquidPerps,
         }
@@ -29,6 +37,10 @@ impl VenueOrderProfile {
         match self {
             Self::BinanceSpot => "binance.spot",
             Self::BinanceUsdm => "binance.usdm",
+            Self::BybitSpot => "bybit.spot",
+            Self::BybitUsdtPerps => "bybit.usdt_perps",
+            Self::GateSpot => "gate.spot",
+            Self::GateUsdtPerps => "gate.usdt_perps",
             Self::HyperliquidSpot => "hyperliquid.spot",
             Self::HyperliquidPerps => "hyperliquid.perps",
         }
@@ -43,6 +55,10 @@ pub(crate) fn validate_order_for_template(
     let result = match profile {
         VenueOrderProfile::BinanceSpot => binance_spot::validate(order),
         VenueOrderProfile::BinanceUsdm => binance_usdm::validate(order),
+        VenueOrderProfile::BybitSpot => binance_spot::validate(order),
+        VenueOrderProfile::BybitUsdtPerps => binance_usdm::validate(order),
+        VenueOrderProfile::GateSpot => binance_spot::validate(order),
+        VenueOrderProfile::GateUsdtPerps => binance_usdm::validate(order),
         VenueOrderProfile::HyperliquidSpot => hyperliquid_spot::validate(order),
         VenueOrderProfile::HyperliquidPerps => hyperliquid_perps::validate(order),
     };
