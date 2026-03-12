@@ -114,10 +114,12 @@ V1 optimizer notes:
 
 - optimizer tuning is restricted to declared numeric `input`s
 - walk-forward is the default runner; `--runner backtest` is optional
+- by default, walk-forward optimize reserves a final untouched holdout window equal to `test-bars`; use `--holdout-bars <N>` to change it or `--no-holdout` to disable it explicitly
 - the search is seeded and deterministic for the same script, seed, and search space
 - `--workers` only controls bounded parallel evaluation
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
+- the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
 
 Run the same optimize job through the durable local run registry:
 
@@ -146,6 +148,18 @@ Durable optimize notes:
 - every completed candidate batch is persisted into local SQLite state plus run artifacts
 - `runs serve` owns execution and can resume interrupted queued or running jobs
 - `runs best` can export the best known preset from the persisted run state without rerunning the search
+- the persisted result and manifest include the final holdout evaluation when holdout protection is enabled
+
+## Default Safety Profile
+
+PalmScript cannot mathematically prevent overfitting, but the CLI now applies a safer default optimize workflow:
+
+- `run optimize` defaults to walk-forward evaluation
+- walk-forward optimize now reserves a final untouched holdout window by default
+- only the pre-holdout history participates in candidate ranking
+- after ranking, the best candidate is rerun with full pre-holdout context and scored separately on the untouched tail
+
+This does not replace paper trading or live forward validation, but it does make the default tuning workflow less likely to confuse in-sample fitting with genuinely unseen performance.
 
 ## Rust API
 

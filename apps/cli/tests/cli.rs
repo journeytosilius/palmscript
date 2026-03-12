@@ -1504,6 +1504,69 @@ fn run_optimize_emits_ranked_json() {
 }
 
 #[test]
+fn run_optimize_walk_forward_defaults_to_final_holdout() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(dir.path(), "optimize.ps", optimize_script());
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--train-bars",
+            "2",
+            "--test-bars",
+            "2",
+            "--step-bars",
+            "2",
+            "--param",
+            "choice:threshold=0,100",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+        ])
+        .output()
+        .expect("optimize command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["config"]["holdout"]["bars"], Value::from(2));
+    assert_eq!(json["holdout"]["bars"], Value::from(2));
+    assert!(json["holdout"]["summary"]["trade_count"].is_number());
+}
+
+#[test]
 fn run_optimize_supports_text_output_and_presets() {
     let mut server = Server::new();
     mock_binance_interval(
@@ -1569,6 +1632,7 @@ fn run_optimize_supports_text_output_and_presets() {
         .stdout(predicate::str::contains("Optimization Summary"))
         .stdout(predicate::str::contains("Best Candidate"))
         .stdout(predicate::str::contains("Top Candidates"))
+        .stdout(predicate::str::contains("Holdout").not())
         .stdout(predicate::str::contains("preset_out="));
 
     let preset_json: Value =

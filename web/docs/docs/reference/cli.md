@@ -57,6 +57,56 @@ Requirements:
 - the script must declare at least one `source`
 - `--from` must be strictly less than `--to`
 
+## `palmscript run optimize`
+
+```bash
+palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
+  [--runner walk-forward|backtest] \
+  [--train-bars <N>] \
+  [--test-bars <N>] \
+  [--step-bars <N>] \
+  [--holdout-bars <N>] \
+  [--no-holdout] \
+  [--param int:name=low:high] \
+  [--param float:name=low:high] \
+  [--param choice:name=v1,v2,v3] \
+  [--objective robust-return|total-return|ending-equity|return-over-drawdown] \
+  [--trials <N>] \
+  [--startup-trials <N>] \
+  [--seed <N>] \
+  [--workers <N>] \
+  [--top <N>] \
+  [--preset-out <path>] \
+  [--format json|text]
+```
+
+Arguments and flags:
+
+- `<script.ps>`: path to the PalmScript source file
+- `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
+- `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--runner`: optimize evaluation mode; defaults to `walk-forward`
+- `--train-bars <N>`: in-sample bars per walk-forward segment
+- `--test-bars <N>`: out-of-sample bars per walk-forward segment
+- `--step-bars <N>`: segment advance size; defaults to `test-bars`
+- `--holdout-bars <N>`: reserve the final `N` execution bars as a final untouched holdout
+- `--no-holdout`: explicitly disable the default untouched holdout reservation
+- `--param ...`: search-space declaration; repeat for multiple tuned inputs
+- `--objective ...`: ranking objective; defaults to `robust-return`
+- `--trials <N>`: total bounded trial budget
+- `--startup-trials <N>`: initial random trial count before the TPE search phase
+- `--seed <N>`: deterministic optimizer seed
+- `--workers <N>`: bounded parallel worker count
+- `--top <N>`: number of top candidates to retain
+- `--preset-out <path>`: write the best preset and top candidates to disk
+- `--format json|text`: output rendering format; default `json`
+
+Default safety behavior:
+
+- `walk-forward` is the default optimizer runner
+- when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
+- the default holdout size matches `test-bars`
+
 ## `palmscript runs serve`
 
 ```bash
@@ -86,6 +136,13 @@ Output:
 - `run_id=<id>`
 - `status=queued`
 - `artifact_dir=<path>`
+
+Default safety behavior:
+
+- when the optimizer runs in the default walk-forward mode, the CLI reserves a final untouched holdout window automatically
+- the default holdout size is `test-bars`
+- use `--holdout-bars <N>` to reserve a different final holdout size
+- use `--no-holdout` only when you intentionally want to disable that protection
 
 ## `palmscript runs status`
 

@@ -7,9 +7,10 @@ use palmscript::{
     fetch_source_runtime_config, run_backtest_with_sources, run_optimize_with_source,
     run_walk_forward_sweep_with_source, run_walk_forward_with_sources, run_with_sources,
     BacktestConfig, CompiledProgram, ExchangeEndpoints, InputSweepDefinition, OptimizeConfig,
-    OptimizeError, OptimizeObjective, OptimizeParamSpace, OptimizePreset, OptimizeResult,
-    OptimizeRunner, PerpBacktestConfig, PerpMarginMode, RuntimeError, SourceTemplate, VmLimits,
-    WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    OptimizeError, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
+    OptimizeResult, OptimizeRunner, PerpBacktestConfig, PerpMarginMode, RuntimeError,
+    SourceTemplate, VmLimits, WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepError,
+    WalkForwardSweepObjective,
 };
 use sha2::{Digest, Sha256};
 
@@ -293,6 +294,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             runner: map_optimize_runner(args.runner),
             backtest: backtest.clone(),
             walk_forward: walk_forward.clone(),
+            holdout: resolve_optimize_holdout(&args, preset.as_ref())?,
             params: params.clone(),
             objective: map_optimize_objective(args.objective),
             trials,
@@ -576,6 +578,37 @@ pub(crate) fn resolve_optimize_params(
         })
 }
 
+pub(crate) fn resolve_optimize_holdout(
+    args: &OptimizeRunArgs,
+    preset: Option<&OptimizePreset>,
+) -> Result<Option<OptimizeHoldoutConfig>, String> {
+    if args.no_holdout {
+        return Ok(None);
+    }
+    if let Some(bars) = args.holdout_bars {
+        return Ok(Some(OptimizeHoldoutConfig { bars }));
+    }
+    if let Some(holdout) = preset.and_then(|preset| preset.holdout.clone()) {
+        return Ok(Some(holdout));
+    }
+    if matches!(
+        map_optimize_runner(args.runner),
+        OptimizeRunner::WalkForward
+    ) {
+        let inferred_test_bars = args
+            .test_bars
+            .or_else(|| preset.and_then(|value| value.walk_forward.as_ref().map(|wf| wf.test_bars)))
+            .ok_or_else(|| {
+                "optimize walk-forward runner requires --test-bars so the default holdout can be reserved"
+                    .to_string()
+            })?;
+        return Ok(Some(OptimizeHoldoutConfig {
+            bars: inferred_test_bars,
+        }));
+    }
+    Ok(None)
+}
+
 pub(crate) fn parse_optimize_param_space(raw: &str) -> Result<OptimizeParamSpace, String> {
     let (kind, rest) = raw
         .split_once(':')
@@ -713,6 +746,7 @@ pub(crate) fn write_optimize_preset(
         objective: result.config.objective,
         backtest: result.config.backtest.clone(),
         walk_forward: result.config.walk_forward.clone(),
+        holdout: result.config.holdout.clone(),
         parameter_space: result.config.params.clone(),
         best_input_overrides: result.best_candidate.input_overrides.clone(),
         top_candidates: result.top_candidates.clone(),

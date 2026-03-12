@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::backtest::{
-    run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
+    bridge, run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
     BacktestConfig, BacktestError, BacktestSummary, WalkForwardConfig, WalkForwardResult,
-    WalkForwardStitchedSummary,
+    WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
-use crate::runtime::{SourceRuntimeConfig, VmLimits};
+use crate::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
 
 const MAX_OPTIMIZE_TRIALS: usize = 1_000;
 const TPE_UPDATE_BATCH_SIZE: usize = 4;
@@ -97,6 +97,8 @@ pub struct OptimizeConfig {
     pub runner: OptimizeRunner,
     pub backtest: BacktestConfig,
     pub walk_forward: Option<WalkForwardConfig>,
+    #[serde(default)]
+    pub holdout: Option<OptimizeHoldoutConfig>,
     pub params: Vec<OptimizeParamSpace>,
     pub objective: OptimizeObjective,
     pub trials: usize,
@@ -105,6 +107,20 @@ pub struct OptimizeConfig {
     pub workers: usize,
     pub top_n: usize,
     pub base_input_overrides: BTreeMap<String, f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeHoldoutConfig {
+    pub bars: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeHoldoutResult {
+    pub bars: usize,
+    pub from: i64,
+    pub to: i64,
+    pub summary: WalkForwardWindowSummary,
+    pub diagnostics: WalkForwardSegmentDiagnostics,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -192,6 +208,8 @@ pub struct OptimizePreset {
     pub objective: OptimizeObjective,
     pub backtest: BacktestConfig,
     pub walk_forward: Option<WalkForwardConfig>,
+    #[serde(default)]
+    pub holdout: Option<OptimizeHoldoutConfig>,
     pub parameter_space: Vec<OptimizeParamSpace>,
     pub best_input_overrides: BTreeMap<String, f64>,
     pub top_candidates: Vec<OptimizeCandidateSummary>,
@@ -204,6 +222,8 @@ pub struct OptimizeResult {
     pub completed_trials: usize,
     pub best_candidate: OptimizeCandidateSummary,
     pub top_candidates: Vec<OptimizeCandidateSummary>,
+    #[serde(default)]
+    pub holdout: Option<OptimizeHoldoutResult>,
 }
 
 #[derive(Debug, Error)]
@@ -222,8 +242,14 @@ pub enum OptimizeError {
     InvalidWorkers { value: usize },
     #[error("optimize `top_n` must be > 0, found {value}")]
     InvalidTopN { value: usize },
+    #[error("optimize holdout `bars` must be > 0, found {value}")]
+    InvalidHoldoutBars { value: usize },
     #[error("optimize trial count {count} exceeds max supported {limit}")]
     TooManyTrials { count: usize, limit: usize },
+    #[error("optimize holdout requires fewer reserved bars than the available execution bars; requested {requested}, available {available}")]
+    InvalidHoldoutWindow { requested: usize, available: usize },
+    #[error("optimize holdout would leave only {available} execution bars for tuning but {required} are required")]
+    HoldoutLeavesTooFewBars { available: usize, required: usize },
     #[error("optimize parameter `{name}` is defined more than once")]
     DuplicateParam { name: String },
     #[error("optimize integer parameter `{name}` must use low <= high")]
@@ -267,6 +293,11 @@ pub fn run_optimize_with_source_resume(
     mut listener: Option<&mut dyn OptimizeProgressListener>,
 ) -> Result<OptimizeResult, OptimizeError> {
     validate_optimize_config(&config)?;
+    let holdout_plan = prepare_holdout_plan(source, &runtime, &config)?;
+    let optimize_runtime = holdout_plan
+        .as_ref()
+        .map(|plan| plan.optimize_runtime.clone())
+        .unwrap_or_else(|| runtime.clone());
     let mut all_candidates = sorted_candidates(resume.completed_candidates);
     validate_resume_state(&config, &all_candidates, resume.pending_batch.as_ref())?;
     let mut top_candidates = build_top_candidates(&all_candidates, config.top_n);
@@ -296,7 +327,7 @@ pub fn run_optimize_with_source_resume(
             .collect::<BTreeSet<_>>();
         evaluate_scheduled_batch(
             source,
-            &runtime,
+            &optimize_runtime,
             vm_limits,
             &config,
             &batch,
@@ -358,7 +389,7 @@ pub fn run_optimize_with_source_resume(
             .collect::<BTreeSet<_>>();
         evaluate_scheduled_batch(
             source,
-            &runtime,
+            &optimize_runtime,
             vm_limits,
             &config,
             &batch,
@@ -388,13 +419,34 @@ pub fn run_optimize_with_source_resume(
         .first()
         .cloned()
         .expect("validated optimize config always yields at least one trial");
+    let holdout = match holdout_plan {
+        Some(plan) => Some(evaluate_holdout(
+            source,
+            &runtime,
+            vm_limits,
+            &config,
+            &plan,
+            &best_candidate.input_overrides,
+        )?),
+        None => None,
+    };
     Ok(OptimizeResult {
         candidate_count: config.trials,
         completed_trials: all_candidates.len(),
         config,
         best_candidate,
         top_candidates,
+        holdout,
     })
+}
+
+struct HoldoutPlan {
+    optimize_runtime: SourceRuntimeConfig,
+    execution_bars: Vec<crate::runtime::Bar>,
+    split_index: usize,
+    from: i64,
+    to: i64,
+    bars: usize,
 }
 
 struct ReplayGenerationState {
@@ -715,6 +767,13 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
             value: config.top_n,
         });
     }
+    if let Some(holdout) = &config.holdout {
+        if holdout.bars == 0 {
+            return Err(OptimizeError::InvalidHoldoutBars {
+                value: holdout.bars,
+            });
+        }
+    }
     if matches!(config.runner, OptimizeRunner::WalkForward) && config.walk_forward.is_none() {
         return Err(OptimizeError::MissingParams);
     }
@@ -746,6 +805,115 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
     }
 
     Ok(())
+}
+
+fn prepare_holdout_plan(
+    source: &str,
+    runtime: &SourceRuntimeConfig,
+    config: &OptimizeConfig,
+) -> Result<Option<HoldoutPlan>, OptimizeError> {
+    let Some(holdout) = &config.holdout else {
+        return Ok(None);
+    };
+    let compiled = compile_with_input_overrides(source, &config.base_input_overrides)?;
+    let execution =
+        bridge::resolve_execution_source(&compiled, &config.backtest.execution_source_alias)?;
+    let execution_bars = super::execution_bars(
+        runtime,
+        execution.source_id,
+        &config.backtest.execution_source_alias,
+    )?;
+    if holdout.bars >= execution_bars.len() {
+        return Err(OptimizeError::InvalidHoldoutWindow {
+            requested: holdout.bars,
+            available: execution_bars.len(),
+        });
+    }
+    let split_index = execution_bars.len() - holdout.bars;
+    let available = split_index;
+    let required = match config.runner {
+        OptimizeRunner::WalkForward => {
+            let walk_forward = config
+                .walk_forward
+                .as_ref()
+                .expect("validated walk-forward config");
+            walk_forward.train_bars + walk_forward.test_bars
+        }
+        OptimizeRunner::Backtest => 1,
+    };
+    if available < required {
+        return Err(OptimizeError::HoldoutLeavesTooFewBars {
+            available,
+            required,
+        });
+    }
+    let from = execution_bars[split_index].time as i64;
+    let to = execution_bars
+        .last()
+        .map(|bar| bar.time as i64 + 1)
+        .unwrap_or(from);
+    Ok(Some(HoldoutPlan {
+        optimize_runtime: slice_runtime_window(runtime, i64::MIN, from),
+        execution_bars,
+        split_index,
+        from,
+        to,
+        bars: holdout.bars,
+    }))
+}
+
+fn evaluate_holdout(
+    source: &str,
+    runtime: &SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &OptimizeConfig,
+    plan: &HoldoutPlan,
+    overrides: &BTreeMap<String, f64>,
+) -> Result<OptimizeHoldoutResult, OptimizeError> {
+    let compiled = compile_with_input_overrides(source, overrides)?;
+    let prepared = bridge::prepare_backtest(
+        &compiled,
+        &config.backtest.execution_source_alias,
+        bridge::resolve_execution_source(&compiled, &config.backtest.execution_source_alias)?
+            .template,
+    )?;
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime.clone(),
+        vm_limits,
+        config.backtest.clone(),
+    )?;
+    let starting_equity = if plan.split_index == 0 {
+        config.backtest.initial_capital
+    } else {
+        result
+            .equity_curve
+            .get(plan.split_index - 1)
+            .map(|point| point.equity)
+            .unwrap_or(config.backtest.initial_capital)
+    };
+    let summary = super::walk_forward::summarize_window(
+        &result.equity_curve,
+        &result.trades,
+        plan.split_index,
+        result.equity_curve.len(),
+        starting_equity,
+    );
+    let diagnostics = super::walk_forward::summarize_segment_diagnostics(
+        &prepared.exports,
+        &result,
+        &plan.execution_bars[plan.split_index..],
+        plan.split_index,
+        result.equity_curve.len(),
+        summary.total_return,
+    );
+    Ok(OptimizeHoldoutResult {
+        bars: plan.bars,
+        from: plan.from,
+        to: plan.to,
+        summary,
+        diagnostics,
+    })
 }
 
 fn evaluate_scheduled_batch<F>(

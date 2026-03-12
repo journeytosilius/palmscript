@@ -9,10 +9,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use palmscript::{
     compile_with_input_overrides, fetch_source_runtime_config, run_optimize_with_source_resume,
     BacktestConfig, CompiledProgram, ExchangeEndpoints, OptimizeCandidateSummary, OptimizeConfig,
-    OptimizeEvaluationSummary, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
-    OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState, OptimizeResult,
-    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, PerpBacktestConfig,
-    PerpBacktestContext, PerpMarginMode, VmLimits, WalkForwardConfig,
+    OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeHoldoutResult, OptimizeObjective,
+    OptimizeParamSpace, OptimizePreset, OptimizeProgressEvent, OptimizeProgressListener,
+    OptimizeProgressState, OptimizeResult, OptimizeResumeState, OptimizeRunner,
+    OptimizeScheduledBatch, PerpBacktestConfig, PerpBacktestContext, PerpMarginMode, VmLimits,
+    WalkForwardConfig,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,8 @@ use crate::args::{
 use crate::commands::{
     default_parallel_workers, default_startup_trials, hash_source, load_preset, load_source,
     map_optimize_objective, map_optimize_runner, resolve_execution_source_alias,
-    resolve_optimize_params, resolve_perp_context, write_optimize_preset, PerpCliOptions,
+    resolve_optimize_holdout, resolve_optimize_params, resolve_perp_context, write_optimize_preset,
+    PerpCliOptions,
 };
 use crate::diagnostics::format_compile_error;
 use crate::format::render_optimize_text;
@@ -53,6 +55,8 @@ struct OptimizeJobSpec {
     train_bars: Option<usize>,
     test_bars: Option<usize>,
     step_bars: Option<usize>,
+    #[serde(default)]
+    holdout: Option<OptimizeHoldoutConfig>,
     params: Vec<OptimizeParamSpace>,
     runner: OptimizeRunner,
     objective: OptimizeObjective,
@@ -86,6 +90,8 @@ struct RunManifest {
     completed_trials: usize,
     best_candidate: Option<OptimizeCandidateSummary>,
     top_candidates: Vec<OptimizeCandidateSummary>,
+    #[serde(default)]
+    holdout_result: Option<OptimizeHoldoutResult>,
     pending_batch: Option<OptimizeScheduledBatch>,
     job: OptimizeJobSpec,
 }
@@ -292,6 +298,7 @@ fn submit_optimize(args: OptimizeRunArgs) -> Result<(), String> {
         train_bars: args.train_bars,
         test_bars: args.test_bars,
         step_bars: args.step_bars,
+        holdout: resolve_optimize_holdout(&args, preset.as_ref())?,
         params,
         runner: map_optimize_runner(args.runner),
         objective: map_optimize_objective(args.objective),
@@ -360,6 +367,7 @@ fn submit_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             completed_trials: 0,
             best_candidate: None,
             top_candidates: Vec::new(),
+            holdout_result: None,
             pending_batch: None,
             job: spec.clone(),
         },
@@ -475,6 +483,7 @@ fn execute_optimize_run(state_root: &Path, run: RunRecord) -> Result<(), String>
         runner: job.runner,
         backtest: backtest.clone(),
         walk_forward,
+        holdout: job.holdout.clone(),
         params: job.params.clone(),
         objective: job.objective,
         trials: job.trials,
@@ -778,6 +787,7 @@ impl RunProgressWriter {
             objective: self.config.objective,
             backtest: self.config.backtest.clone(),
             walk_forward: self.config.walk_forward.clone(),
+            holdout: self.config.holdout.clone(),
             parameter_space: self.config.params.clone(),
             best_input_overrides: best_candidate.input_overrides.clone(),
             top_candidates: top_candidates.to_vec(),
@@ -811,6 +821,7 @@ impl RunProgressWriter {
             completed_trials: state.completed_trials,
             best_candidate: state.best_candidate.clone(),
             top_candidates: state.top_candidates.clone(),
+            holdout_result: None,
             pending_batch: state.pending_batch.clone(),
             job: self.job.clone(),
         };
@@ -1076,6 +1087,7 @@ fn finalize_completed_run(
             completed_trials: result.completed_trials,
             best_candidate: Some(result.best_candidate.clone()),
             top_candidates: result.top_candidates.clone(),
+            holdout_result: result.holdout.clone(),
             pending_batch: None,
             job: job.clone(),
         },
@@ -1203,6 +1215,7 @@ fn build_config_from_job(job: &OptimizeJobSpec) -> Result<OptimizeConfig, String
             }),
             OptimizeRunner::Backtest => None,
         },
+        holdout: job.holdout.clone(),
         params: job.params.clone(),
         objective: job.objective,
         trials: job.trials,
@@ -1281,6 +1294,7 @@ fn write_best_preset_from_manifest(
         objective: manifest.job.objective,
         backtest: config.backtest.clone(),
         walk_forward: config.walk_forward.clone(),
+        holdout: config.holdout.clone(),
         parameter_space: manifest.job.params.clone(),
         best_input_overrides: best_candidate.input_overrides,
         top_candidates: manifest.top_candidates.clone(),
@@ -1417,6 +1431,19 @@ fn print_manifest(manifest: &RunManifest) {
             "best_overrides={}",
             serde_json::to_string(&best.input_overrides).unwrap_or_else(|_| "{}".to_string())
         );
+    }
+    if let Some(holdout) = &manifest.job.holdout {
+        println!("holdout_bars={}", holdout.bars);
+    }
+    if let Some(holdout) = &manifest.holdout_result {
+        println!("holdout_from={}", holdout.from);
+        println!("holdout_to={}", holdout.to);
+        println!("holdout_trade_count={}", holdout.summary.trade_count);
+        println!(
+            "holdout_total_return_pct={:.2}",
+            holdout.summary.total_return * 100.0
+        );
+        println!("holdout_max_drawdown={:.2}", holdout.summary.max_drawdown);
     }
     if let Some(error) = &manifest.error_message {
         println!("error={error}");

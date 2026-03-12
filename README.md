@@ -56,6 +56,8 @@ mkdocs build --strict -f web/docs/mkdocs.yml
 sh infra/scripts/build_docs_site.sh
 ```
 
+`run optimize` and `runs submit optimize` now default to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`.
+
 Exchange-backed source endpoints can be overridden with environment variables for mock servers and venue-specific routing:
 
 - `PALMSCRIPT_BINANCE_SPOT_BASE_URL`

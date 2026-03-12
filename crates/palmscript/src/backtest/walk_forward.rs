@@ -251,7 +251,7 @@ fn exclusive_end_time(execution_bars: &[crate::runtime::Bar], end_index: usize) 
         })
 }
 
-fn summarize_window(
+pub(crate) fn summarize_window(
     equity_curve: &[crate::backtest::EquityPoint],
     trades: &[crate::backtest::Trade],
     start_index: usize,
@@ -410,7 +410,7 @@ fn summarize_stitched_curve(
     }
 }
 
-fn summarize_segment_diagnostics(
+pub(crate) fn summarize_segment_diagnostics(
     exports: &[PreparedExport],
     result: &crate::backtest::BacktestResult,
     execution_bars: &[crate::runtime::Bar],

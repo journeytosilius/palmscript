@@ -234,6 +234,10 @@ pub struct OptimizeRunArgs {
     pub test_bars: Option<usize>,
     #[arg(long)]
     pub step_bars: Option<usize>,
+    #[arg(long)]
+    pub holdout_bars: Option<usize>,
+    #[arg(long, default_value_t = false, conflicts_with = "holdout_bars")]
+    pub no_holdout: bool,
     #[arg(long = "param")]
     pub params: Vec<String>,
     #[arg(long, value_enum, default_value_t = OptimizeRunnerArg::WalkForward)]

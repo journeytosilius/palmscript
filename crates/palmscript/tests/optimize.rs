@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 use palmscript::{
     compile_with_input_overrides, run_optimize_with_source, run_optimize_with_source_resume,
     BacktestConfig, Interval, OptimizeCandidateSummary, OptimizeConfig, OptimizeError,
-    OptimizeObjective, OptimizeParamSpace, OptimizeProgressEvent, OptimizeProgressListener,
-    OptimizeProgressState, OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, VmLimits,
-    WalkForwardConfig,
+    OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace,
+    OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState, OptimizeResumeState,
+    OptimizeRunner, OptimizeScheduledBatch, VmLimits, WalkForwardConfig,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
@@ -50,6 +50,7 @@ fn backtest_optimize_config() -> OptimizeConfig {
         runner: OptimizeRunner::Backtest,
         backtest: optimize_backtest_config(),
         walk_forward: None,
+        holdout: None,
         params: vec![OptimizeParamSpace::Choice {
             name: "threshold".to_string(),
             values: vec![0.0, 100.0],
@@ -129,6 +130,7 @@ fn optimize_walk_forward_ranks_candidates() {
                 test_bars: 2,
                 step_bars: 2,
             }),
+            holdout: None,
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
                 values: vec![0.0, 100.0],
@@ -164,6 +166,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
             test_bars: 2,
             step_bars: 2,
         }),
+        holdout: None,
         params: vec![
             OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
@@ -236,6 +239,7 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
             runner: OptimizeRunner::Backtest,
             backtest: optimize_backtest_config(),
             walk_forward: None,
+            holdout: None,
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
                 values: vec![0.0, 100.0],
@@ -267,6 +271,7 @@ fn optimize_rejects_missing_walk_forward_config() {
             runner: OptimizeRunner::WalkForward,
             backtest: optimize_backtest_config(),
             walk_forward: None,
+            holdout: None,
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
                 values: vec![0.0, 100.0],
@@ -282,6 +287,54 @@ fn optimize_rejects_missing_walk_forward_config() {
     )
     .expect_err("missing walk-forward config should fail");
     assert!(matches!(err, OptimizeError::MissingParams));
+}
+
+#[test]
+fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
+    let result = run_optimize_with_source(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            runner: OptimizeRunner::WalkForward,
+            backtest: optimize_backtest_config(),
+            walk_forward: Some(WalkForwardConfig {
+                backtest: optimize_backtest_config(),
+                train_bars: 2,
+                test_bars: 2,
+                step_bars: 2,
+            }),
+            holdout: Some(OptimizeHoldoutConfig { bars: 2 }),
+            params: vec![OptimizeParamSpace::Choice {
+                name: "threshold".to_string(),
+                values: vec![0.0, 100.0],
+            }],
+            objective: OptimizeObjective::TotalReturn,
+            trials: 8,
+            startup_trials: 8,
+            seed: 7,
+            workers: 2,
+            top_n: 3,
+            base_input_overrides: BTreeMap::new(),
+        },
+    )
+    .expect("optimize with holdout should succeed");
+
+    let holdout = result.holdout.expect("holdout result should be present");
+    assert_eq!(holdout.bars, 2);
+    assert_eq!(holdout.from, JAN_1_2024_UTC_MS + 6 * MINUTE_MS);
+    assert!(holdout.to > holdout.from);
+    let OptimizeEvaluationSummary::WalkForward {
+        stitched_summary, ..
+    } = &result.best_candidate.summary
+    else {
+        panic!("expected walk-forward summary for best candidate");
+    };
+    assert_eq!(
+        holdout.summary.starting_equity,
+        stitched_summary.ending_equity
+    );
+    assert!(holdout.from < holdout.to);
 }
 
 #[test]

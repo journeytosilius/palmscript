@@ -592,6 +592,42 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
         }
     }
 
+    if let Some(holdout) = &result.holdout {
+        out.push_str("Holdout\n");
+        let _ = writeln!(out, "bars={}", holdout.bars);
+        let _ = writeln!(out, "from={}", holdout.from);
+        let _ = writeln!(out, "to={}", holdout.to);
+        let _ = writeln!(out, "trade_count={}", holdout.summary.trade_count);
+        let _ = writeln!(
+            out,
+            "winning_trade_count={}",
+            holdout.summary.winning_trade_count
+        );
+        let _ = writeln!(
+            out,
+            "losing_trade_count={}",
+            holdout.summary.losing_trade_count
+        );
+        let _ = writeln!(out, "win_rate_pct={:.2}", holdout.summary.win_rate * 100.0);
+        let _ = writeln!(out, "ending_equity={:.2}", holdout.summary.ending_equity);
+        let _ = writeln!(
+            out,
+            "total_return_pct={:.2}",
+            holdout.summary.total_return * 100.0
+        );
+        let _ = writeln!(out, "max_drawdown={:.2}", holdout.summary.max_drawdown);
+        let _ = writeln!(
+            out,
+            "execution_asset_return_pct={:.2}",
+            holdout.summary.execution_asset_return * 100.0
+        );
+        let _ = writeln!(
+            out,
+            "opportunity_cost_return_pct={:.2}",
+            holdout.diagnostics.capture_summary.opportunity_cost_return * 100.0
+        );
+    }
+
     out
 }
 

@@ -87,6 +87,8 @@ palmscript runs best <run-id> --preset-out best.json
 
 These commands keep local durable state under the platform state directory, persist artifacts for each run, and let you resume interrupted optimize work without changing strategy syntax.
 
+Walk-forward optimize now reserves a final untouched holdout window by default. If you pass `--test-bars 63`, PalmScript also reserves the last `63` execution bars as an unseen holdout unless you override that with `--holdout-bars <N>` or disable it with `--no-holdout`.
+
 ## Output Formats
 
 Market mode supports:
