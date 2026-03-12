@@ -24,7 +24,7 @@ Die aktuelle PalmScript-Oberflache umfasst:
 
 - genau eine Top-Level-Basisdirektive `interval <...>` pro Skript
 - eine oder mehrere benannte `source`-Aliase pro ausfuhrbarem Skript
-- quellqualifizierte Serien wie `spot.close` oder `hl.1h.close`
+- quellqualifizierte Serien wie `spot.close` oder `bb.1h.close`
 - zusatzliche Intervalle uber `use <alias> <interval>`
 - Top-Level-`fn`-Deklarationen mit Ausdruckskorper
 - `let`, `const`, `input`, Tupel-Destrukturierung, `export`, `trigger`, erstklassige `entry` / `exit` und `order`

@@ -18,26 +18,30 @@ Rules:
 
 - `binance.spot("<symbol>")`
 - `binance.usdm("<symbol>")`
-- `hyperliquid.spot("<symbol>")`
-- `hyperliquid.perps("<symbol>")`
+- `bybit.spot("<symbol>")`
+- `bybit.usdt_perps("<symbol>")`
+- `gate.spot("<symbol>")`
+- `gate.usdt_perps("<symbol>")`
 
 Template-specific interval support:
 
 - `binance.spot`: all supported PalmScript intervals
 - `binance.usdm`: all supported PalmScript intervals
-- `hyperliquid.spot`: all supported PalmScript intervals except `1s` and `6h`
-- `hyperliquid.perps`: all supported PalmScript intervals except `1s` and `6h`
+- `bybit.spot`: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w`, `1M`
+- `bybit.usdt_perps`: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w`, `1M`
+- `gate.spot`: `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d`, `1M`
+- `gate.usdt_perps`: `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d`
 
 Example:
 
 ```palmscript
 interval 1m
 source bn = binance.spot("BTCUSDT")
-source hl = hyperliquid.perps("BTC")
-use hl 1h
+source bb = bybit.usdt_perps("BTCUSDT")
+use bb 1h
 
-plot(bn.close - hl.close)
-plot(hl.1h.close)
+plot(bn.close - bb.close)
+plot(bb.1h.close)
 ```
 
 ## Fetch Model
@@ -56,9 +60,9 @@ Market mode validates venue-specific constraints before execution.
 
 Current guardrails:
 
-- Hyperliquid `candleSnapshot` feeds are limited to the most recent `5000` candles per `(source, interval)` feed, so PalmScript rejects requests that exceed that retention window
-- Hyperliquid source templates reject unsupported intervals such as `1s` and `6h`
-- Binance spot and USD-M feeds use segment-specific REST page sizes internally during pagination
+- Bybit source templates reject unsupported intervals such as `1s`, `8h`, and `3d`
+- Gate spot and USDT perp templates only accept the interval subsets exposed by their respective candlestick APIs
+- Binance spot, Binance USD-M, Bybit, and Gate feeds use venue-specific page sizes internally during pagination
 
 PalmScript fails closed for these constraints. It must not run a strategy on silently truncated exchange history.
 
@@ -83,6 +87,4 @@ Market mode fails deterministically for:
 - request failures
 - malformed venue responses
 - unsupported source-template intervals
-- venue retention-limit violations
-- unresolved Hyperliquid spot symbols
 - empty historical windows for a required feed

@@ -691,34 +691,6 @@ fn run_market_reports_fetch_failures_with_cli_prefix() {
 }
 
 #[test]
-fn run_market_rejects_hyperliquid_windows_beyond_rest_history_limit() {
-    let dir = tempdir().expect("tempdir");
-    let script = write_file(
-        dir.path(),
-        "market.ps",
-        "interval 1m\nsource hl = hyperliquid.perps(\"BTC\")\nplot(hl.close)",
-    );
-
-    let mut cmd = palmscript_cmd();
-    cmd.args([
-        "run",
-        "market",
-        script.to_str().unwrap(),
-        "--from",
-        "1704067200000",
-        "--to",
-        "1704367260000",
-    ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("market mode error:"))
-        .stderr(predicate::str::contains(
-            "requires 5001 candle(s) for the requested window",
-        ))
-        .stderr(predicate::str::contains("most recent 5000 candle(s)"));
-}
-
-#[test]
 fn run_backtest_executes_single_source_script_with_default_execution_source() {
     let mut server = Server::new();
     mock_binance_interval(

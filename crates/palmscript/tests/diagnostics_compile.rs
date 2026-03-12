@@ -149,7 +149,8 @@ fn compile_diagnostic_catalog_matches_contract() {
         ),
         (
             "type_missing_source_interval_use",
-            "interval 1m\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.1h.close)".to_string(),
+            "interval 1m\nsource a = bybit.usdt_perps(\"BTCUSDT\")\nplot(a.1h.close)"
+                .to_string(),
             vec![expected(
                 DiagnosticKind::Type,
                 "source interval `1h` for `a` must be declared with `use a 1h`",

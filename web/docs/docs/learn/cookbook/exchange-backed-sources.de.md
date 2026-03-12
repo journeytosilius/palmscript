@@ -7,11 +7,11 @@ unterstuetzten Exchanges laden soll.
 interval 1m
 
 source bn = binance.spot("BTCUSDT")
-source hl = hyperliquid.perps("BTC")
-use hl 1h
+source bb = bybit.usdt_perps("BTCUSDT")
+use bb 1h
 
 plot(bn.close)
-plot(hl.1h.close)
+plot(bb.1h.close)
 ```
 
 PalmScript unterstuetzt ausserdem Bybit- und Gate-Quell-Templates:
@@ -38,7 +38,7 @@ in der App aus.
 ## Worauf Du Achten Solltest
 
 - quellenbewusste Skripte muessen quellqualifizierte Marktserien verwenden
-- `use hl 1h` ist erforderlich, bevor `hl.1h.close` gueltig ist
+- `use bb 1h` ist erforderlich, bevor `bb.1h.close` gueltig ist
 - das Skript hat weiterhin genau ein globales Basis-`interval`
 - der Runtime loest jeden benoetigten `(source, interval)`-Feed vor der
   Ausfuehrung auf

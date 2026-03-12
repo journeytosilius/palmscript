@@ -445,7 +445,7 @@ Legacy compatibility bridge:
 
 The backtester stays intentionally simple and deterministic:
 
-- the execution venue profile is inferred from the execution `source` template, for example `binance.spot`, `binance.usdm`, `hyperliquid.spot`, or `hyperliquid.perps`
+- the execution venue profile is inferred from the execution `source` template, for example `binance.spot`, `binance.usdm`, `bybit.spot`, `bybit.usdt_perps`, `gate.spot`, or `gate.usdt_perps`
 - signals produced on bar `t` become active starting on the first execution-source base bar with `bar.time > signal_time`
 - only one net position is supported: `flat`, `long`, or `short`
 - the portfolio model remains net-position based with no explicit quantity expressions
@@ -476,7 +476,8 @@ The backtester stays intentionally simple and deterministic:
 - liquidation checks run after fills and before the strategy step on each execution bar
 - v1 does not liquidate a position from the full mark-price range of its entry bar; liquidation checks begin on the first later execution bar after the fill
 - Binance USD-M uses mark-price kline bars as the liquidation mark basis
-- Hyperliquid perps currently use execution-price candles as the liquidation mark fallback because the public REST API does not expose historical mark candles directly
+- Bybit USDT perps use mark-price kline bars as the liquidation mark basis
+- Gate USDT perps use mark-price candlesticks as the liquidation mark basis
 - open positions are not force-closed at the end of the run unless liquidation was triggered earlier
 
 Supported order constructors:
@@ -507,7 +508,6 @@ Venue profile notes:
 
 - Binance Spot supports the order constructors above, but only `trigger_ref.last` on trigger orders and no `tif.gtd`
 - Binance USD-M supports `trigger_ref.last` and `trigger_ref.mark`
-- Hyperliquid Spot and Hyperliquid Perps currently support `tif.gtc` and `tif.ioc`, and trigger orders use `trigger_ref.mark`
 - venue-incompatible orders are rejected before simulation starts
 
 Perp startup requirements:
@@ -530,4 +530,3 @@ Not included in V1:
 - funding payments
 - borrow fees
 - venue liquidation penalty fees
-- dedicated historical mark-price candles for Hyperliquid perps

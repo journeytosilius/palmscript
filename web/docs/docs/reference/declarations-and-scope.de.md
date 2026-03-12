@@ -38,7 +38,7 @@ Basis-`interval` ab.
 Eine Quell-Deklaration hat diese Form:
 
 ```palmscript
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 ```
 
 Regeln:
@@ -54,7 +54,7 @@ Regeln:
 Zusatzintervalle werden pro Quelle deklariert:
 
 ```palmscript
-use hl 1h
+use bb 1h
 ```
 
 Regeln:

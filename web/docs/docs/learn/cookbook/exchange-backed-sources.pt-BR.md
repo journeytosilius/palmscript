@@ -7,11 +7,11 @@ diretamente de exchanges suportadas.
 interval 1m
 
 source bn = binance.spot("BTCUSDT")
-source hl = hyperliquid.perps("BTC")
-use hl 1h
+source bb = bybit.usdt_perps("BTCUSDT")
+use bb 1h
 
 plot(bn.close)
-plot(hl.1h.close)
+plot(bb.1h.close)
 ```
 
 PalmScript tambem suporta templates de source para Bybit e Gate:
@@ -37,7 +37,7 @@ no editor e execute-o sobre o historico BTCUSDT disponivel na app.
 ## O Que Observar
 
 - scripts source-aware precisam usar series de mercado qualificadas por fonte
-- `use hl 1h` e obrigatorio antes de `hl.1h.close`
+- `use bb 1h` e obrigatorio antes de `bb.1h.close`
 - o script ainda tem um unico `interval` base global
 - o runtime resolve cada feed `(source, interval)` necessario antes da
   execucao

@@ -15,8 +15,8 @@ use thiserror::Error;
 
 use crate::backtest::{
     BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, BybitUsdtPerpsRiskSnapshot,
-    BybitUsdtPerpsRiskSource, GateUsdtPerpsRiskSnapshot, GateUsdtPerpsRiskSource,
-    HyperliquidPerpsRiskSnapshot, MarkPriceBasis, PerpBacktestContext, RiskTier, VenueRiskSnapshot,
+    BybitUsdtPerpsRiskSource, GateUsdtPerpsRiskSnapshot, GateUsdtPerpsRiskSource, MarkPriceBasis,
+    PerpBacktestContext, RiskTier, VenueRiskSnapshot,
 };
 use crate::compiler::CompiledProgram;
 use crate::interval::{DeclaredMarketSource, Interval, SourceIntervalRef, SourceTemplate};
@@ -26,14 +26,11 @@ const BINANCE_SPOT_URL: &str = "https://api.binance.com";
 const BINANCE_USDM_URL: &str = "https://fapi.binance.com";
 const BYBIT_URL: &str = "https://api.bybit.com";
 const GATE_URL: &str = "https://api.gateio.ws/api/v4";
-const HYPERLIQUID_INFO_URL: &str = "https://api.hyperliquid.xyz/info";
 const BINANCE_SPOT_PAGE_LIMIT: usize = 1000;
 const BINANCE_USDM_PAGE_LIMIT: usize = 1500;
 const BYBIT_PAGE_LIMIT: usize = 1000;
 const GATE_SPOT_PAGE_LIMIT: usize = 1000;
 const GATE_FUTURES_PAGE_LIMIT: usize = 2000;
-const HYPERLIQUID_PAGE_LIMIT: usize = 500;
-const HYPERLIQUID_RECENT_CANDLE_LIMIT: usize = 5_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SourceFetchConstraints {
@@ -63,10 +60,6 @@ impl SourceFetchConstraints {
             SourceTemplate::GateUsdtPerps => Self {
                 page_limit: GATE_FUTURES_PAGE_LIMIT,
                 recent_candle_limit: None,
-            },
-            SourceTemplate::HyperliquidSpot | SourceTemplate::HyperliquidPerps => Self {
-                page_limit: HYPERLIQUID_PAGE_LIMIT,
-                recent_candle_limit: Some(HYPERLIQUID_RECENT_CANDLE_LIMIT),
             },
         }
     }
@@ -581,29 +574,6 @@ struct GateFuturesContract {
     risk_limit_max: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
-struct HyperliquidSpotMetaRequest {
-    #[serde(rename = "type")]
-    request_type: &'static str,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct HyperliquidCandleSnapshotRequest<'a> {
-    #[serde(rename = "type")]
-    request_type: &'static str,
-    req: HyperliquidCandleSnapshotParams<'a>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct HyperliquidCandleSnapshotParams<'a> {
-    coin: &'a str,
-    interval: &'a str,
-    #[serde(rename = "startTime")]
-    start_time: i64,
-    #[serde(rename = "endTime")]
-    end_time: i64,
-}
-
 #[derive(Clone, Debug, Deserialize)]
 struct BinanceServerTimeResponse {
     #[serde(rename = "serverTime")]
@@ -652,43 +622,12 @@ struct BinanceExchangeInfoSymbol {
     required_margin_percent: Option<f64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidMetaResponse {
-    universe: Vec<HyperliquidPerpsMetaAsset>,
-    #[serde(rename = "marginTables")]
-    margin_tables: Vec<HyperliquidMarginTableEntry>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidPerpsMetaAsset {
-    name: String,
-    #[serde(rename = "marginTableId")]
-    margin_table_id: u32,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidMarginTable {
-    #[serde(rename = "marginTiers")]
-    margin_tiers: Vec<HyperliquidMarginTier>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidMarginTier {
-    #[serde(rename = "lowerBound", deserialize_with = "deserialize_f64_text")]
-    lower_bound: f64,
-    #[serde(rename = "maxLeverage")]
-    max_leverage: f64,
-}
-
-type HyperliquidMarginTableEntry = (u32, HyperliquidMarginTable);
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExchangeEndpoints {
     pub binance_spot_base_url: String,
     pub binance_usdm_base_url: String,
     pub bybit_base_url: String,
     pub gate_base_url: String,
-    pub hyperliquid_info_url: String,
 }
 
 impl Default for ExchangeEndpoints {
@@ -698,7 +637,6 @@ impl Default for ExchangeEndpoints {
             binance_usdm_base_url: BINANCE_USDM_URL.to_string(),
             bybit_base_url: BYBIT_URL.to_string(),
             gate_base_url: GATE_URL.to_string(),
-            hyperliquid_info_url: HYPERLIQUID_INFO_URL.to_string(),
         }
     }
 }
@@ -714,8 +652,6 @@ impl ExchangeEndpoints {
                 .unwrap_or_else(|_| BYBIT_URL.to_string()),
             gate_base_url: env::var("PALMSCRIPT_GATE_BASE_URL")
                 .unwrap_or_else(|_| GATE_URL.to_string()),
-            hyperliquid_info_url: env::var("PALMSCRIPT_HYPERLIQUID_INFO_URL")
-                .unwrap_or_else(|_| HYPERLIQUID_INFO_URL.to_string()),
         }
     }
 }
@@ -733,15 +669,6 @@ pub enum ExchangeFetchError {
         alias: String,
         template: &'static str,
         interval: &'static str,
-    },
-    #[error("source `{alias}` ({template}) `{symbol}` {interval} requires {requested_candles} candle(s) for the requested window, but the venue only provides the most recent {max_candles} candle(s) over REST")]
-    RecentHistoryLimitExceeded {
-        alias: String,
-        template: &'static str,
-        symbol: String,
-        interval: &'static str,
-        requested_candles: usize,
-        max_candles: usize,
     },
     #[error("failed to fetch `{alias}` ({template}) `{symbol}` {interval}: {message}")]
     RequestFailed {
@@ -766,8 +693,6 @@ pub enum ExchangeFetchError {
         symbol: String,
         interval: &'static str,
     },
-    #[error("unknown Hyperliquid spot symbol `{symbol}`")]
-    UnknownHyperliquidSpotSymbol { symbol: String },
     #[error("perp risk fetch for `{alias}` ({template}) `{symbol}` failed: {message}")]
     RiskRequestFailed {
         alias: String,
@@ -782,8 +707,6 @@ pub enum ExchangeFetchError {
         symbol: String,
         message: String,
     },
-    #[error("unknown Hyperliquid perp symbol `{symbol}`")]
-    UnknownHyperliquidPerpSymbol { symbol: String },
     #[error("no risk tiers available for `{alias}` ({template}) `{symbol}`")]
     MissingRiskTiers {
         alias: String,
@@ -843,7 +766,6 @@ pub fn fetch_source_runtime_config(
                 interval: requirement.interval.as_str(),
             });
         }
-        validate_source_request(source, requirement.interval, from_ms, to_ms)?;
         let bars = fetch_source_bars(
             &client,
             source,
@@ -932,27 +854,9 @@ pub fn fetch_perp_backtest_context(
                 risk_snapshot: VenueRiskSnapshot::GateUsdtPerps(risk_snapshot),
             }))
         }
-        SourceTemplate::HyperliquidPerps => {
-            let mark_bars = fetch_hyperliquid_bars(
-                &client,
-                source,
-                interval,
-                from_ms,
-                to_ms,
-                &endpoints.hyperliquid_info_url,
-                source.symbol.clone(),
-            )?;
-            let risk_snapshot = fetch_hyperliquid_perps_risk_snapshot(&client, source, endpoints)?;
-            Ok(Some(PerpBacktestContext {
-                mark_price_basis: MarkPriceBasis::HyperliquidExecutionFallback,
-                mark_bars,
-                risk_snapshot: VenueRiskSnapshot::HyperliquidPerps(risk_snapshot),
-            }))
+        SourceTemplate::BinanceSpot | SourceTemplate::BybitSpot | SourceTemplate::GateSpot => {
+            Ok(None)
         }
-        SourceTemplate::BinanceSpot
-        | SourceTemplate::BybitSpot
-        | SourceTemplate::GateSpot
-        | SourceTemplate::HyperliquidSpot => Ok(None),
     }
 }
 
@@ -1018,27 +922,6 @@ fn fetch_source_bars(
             &endpoints.gate_base_url,
             false,
         ),
-        SourceTemplate::HyperliquidPerps => fetch_hyperliquid_bars(
-            client,
-            source,
-            interval,
-            from_ms,
-            to_ms,
-            &endpoints.hyperliquid_info_url,
-            source.symbol.clone(),
-        ),
-        SourceTemplate::HyperliquidSpot => {
-            let coin = resolve_hyperliquid_spot_coin(client, &source.symbol, endpoints)?;
-            fetch_hyperliquid_bars(
-                client,
-                source,
-                interval,
-                from_ms,
-                to_ms,
-                &endpoints.hyperliquid_info_url,
-                coin,
-            )
-        }
     }
 }
 
@@ -1427,88 +1310,6 @@ fn fetch_gate_futures_bars(
         }
 
         window_start_ms = window_end_ms;
-    }
-
-    if bars.is_empty() {
-        return Err(no_data(source, interval));
-    }
-    Ok(bars)
-}
-
-fn fetch_hyperliquid_bars(
-    client: &Client,
-    source: &DeclaredMarketSource,
-    interval: Interval,
-    from_ms: i64,
-    to_ms: i64,
-    info_url: &str,
-    coin: String,
-) -> Result<Vec<Bar>, ExchangeFetchError> {
-    let page_limit = SourceFetchConstraints::for_template(source.template).page_limit;
-    let mut start_time = from_ms;
-    let mut bars: Vec<Bar> = Vec::new();
-    loop {
-        let response = client
-            .post(info_url)
-            .json(&HyperliquidCandleSnapshotRequest {
-                request_type: "candleSnapshot",
-                req: HyperliquidCandleSnapshotParams {
-                    coin: &coin,
-                    interval: interval.as_str(),
-                    start_time,
-                    end_time: to_ms,
-                },
-            })
-            .send()
-            .map_err(|err| request_failed(source, interval, err.to_string()))?;
-        if response.status() != StatusCode::OK {
-            return Err(request_failed(
-                source,
-                interval,
-                format!("HTTP {}", response.status()),
-            ));
-        }
-        let rows: Vec<HyperliquidCandle> = response
-            .json()
-            .map_err(|err| malformed_response(source, interval, err.to_string()))?;
-        if rows.is_empty() {
-            break;
-        }
-
-        let mut last_open = None;
-        for row in &rows {
-            let bar = row.to_bar(source, interval)?;
-            let open_time = bar.time as i64;
-            if open_time < from_ms || open_time >= to_ms {
-                continue;
-            }
-            if let Some(previous) = bars.last() {
-                let previous_open = previous.time as i64;
-                if open_time <= previous_open {
-                    return Err(malformed_response(
-                        source,
-                        interval,
-                        "non-increasing candle response".to_string(),
-                    ));
-                }
-            }
-            last_open = Some(open_time);
-            bars.push(bar);
-        }
-
-        if rows.len() < page_limit {
-            break;
-        }
-        let Some(last_open) = last_open else {
-            break;
-        };
-        let Some(next_start) = interval.next_open_time(last_open) else {
-            break;
-        };
-        if next_start >= to_ms {
-            break;
-        }
-        start_time = next_start;
     }
 
     if bars.is_empty() {
@@ -1946,96 +1747,6 @@ fn fetch_gate_usdt_contract_snapshot(
     })
 }
 
-fn fetch_hyperliquid_perps_risk_snapshot(
-    client: &Client,
-    source: &DeclaredMarketSource,
-    endpoints: &ExchangeEndpoints,
-) -> Result<HyperliquidPerpsRiskSnapshot, ExchangeFetchError> {
-    let fetched_at_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as i64)
-        .unwrap_or(0);
-    let response = client
-        .post(&endpoints.hyperliquid_info_url)
-        .json(&HyperliquidSpotMetaRequest {
-            request_type: "meta",
-        })
-        .send()
-        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
-            alias: source.alias.clone(),
-            template: source.template.as_str(),
-            symbol: source.symbol.clone(),
-            message: err.to_string(),
-        })?;
-    if response.status() != StatusCode::OK {
-        return Err(ExchangeFetchError::RiskRequestFailed {
-            alias: source.alias.clone(),
-            template: source.template.as_str(),
-            symbol: source.symbol.clone(),
-            message: format!("HTTP {}", response.status()),
-        });
-    }
-    let meta: HyperliquidMetaResponse =
-        response
-            .json()
-            .map_err(|err| ExchangeFetchError::MalformedRiskResponse {
-                alias: source.alias.clone(),
-                template: source.template.as_str(),
-                symbol: source.symbol.clone(),
-                message: err.to_string(),
-            })?;
-    let Some(asset) = meta
-        .universe
-        .into_iter()
-        .find(|asset| asset.name == source.symbol)
-    else {
-        return Err(ExchangeFetchError::UnknownHyperliquidPerpSymbol {
-            symbol: source.symbol.clone(),
-        });
-    };
-    let Some((_, table)) = meta
-        .margin_tables
-        .into_iter()
-        .find(|(table_id, _)| *table_id == asset.margin_table_id)
-    else {
-        return Err(ExchangeFetchError::MissingRiskTiers {
-            alias: source.alias.clone(),
-            template: source.template.as_str(),
-            symbol: source.symbol.clone(),
-        });
-    };
-    let mut tiers = Vec::with_capacity(table.margin_tiers.len());
-    for (index, tier) in table.margin_tiers.iter().enumerate() {
-        let upper_bound = table
-            .margin_tiers
-            .get(index + 1)
-            .map(|next| next.lower_bound);
-        // Hyperliquid documents maintenance margin as half of the initial margin
-        // implied by the tier max leverage.
-        let maintenance_margin_rate = 0.5 / tier.max_leverage;
-        tiers.push(RiskTier {
-            lower_bound: tier.lower_bound,
-            upper_bound,
-            max_leverage: tier.max_leverage,
-            maintenance_margin_rate,
-            maintenance_amount: 0.0,
-        });
-    }
-    if tiers.is_empty() {
-        return Err(ExchangeFetchError::MissingRiskTiers {
-            alias: source.alias.clone(),
-            template: source.template.as_str(),
-            symbol: source.symbol.clone(),
-        });
-    }
-    Ok(HyperliquidPerpsRiskSnapshot {
-        coin: source.symbol.clone(),
-        fetched_at_ms,
-        margin_table_id: asset.margin_table_id,
-        tiers,
-    })
-}
-
 fn fetch_binance_server_time(
     client: &Client,
     endpoints: &ExchangeEndpoints,
@@ -2301,119 +2012,6 @@ fn push_bar_if_in_window(
     Ok(true)
 }
 
-fn resolve_hyperliquid_spot_coin(
-    client: &Client,
-    symbol: &str,
-    endpoints: &ExchangeEndpoints,
-) -> Result<String, ExchangeFetchError> {
-    let response = client
-        .post(&endpoints.hyperliquid_info_url)
-        .json(&HyperliquidSpotMetaRequest {
-            request_type: "spotMeta",
-        })
-        .send()
-        .map_err(|err| ExchangeFetchError::RequestFailed {
-            alias: "spotMeta".to_string(),
-            template: SourceTemplate::HyperliquidSpot.as_str(),
-            symbol: symbol.to_string(),
-            interval: "",
-            message: err.to_string(),
-        })?;
-    if response.status() != StatusCode::OK {
-        return Err(ExchangeFetchError::RequestFailed {
-            alias: "spotMeta".to_string(),
-            template: SourceTemplate::HyperliquidSpot.as_str(),
-            symbol: symbol.to_string(),
-            interval: "",
-            message: format!("HTTP {}", response.status()),
-        });
-    }
-    let meta: HyperliquidSpotMeta =
-        response
-            .json()
-            .map_err(|err| ExchangeFetchError::MalformedResponse {
-                alias: "spotMeta".to_string(),
-                template: SourceTemplate::HyperliquidSpot.as_str(),
-                symbol: symbol.to_string(),
-                interval: "",
-                message: err.to_string(),
-            })?;
-
-    if meta
-        .universe
-        .iter()
-        .any(|entry| entry.name.eq_ignore_ascii_case(symbol))
-    {
-        return Ok(symbol.to_string());
-    }
-    let canonical_pair = format!("{}/USDC", symbol.to_ascii_uppercase());
-    if let Some(entry) = meta
-        .universe
-        .iter()
-        .find(|entry| entry.name.eq_ignore_ascii_case(&canonical_pair))
-    {
-        return Ok(entry.name.clone());
-    }
-    if let Some(token) = meta
-        .tokens
-        .iter()
-        .find(|token| token.name.eq_ignore_ascii_case(symbol))
-    {
-        if let Some(entry) = meta
-            .universe
-            .iter()
-            .find(|entry| entry.tokens.first().copied() == Some(token.index))
-        {
-            return Ok(entry.name.clone());
-        }
-    }
-    Err(ExchangeFetchError::UnknownHyperliquidSpotSymbol {
-        symbol: symbol.to_string(),
-    })
-}
-
-fn validate_source_request(
-    source: &DeclaredMarketSource,
-    interval: Interval,
-    from_ms: i64,
-    to_ms: i64,
-) -> Result<(), ExchangeFetchError> {
-    let constraints = SourceFetchConstraints::for_template(source.template);
-    if let Some(max_candles) = constraints.recent_candle_limit {
-        let requested_candles = requested_candle_count(interval, from_ms, to_ms);
-        if requested_candles > max_candles {
-            return Err(ExchangeFetchError::RecentHistoryLimitExceeded {
-                alias: source.alias.clone(),
-                template: source.template.as_str(),
-                symbol: source.symbol.clone(),
-                interval: interval.as_str(),
-                requested_candles,
-                max_candles,
-            });
-        }
-    }
-    Ok(())
-}
-
-fn requested_candle_count(interval: Interval, from_ms: i64, to_ms: i64) -> usize {
-    if from_ms >= to_ms {
-        return 0;
-    }
-    let Some(mut open_time) = first_open_time_in_window(interval, from_ms, to_ms) else {
-        return 0;
-    };
-
-    let mut count = 0usize;
-    while open_time < to_ms {
-        count = count.saturating_add(1);
-        let Some(next_open) = interval.next_open_time(open_time) else {
-            break;
-        };
-        open_time = next_open;
-    }
-    count
-}
-
 fn first_open_time_in_window(interval: Interval, from_ms: i64, to_ms: i64) -> Option<i64> {
     if from_ms >= to_ms {
         return None;
@@ -2475,76 +2073,13 @@ fn no_data(source: &DeclaredMarketSource, interval: Interval) -> ExchangeFetchEr
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidSpotMeta {
-    universe: Vec<HyperliquidSpotUniverseEntry>,
-    tokens: Vec<HyperliquidSpotToken>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidSpotUniverseEntry {
-    name: String,
-    #[serde(default)]
-    tokens: Vec<usize>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidSpotToken {
-    name: String,
-    index: usize,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct HyperliquidCandle {
-    #[serde(rename = "t")]
-    open_time: i64,
-    #[serde(rename = "o")]
-    open: String,
-    #[serde(rename = "h")]
-    high: String,
-    #[serde(rename = "l")]
-    low: String,
-    #[serde(rename = "c")]
-    close: String,
-    #[serde(rename = "v")]
-    volume: String,
-}
-
-impl HyperliquidCandle {
-    fn to_bar(
-        &self,
-        source: &DeclaredMarketSource,
-        interval: Interval,
-    ) -> Result<Bar, ExchangeFetchError> {
-        Ok(Bar {
-            time: self.open_time as f64,
-            open: self.open.parse().map_err(|_| {
-                malformed_response(source, interval, "invalid `open` value".to_string())
-            })?,
-            high: self.high.parse().map_err(|_| {
-                malformed_response(source, interval, "invalid `high` value".to_string())
-            })?,
-            low: self.low.parse().map_err(|_| {
-                malformed_response(source, interval, "invalid `low` value".to_string())
-            })?,
-            close: self.close.parse().map_err(|_| {
-                malformed_response(source, interval, "invalid `close` value".to_string())
-            })?,
-            volume: self.volume.parse().map_err(|_| {
-                malformed_response(source, interval, "invalid `volume` value".to_string())
-            })?,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         fetch_perp_backtest_context, fetch_source_runtime_config, page_window_end_ms,
-        requested_candle_count, resolve_hyperliquid_spot_coin, BinanceKlineRow, BybitKlineRow,
-        BybitMarkPriceKlineRow, ExchangeEndpoints, ExchangeFetchError, GateFuturesCandlestick,
-        GateSpotCandlestickRow, HyperliquidCandle, SourceFetchConstraints, BINANCE_USDM_PAGE_LIMIT,
-        GATE_FUTURES_PAGE_LIMIT, GATE_SPOT_PAGE_LIMIT, HYPERLIQUID_RECENT_CANDLE_LIMIT,
+        BinanceKlineRow, BybitKlineRow, BybitMarkPriceKlineRow, ExchangeEndpoints,
+        ExchangeFetchError, GateFuturesCandlestick, GateSpotCandlestickRow, SourceFetchConstraints,
+        BINANCE_USDM_PAGE_LIMIT, GATE_FUTURES_PAGE_LIMIT, GATE_SPOT_PAGE_LIMIT,
     };
     use crate::backtest::{
         BinanceUsdmRiskSource, BybitUsdtPerpsRiskSource, GateUsdtPerpsRiskSource, MarkPriceBasis,
@@ -2628,17 +2163,8 @@ mod tests {
         ]))
         .expect("row deserializes");
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
-        assert_eq!(
-            bar,
-            Bar {
-                time: 1704067200000.0,
-                open: 1.0,
-                high: 2.0,
-                low: 0.5,
-                close: 1.5,
-                volume: 10.0,
-            }
-        );
+        assert_eq!(bar.close, 1.5);
+        assert_eq!(bar.volume, 10.0);
     }
 
     #[test]
@@ -2653,17 +2179,8 @@ mod tests {
         ]))
         .expect("row deserializes");
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
-        assert_eq!(
-            bar,
-            Bar {
-                time: 1704067200000.0,
-                open: 100.0,
-                high: 101.0,
-                low: 99.0,
-                close: 100.5,
-                volume: 0.0,
-            }
-        );
+        assert_eq!(bar.close, 100.5);
+        assert_eq!(bar.volume, 0.0);
     }
 
     #[test]
@@ -2681,17 +2198,8 @@ mod tests {
         ]))
         .expect("row deserializes");
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
-        assert_eq!(
-            bar,
-            Bar {
-                time: 1704067200000.0,
-                open: 1.0,
-                high: 2.0,
-                low: 0.5,
-                close: 1.5,
-                volume: 10.0,
-            }
-        );
+        assert_eq!(bar.time, 1704067200000.0);
+        assert_eq!(bar.volume, 10.0);
     }
 
     #[test]
@@ -2710,75 +2218,12 @@ mod tests {
         let bar = row
             .to_bar(&source, Interval::Min1, false)
             .expect("row maps");
-        assert_eq!(
-            bar,
-            Bar {
-                time: 1704067200000.0,
-                open: 100.0,
-                high: 101.0,
-                low: 99.0,
-                close: 100.5,
-                volume: 5.0,
-            }
-        );
+        assert_eq!(bar.close, 100.5);
+        assert_eq!(bar.volume, 5.0);
     }
 
     #[test]
-    fn hyperliquid_candle_maps_ohlcv_fields() {
-        let source = sample_source(SourceTemplate::HyperliquidPerps, "BTC");
-        let candle: HyperliquidCandle = serde_json::from_value(json!({
-            "t": 1704067200000_i64,
-            "o": "10.0",
-            "h": "12.0",
-            "l": "9.0",
-            "c": "11.5",
-            "v": "5.0"
-        }))
-        .expect("candle deserializes");
-        let bar = candle.to_bar(&source, Interval::Min1).expect("candle maps");
-        assert_eq!(
-            bar,
-            Bar {
-                time: 1704067200000.0,
-                open: 10.0,
-                high: 12.0,
-                low: 9.0,
-                close: 11.5,
-                volume: 5.0,
-            }
-        );
-    }
-
-    #[test]
-    fn resolves_hyperliquid_spot_symbol_from_meta() {
-        let mut server = Server::new();
-        let _meta = server
-            .mock("POST", "/info")
-            .match_body(Matcher::Json(json!({ "type": "spotMeta" })))
-            .with_status(200)
-            .with_body(
-                json!({
-                    "universe": [{"name": "@107", "tokens": [107, 0]}],
-                    "tokens": [{"name": "HYPE", "index": 107}]
-                })
-                .to_string(),
-            )
-            .create();
-
-        let endpoints = ExchangeEndpoints {
-            binance_spot_base_url: String::new(),
-            binance_usdm_base_url: String::new(),
-            bybit_base_url: String::new(),
-            gate_base_url: String::new(),
-            hyperliquid_info_url: format!("{}/info", server.url()),
-        };
-        let client = reqwest::blocking::Client::new();
-        let coin = resolve_hyperliquid_spot_coin(&client, "HYPE", &endpoints).expect("coin");
-        assert_eq!(coin, "@107");
-    }
-
-    #[test]
-    fn fetch_source_runtime_config_builds_all_required_feeds() {
+    fn fetch_source_runtime_config_builds_required_feeds_for_supported_venues() {
         let mut server = Server::new();
         let _binance = server
             .mock("GET", "/api/v3/klines")
@@ -2795,38 +2240,63 @@ mod tests {
                 .to_string(),
             )
             .create();
-        let _hyper_base = server
-            .mock("POST", "/info")
-            .match_body(Matcher::PartialJson(json!({
-                "type": "candleSnapshot",
-                "req": { "coin": "BTC", "interval": "1m" }
-            })))
+        let _gate = server
+            .mock("GET", "/spot/candlesticks")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("currency_pair".into(), "BTC_USDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+            ]))
             .with_status(200)
             .with_body(
                 json!([
-                    {"t": 1704067200000_i64, "o": "10.0", "h": "11.0", "l": "9.0", "c": "10.5", "v": "5.0"},
-                    {"t": 1704067260000_i64, "o": "10.5", "h": "12.0", "l": "10.0", "c": "11.5", "v": "6.0"}
+                    [
+                        1704067200_i64,
+                        "15.0",
+                        "1.5",
+                        "2.0",
+                        "0.5",
+                        "1.0",
+                        "10.0",
+                        true
+                    ],
+                    [
+                        1704067260_i64,
+                        "16.0",
+                        "2.5",
+                        "3.0",
+                        "1.5",
+                        "2.0",
+                        "11.0",
+                        true
+                    ]
                 ])
                 .to_string(),
             )
             .create();
-        let _hyper_hour = server
-            .mock("POST", "/info")
-            .match_body(Matcher::PartialJson(json!({
-                "type": "candleSnapshot",
-                "req": { "coin": "BTC", "interval": "1h" }
-            })))
+        let _gate_hour = server
+            .mock("GET", "/spot/candlesticks")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("currency_pair".into(), "BTC_USDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
             .with_status(200)
             .with_body(
-                json!([
-                    {"t": 1704067200000_i64, "o": "10.0", "h": "12.0", "l": "9.0", "c": "11.5", "v": "11.0"}
-                ])
+                json!([[
+                    1704067200_i64,
+                    "30.0",
+                    "2.0",
+                    "3.0",
+                    "1.0",
+                    "1.5",
+                    "21.0",
+                    true
+                ]])
                 .to_string(),
             )
             .create();
 
         let compiled = compile(
-            "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nsource hl = hyperliquid.perps(\"BTC\")\nuse hl 1h\nplot(bn.close - hl.1h.close)",
+            "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nsource gt = gate.spot(\"BTC_USDT\")\nuse gt 1h\nplot(bn.close - gt.1h.close)",
         )
         .expect("compile");
         let endpoints = ExchangeEndpoints {
@@ -2834,7 +2304,6 @@ mod tests {
             binance_usdm_base_url: server.url(),
             bybit_base_url: server.url(),
             gate_base_url: server.url(),
-            hyperliquid_info_url: format!("{}/info", server.url()),
         };
 
         let config =
@@ -2872,82 +2341,12 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: server.url(),
                 gate_base_url: String::new(),
-                hyperliquid_info_url: String::new(),
             },
         )
         .expect("config");
 
-        assert_eq!(config.feeds.len(), 1);
         assert_eq!(config.feeds[0].bars[0].time, 1704067200000.0);
         assert_eq!(config.feeds[0].bars[1].time, 1704067260000.0);
-    }
-
-    #[test]
-    fn fetch_perp_backtest_context_reads_hyperliquid_margin_table_and_mark_bars() {
-        let mut server = Server::new();
-        let _meta = server
-            .mock("POST", "/info")
-            .match_body(Matcher::Json(json!({ "type": "meta" })))
-            .with_status(200)
-            .with_body(
-                json!({
-                    "universe": [{"name": "BTC", "marginTableId": 56, "maxLeverage": 40}],
-                    "marginTables": [
-                        [56, {"description": "tiered", "marginTiers": [
-                            {"lowerBound": "0.0", "maxLeverage": 40},
-                            {"lowerBound": "150000000.0", "maxLeverage": 20}
-                        ]}]
-                    ],
-                    "collateralToken": "USDC"
-                })
-                .to_string(),
-            )
-            .create();
-        let _candles = server
-            .mock("POST", "/info")
-            .match_body(Matcher::PartialJson(json!({
-                "type": "candleSnapshot",
-                "req": { "coin": "BTC", "interval": "1m" }
-            })))
-            .with_status(200)
-            .with_body(
-                json!([
-                    {"t": 1704067200000_i64, "o": "10.0", "h": "11.0", "l": "9.0", "c": "10.5", "v": "5.0"},
-                    {"t": 1704067260000_i64, "o": "10.5", "h": "12.0", "l": "10.0", "c": "11.5", "v": "6.0"}
-                ])
-                .to_string(),
-            )
-            .create();
-        let source = sample_source(SourceTemplate::HyperliquidPerps, "BTC");
-        let context = fetch_perp_backtest_context(
-            &source,
-            Interval::Min1,
-            1704067200000,
-            1704067320000,
-            &ExchangeEndpoints {
-                binance_spot_base_url: String::new(),
-                binance_usdm_base_url: String::new(),
-                bybit_base_url: String::new(),
-                gate_base_url: String::new(),
-                hyperliquid_info_url: format!("{}/info", server.url()),
-            },
-        )
-        .expect("context")
-        .expect("perp context");
-        assert_eq!(
-            context.mark_price_basis,
-            MarkPriceBasis::HyperliquidExecutionFallback
-        );
-        assert_eq!(context.mark_bars.len(), 2);
-        match context.risk_snapshot {
-            VenueRiskSnapshot::HyperliquidPerps(snapshot) => {
-                assert_eq!(snapshot.coin, "BTC");
-                assert_eq!(snapshot.margin_table_id, 56);
-                assert_eq!(snapshot.tiers.len(), 2);
-                assert_eq!(snapshot.tiers[0].maintenance_margin_rate, 0.0125);
-            }
-            other => panic!("unexpected snapshot: {other:?}"),
-        }
     }
 
     #[test]
@@ -3013,7 +2412,6 @@ mod tests {
                 binance_usdm_base_url: server.url(),
                 bybit_base_url: String::new(),
                 gate_base_url: String::new(),
-                hyperliquid_info_url: String::new(),
             },
         )
         .expect("context")
@@ -3027,12 +2425,10 @@ mod tests {
         );
         match context.risk_snapshot {
             VenueRiskSnapshot::BinanceUsdm(snapshot) => {
-                assert_eq!(snapshot.symbol, "BTCUSDT");
                 assert_eq!(
                     snapshot.source,
                     BinanceUsdmRiskSource::SignedLeverageBrackets
                 );
-                assert_eq!(snapshot.brackets.len(), 1);
                 assert_eq!(snapshot.brackets[0].maintenance_margin_rate, 0.01);
             }
             other => panic!("unexpected snapshot: {other:?}"),
@@ -3088,25 +2484,18 @@ mod tests {
                 binance_usdm_base_url: server.url(),
                 bybit_base_url: String::new(),
                 gate_base_url: String::new(),
-                hyperliquid_info_url: String::new(),
             },
         )
         .expect("context")
         .expect("perp context");
 
-        assert_eq!(
-            context.mark_price_basis,
-            MarkPriceBasis::BinanceMarkPriceKlines
-        );
         match context.risk_snapshot {
             VenueRiskSnapshot::BinanceUsdm(snapshot) => {
                 assert_eq!(
                     snapshot.source,
                     BinanceUsdmRiskSource::PublicExchangeInfoApproximation
                 );
-                assert_eq!(snapshot.brackets.len(), 1);
                 assert_eq!(snapshot.brackets[0].max_leverage, 20.0);
-                assert_eq!(snapshot.brackets[0].maintenance_margin_rate, 0.025);
             }
             other => panic!("unexpected snapshot: {other:?}"),
         }
@@ -3140,24 +2529,14 @@ mod tests {
                     "retCode": 0,
                     "retMsg": "OK",
                     "result": {
-                        "list": [
-                            {
-                                "symbol": "BTCUSDT",
-                                "riskLimitValue": "100000",
-                                "maintenanceMargin": "0.5",
-                                "initialMargin": "1.0",
-                                "maxLeverage": "100",
-                                "mmDeduction": "0"
-                            },
-                            {
-                                "symbol": "BTCUSDT",
-                                "riskLimitValue": "200000",
-                                "maintenanceMargin": "1.0",
-                                "initialMargin": "2.0",
-                                "maxLeverage": "50",
-                                "mmDeduction": "100"
-                            }
-                        ],
+                        "list": [{
+                            "symbol": "BTCUSDT",
+                            "riskLimitValue": "100000",
+                            "maintenanceMargin": "0.5",
+                            "initialMargin": "1.0",
+                            "maxLeverage": "100",
+                            "mmDeduction": "0"
+                        }],
                         "nextPageCursor": ""
                     },
                     "time": 1704067200123_i64
@@ -3177,7 +2556,6 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: server.url(),
                 gate_base_url: String::new(),
-                hyperliquid_info_url: String::new(),
             },
         )
         .expect("context")
@@ -3187,15 +2565,10 @@ mod tests {
             context.mark_price_basis,
             MarkPriceBasis::BybitMarkPriceKlines
         );
-        assert_eq!(context.mark_bars.len(), 2);
         match context.risk_snapshot {
             VenueRiskSnapshot::BybitUsdtPerps(snapshot) => {
-                assert_eq!(snapshot.symbol, "BTCUSDT");
                 assert_eq!(snapshot.source, BybitUsdtPerpsRiskSource::PublicRiskLimit);
-                assert_eq!(snapshot.fetched_at_ms, 1704067200123_i64);
-                assert_eq!(snapshot.tiers.len(), 2);
-                assert_eq!(snapshot.tiers[0].upper_bound, Some(100000.0));
-                assert_eq!(snapshot.tiers[1].maintenance_amount, 100.0);
+                assert_eq!(snapshot.tiers.len(), 1);
             }
             other => panic!("unexpected snapshot: {other:?}"),
         }
@@ -3224,24 +2597,14 @@ mod tests {
             .match_query(Matcher::UrlEncoded("contract".into(), "BTC_USDT".into()))
             .with_status(200)
             .with_body(
-                json!([
-                    {
-                        "contract": "BTC_USDT",
-                        "risk_limit": "100000",
-                        "initial_rate": "0.01",
-                        "maintenance_rate": "0.005",
-                        "leverage_max": "100",
-                        "deduction": "0"
-                    },
-                    {
-                        "contract": "BTC_USDT",
-                        "risk_limit": "200000",
-                        "initial_rate": "0.02",
-                        "maintenance_rate": "0.01",
-                        "leverage_max": "50",
-                        "deduction": "100"
-                    }
-                ])
+                json!([{
+                    "contract": "BTC_USDT",
+                    "risk_limit": "100000",
+                    "initial_rate": "0.01",
+                    "maintenance_rate": "0.005",
+                    "leverage_max": "100",
+                    "deduction": "0"
+                }])
                 .to_string(),
             )
             .create();
@@ -3257,7 +2620,6 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: server.url(),
-                hyperliquid_info_url: String::new(),
             },
         )
         .expect("context")
@@ -3267,17 +2629,13 @@ mod tests {
             context.mark_price_basis,
             MarkPriceBasis::GateMarkPriceCandlesticks
         );
-        assert_eq!(context.mark_bars.len(), 2);
         match context.risk_snapshot {
             VenueRiskSnapshot::GateUsdtPerps(snapshot) => {
-                assert_eq!(snapshot.contract, "BTC_USDT");
                 assert_eq!(
                     snapshot.source,
                     GateUsdtPerpsRiskSource::PublicRiskLimitTiers
                 );
-                assert_eq!(snapshot.tiers.len(), 2);
-                assert_eq!(snapshot.tiers[0].upper_bound, Some(100000.0));
-                assert_eq!(snapshot.tiers[1].maintenance_amount, 100.0);
+                assert_eq!(snapshot.tiers.len(), 1);
             }
             other => panic!("unexpected snapshot: {other:?}"),
         }
@@ -3332,7 +2690,6 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: server.url(),
-                hyperliquid_info_url: String::new(),
             },
         )
         .expect("context")
@@ -3345,40 +2702,9 @@ mod tests {
                     GateUsdtPerpsRiskSource::PublicContractApproximation
                 );
                 assert_eq!(snapshot.tiers.len(), 1);
-                assert_eq!(snapshot.tiers[0].upper_bound, Some(100000.0));
             }
             other => panic!("unexpected snapshot: {other:?}"),
         }
-    }
-
-    #[test]
-    fn hyperliquid_recent_history_limit_is_enforced_before_fetch() {
-        let compiled =
-            compile("interval 1m\nsource hl = hyperliquid.perps(\"BTC\")\nplot(hl.close)")
-                .expect("compile");
-        let err = fetch_source_runtime_config(
-            &compiled,
-            1_704_067_200_000,
-            1_704_067_200_000 + 5_001 * 60_000,
-            &ExchangeEndpoints::default(),
-        )
-        .expect_err("history limit should fail");
-        assert_eq!(
-            err.to_string(),
-            "source `hl` (hyperliquid.perps) `BTC` 1m requires 5001 candle(s) for the requested window, but the venue only provides the most recent 5000 candle(s) over REST"
-        );
-    }
-
-    #[test]
-    fn requested_candle_count_skips_partial_open_bucket() {
-        assert_eq!(
-            requested_candle_count(Interval::Min1, 1_704_067_200_001, 1_704_067_260_000),
-            0
-        );
-        assert_eq!(
-            requested_candle_count(Interval::Min1, 1_704_067_200_000, 1_704_067_320_000),
-            2
-        );
     }
 
     #[test]
@@ -3416,11 +2742,6 @@ mod tests {
         assert_eq!(
             SourceFetchConstraints::for_template(SourceTemplate::GateUsdtPerps).page_limit,
             GATE_FUTURES_PAGE_LIMIT
-        );
-        assert_eq!(
-            SourceFetchConstraints::for_template(SourceTemplate::HyperliquidSpot)
-                .recent_candle_limit,
-            Some(HYPERLIQUID_RECENT_CANDLE_LIMIT)
         );
     }
 

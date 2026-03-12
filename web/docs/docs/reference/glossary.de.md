@@ -16,7 +16,7 @@ Ein Skript, das mindestens eine `source` deklariert.
 ## Quell-Template
 
 Ein eingebauter Exchange- oder Venue-Konstruktor wie `binance.spot`,
-`bybit.usdt_perps`, `gate.spot` oder `hyperliquid.perps`.
+`bybit.usdt_perps` oder `gate.spot`.
 
 ## Venue-Natives Symbol
 

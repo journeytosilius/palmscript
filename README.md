@@ -58,7 +58,6 @@ Exchange-backed source endpoints can be overridden with environment variables fo
 - `PALMSCRIPT_BINANCE_USDM_BASE_URL`
 - `PALMSCRIPT_BYBIT_BASE_URL`
 - `PALMSCRIPT_GATE_BASE_URL`
-- `PALMSCRIPT_HYPERLIQUID_INFO_URL`
 
 ## Browser IDE Container
 

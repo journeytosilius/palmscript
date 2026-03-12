@@ -24,7 +24,7 @@ La surface actuelle de PalmScript comprend :
 
 - exactement une directive de base `interval <...>` de niveau top-level par script
 - un ou plusieurs alias `source` nommes par script executable
-- des series qualifiees par source comme `spot.close` ou `hl.1h.close`
+- des series qualifiees par source comme `spot.close` ou `bb.1h.close`
 - des intervalles supplementaires via `use <alias> <interval>`
 - des declarations `fn` top-level a corps d'expression
 - `let`, `const`, `input`, la destructuration de tuples, `export`, `trigger`, les `entry` / `exit` de premiere classe et `order`

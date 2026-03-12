@@ -595,7 +595,7 @@ fn multi_source_signal_fills_on_next_execution_bar() {
     let compiled = compile(
         "interval 1m
 source exec = binance.spot(\"BTCUSDT\")
-source signal = hyperliquid.perps(\"BTC\")
+source signal = bybit.usdt_perps(\"BTCUSDT\")
 trigger long_entry = signal.close > signal.close[1]
 plot(exec.close)",
     )
@@ -1314,12 +1314,12 @@ fn venue_profiles_reject_unsupported_order_configurations() {
             "interval 1m\nsource spot = binance.usdm(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.index)\nplot(spot.close)",
         ),
         (
-            "hyperliquid spot",
-            "interval 1m\nsource spot = hyperliquid.spot(\"BTC\")\nentry long = spot.close > spot.close[1]\norder entry long = limit(spot.close[1], tif.fok, false)\nplot(spot.close)",
+            "bybit spot",
+            "interval 1m\nsource spot = bybit.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.mark)\nplot(spot.close)",
         ),
         (
-            "hyperliquid perps",
-            "interval 1m\nsource spot = hyperliquid.perps(\"BTC\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.last)\nplot(spot.close)",
+            "gate perps",
+            "interval 1m\nsource spot = gate.usdt_perps(\"BTC_USDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.index)\nplot(spot.close)",
         ),
     ];
     let runtime = SourceRuntimeConfig {

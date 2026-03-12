@@ -26,11 +26,11 @@ des exchanges :
 
 ```palmscript
 interval 1m
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 source bn = binance.spot("BTCUSDT")
-use hl 1h
+use bb 1h
 
-plot(bn.close - hl.1h.close)
+plot(bn.close - bb.1h.close)
 ```
 
 Regles :
@@ -56,8 +56,6 @@ PalmScript prend actuellement en charge ces templates de premiere classe :
 - `bybit.usdt_perps("<symbol>")`
 - `gate.spot("<symbol>")`
 - `gate.usdt_perps("<symbol>")`
-- `hyperliquid.spot("<symbol>")`
-- `hyperliquid.perps("<symbol>")`
 
 La prise en charge des intervalles depend du template :
 
@@ -67,8 +65,6 @@ La prise en charge des intervalles depend du template :
 - `bybit.usdt_perps` accepte `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w` et `1M`
 - `gate.spot` accepte `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d` et `1M`
 - `gate.usdt_perps` accepte `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h` et `1d`
-- `hyperliquid.spot` rejette `1s` et `6h`
-- `hyperliquid.perps` rejette `1s` et `6h`
 
 Les contraintes operationnelles de recuperation dependent aussi du template :
 
@@ -77,16 +73,10 @@ Les contraintes operationnelles de recuperation dependent aussi du template :
 - les klines REST Bybit arrivent en ordre decroissant et PalmScript les reordonne avant la validation d'alignement
 - les API de chandeliers Gate utilisent des secondes Unix et PalmScript les normalise en millisecondes Unix UTC
 - la pagination Gate spot et futures est decoupee par fenetres temporelles, car l'API publique n'autorise pas `limit` avec `from` / `to`
-- l'API REST Hyperliquid n'expose que les `5000` bougies les plus recentes par
-  flux
-- le mode marche rejette toute demande de flux Hyperliquid qui depasse cette
-  fenetre de retention
-- les flux Binance, Bybit et Gate sont pagines en interne et n'ont pas la meme
-  limite de retention sur la fenetre complete
+- les flux Binance, Bybit et Gate sont pagines en interne
 - les URL de base peuvent etre surchargees avec
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
-  `PALMSCRIPT_BYBIT_BASE_URL`, `PALMSCRIPT_GATE_BASE_URL` et
-  `PALMSCRIPT_HYPERLIQUID_INFO_URL`
+  `PALMSCRIPT_BYBIT_BASE_URL` et `PALMSCRIPT_GATE_BASE_URL`
 
 ## Ensemble Des Champs De Source
 
@@ -134,7 +124,7 @@ En mode marche :
 PalmScript ne doit pas exposer une bougie d'intervalle superieur avant sa
 cloture complete.
 
-Cela s'applique aux intervalles qualifies source-aware comme `hl.1h.close`.
+Cela s'applique aux intervalles qualifies source-aware comme `bb.1h.close`.
 
 ## Regles D'Alignement Runtime
 

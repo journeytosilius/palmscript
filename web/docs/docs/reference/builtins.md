@@ -26,7 +26,7 @@ PalmScript currently exposes these builtin categories:
 - event-memory helpers: `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - outputs: `plot`
 
-Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `hl.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
+Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `bb.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
 
 ## Tuple-Valued Builtins
 
@@ -313,8 +313,8 @@ Examples:
 - `ema(spot.close, 20)` advances on the base clock
 - `highest(spot.1w.close, 5)` advances on the weekly clock
 - `cum(spot.1w.close - spot.1w.close[1])` advances on the weekly clock
-- `crossover(hl.close, bn.close)` advances when either referenced source series advances
+- `crossover(bb.close, bn.close)` advances when either referenced source series advances
 - `activated(trend_long)` advances on the clock of `trend_long`
 - `barssince(spot.close > spot.close[1])` advances on the clock of that condition series
-- `valuewhen(trigger_series, hl.1h.close, 0)` advances on the clock of `trigger_series`
+- `valuewhen(trigger_series, bb.1h.close, 0)` advances on the clock of `trigger_series`
 - `highest_since(position_event.long_entry_fill, spot.high)` advances on the clock shared by the anchor and source series

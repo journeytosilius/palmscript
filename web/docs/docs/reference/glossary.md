@@ -14,7 +14,7 @@ A script that declares at least one `source`.
 
 ## Source Template
 
-A built-in exchange/venue constructor such as `binance.spot`, `bybit.usdt_perps`, `gate.spot`, or `hyperliquid.perps`.
+A built-in exchange/venue constructor such as `binance.spot`, `bybit.usdt_perps`, or `gate.spot`.
 
 ## Venue-Native Symbol
 

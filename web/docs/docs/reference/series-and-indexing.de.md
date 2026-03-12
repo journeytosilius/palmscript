@@ -8,7 +8,7 @@ PalmScript stellt Marktserien nur ueber quellqualifizierte Formen bereit:
 
 ```palmscript
 bn.close
-hl.1h.close
+bb.1h.close
 ```
 
 Regeln:
@@ -52,7 +52,7 @@ Jede Serie schreitet auf ihrem eigenen Aktualisierungstakt voran.
 Beispiele:
 
 - `bn.close[1]` folgt dem Basisintervall
-- `hl.1h.close[1]` folgt Quelle `hl` auf dem Ein-Stunden-Takt
+- `bb.1h.close[1]` folgt Quelle `bb` auf dem Ein-Stunden-Takt
 
 Abgeleitete Serien uebernehmen die Aktualisierungstakte ihrer Eingaben. Eine
 langsamere Serie wird auf schnelleren Takten nicht neu gezaehlt, wenn sie nicht

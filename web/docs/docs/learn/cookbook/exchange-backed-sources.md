@@ -6,11 +6,11 @@ Use named sources when the strategy should fetch historical candles directly fro
 interval 1m
 
 source bn = binance.spot("BTCUSDT")
-source hl = hyperliquid.perps("BTC")
-use hl 1h
+source bb = bybit.usdt_perps("BTCUSDT")
+use bb 1h
 
 plot(bn.close)
-plot(hl.1h.close)
+plot(bb.1h.close)
 ```
 
 PalmScript also supports Bybit and Gate source templates:
@@ -35,7 +35,7 @@ Open [https://palmscript.dev/app/](https://palmscript.dev/app/), paste the examp
 ## What To Watch For
 
 - source-aware scripts must use source-qualified market series
-- `use hl 1h` is required before `hl.1h.close`
+- `use bb 1h` is required before `bb.1h.close`
 - the script still has one global base `interval`
 - the runtime resolves each required `(source, interval)` feed before execution
 - Bybit expects venue-native symbols like `BTCUSDT`

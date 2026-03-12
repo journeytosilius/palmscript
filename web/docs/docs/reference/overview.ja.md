@@ -23,7 +23,7 @@
 
 - スクリプトごとにちょうど一つのトップレベル `interval <...>` ディレクティブ
 - 実行可能スクリプトごとに一つ以上の名前付き `source` エイリアス
-- `spot.close` や `hl.1h.close` のようなソース修飾シリーズ
+- `spot.close` や `bb.1h.close` のようなソース修飾シリーズ
 - `use <alias> <interval>` による補助インターバル
 - 式本体を持つトップレベル `fn` 宣言
 - `let`、`const`、`input`、タプル分解、`export`、`trigger`、第一級 `entry` / `exit`、`order`

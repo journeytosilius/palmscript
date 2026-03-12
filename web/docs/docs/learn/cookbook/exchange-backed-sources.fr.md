@@ -7,11 +7,11 @@ des chandelles historiques depuis des exchanges pris en charge.
 interval 1m
 
 source bn = binance.spot("BTCUSDT")
-source hl = hyperliquid.perps("BTC")
-use hl 1h
+source bb = bybit.usdt_perps("BTCUSDT")
+use bb 1h
 
 plot(bn.close)
-plot(hl.1h.close)
+plot(bb.1h.close)
 ```
 
 PalmScript prend aussi en charge les templates de source Bybit et Gate :
@@ -39,7 +39,7 @@ disponible dans l'application.
 
 - les scripts source-aware doivent utiliser des series de marche qualifiees par
   source
-- `use hl 1h` est requis avant `hl.1h.close`
+- `use bb 1h` est requis avant `bb.1h.close`
 - le script conserve un seul `interval` de base global
 - le runtime resout chaque flux `(source, interval)` requis avant l'execution
 - Bybit attend des symboles natifs de venue comme `BTCUSDT`

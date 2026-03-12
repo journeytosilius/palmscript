@@ -744,10 +744,7 @@ fn resolve_perp_context(
         BacktestMarginMode::Isolated => PerpMarginMode::Isolated,
     };
     match template {
-        SourceTemplate::BinanceSpot
-        | SourceTemplate::BybitSpot
-        | SourceTemplate::GateSpot
-        | SourceTemplate::HyperliquidSpot => {
+        SourceTemplate::BinanceSpot | SourceTemplate::BybitSpot | SourceTemplate::GateSpot => {
             if options.leverage.is_some() || !matches!(margin_mode, PerpMarginMode::Isolated) {
                 return Err(format!(
                     "spot source `{}` does not accept --leverage or --margin-mode",
@@ -758,8 +755,7 @@ fn resolve_perp_context(
         }
         SourceTemplate::BinanceUsdm
         | SourceTemplate::BybitUsdtPerps
-        | SourceTemplate::GateUsdtPerps
-        | SourceTemplate::HyperliquidPerps => {
+        | SourceTemplate::GateUsdtPerps => {
             let interval = base_interval.ok_or_else(|| {
                 format!(
                     "perp backtest for `{}` requires a base interval declaration",

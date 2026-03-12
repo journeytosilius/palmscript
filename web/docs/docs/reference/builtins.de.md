@@ -40,7 +40,7 @@ PalmScript exponiert derzeit diese Builtin-Kategorien:
 - Ausgaben: `plot`
 
 Marktfelder werden ueber quellqualifizierte Serien wie `spot.open`,
-`spot.close` oder `hl.1h.volume` ausgewaehlt. Nur Identifikatoren sind
+`spot.close` oder `bb.1h.volume` ausgewaehlt. Nur Identifikatoren sind
 aufrufbar, daher wird `spot.close()` abgelehnt.
 
 ## Tupelwertige Builtins
@@ -367,12 +367,12 @@ Beispiele:
 - `ema(spot.close, 20)` schreitet auf dem Basis-Takt fort
 - `highest(spot.1w.close, 5)` schreitet auf dem Wochen-Takt fort
 - `cum(spot.1w.close - spot.1w.close[1])` schreitet auf dem Wochen-Takt fort
-- `crossover(hl.close, bn.close)` schreitet fort, wenn eine der referenzierten
+- `crossover(bb.close, bn.close)` schreitet fort, wenn eine der referenzierten
   Quellserien fortschreitet
 - `activated(trend_long)` schreitet auf dem Takt von `trend_long` fort
 - `barssince(spot.close > spot.close[1])` schreitet auf dem Takt dieser
   Bedingungsserie fort
-- `valuewhen(trigger_series, hl.1h.close, 0)` schreitet auf dem Takt von
+- `valuewhen(trigger_series, bb.1h.close, 0)` schreitet auf dem Takt von
   `trigger_series` fort
 - `highest_since(position_event.long_entry_fill, spot.high)` schreitet auf dem
   gemeinsam genutzten Takt von Anchor- und Quellserie fort

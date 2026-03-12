@@ -38,7 +38,7 @@ PalmScript expose actuellement ces categories de builtin :
 - sorties : `plot`
 
 Les champs de marche sont selectionnes via des series qualifiees par source
-comme `spot.open`, `spot.close` ou `hl.1h.volume`. Seuls les identifiants sont
+comme `spot.open`, `spot.close` ou `bb.1h.volume`. Seuls les identifiants sont
 appelables ; `spot.close()` est donc rejete.
 
 ## Builtins A Valeur Tuple
@@ -366,12 +366,12 @@ Exemples :
 - `ema(spot.close, 20)` avance sur l'horloge de base
 - `highest(spot.1w.close, 5)` avance sur l'horloge hebdomadaire
 - `cum(spot.1w.close - spot.1w.close[1])` avance sur l'horloge hebdomadaire
-- `crossover(hl.close, bn.close)` avance lorsque l'une ou l'autre des series
+- `crossover(bb.close, bn.close)` avance lorsque l'une ou l'autre des series
   source referencees avance
 - `activated(trend_long)` avance sur l'horloge de `trend_long`
 - `barssince(spot.close > spot.close[1])` avance sur l'horloge de cette serie
   de condition
-- `valuewhen(trigger_series, hl.1h.close, 0)` avance sur l'horloge de
+- `valuewhen(trigger_series, bb.1h.close, 0)` avance sur l'horloge de
   `trigger_series`
 - `highest_since(position_event.long_entry_fill, spot.high)` avance sur
   l'horloge partagee par l'ancre et la serie source

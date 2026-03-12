@@ -22,9 +22,9 @@ PalmScript スクリプトはトップレベルのソースファイルであり
 ```palmscript
 interval 1m
 source bn = binance.spot("BTCUSDT")
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 
-plot(bn.close - hl.close)
+plot(bn.close - bb.close)
 ```
 
 ## メンタルモデル

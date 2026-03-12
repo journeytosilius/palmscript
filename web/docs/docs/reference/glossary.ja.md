@@ -14,7 +14,7 @@
 
 ## ソーステンプレート
 
-`binance.spot`, `bybit.usdt_perps`, `gate.spot`, `hyperliquid.perps` のような組み込みの取引所 / venue コンストラクタ。
+`binance.spot`, `bybit.usdt_perps`, `gate.spot` のような組み込みの取引所 / venue コンストラクタ。
 
 ## Venue-Native Symbol
 

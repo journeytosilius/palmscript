@@ -39,7 +39,7 @@ Le compilateur rejette un script sans `interval` de base ou avec plus d'un
 Une declaration `source` prend cette forme :
 
 ```palmscript
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 ```
 
 Regles :
@@ -54,7 +54,7 @@ Regles :
 Les intervalles supplementaires sont declares par source :
 
 ```palmscript
-use hl 1h
+use bb 1h
 ```
 
 Regles :

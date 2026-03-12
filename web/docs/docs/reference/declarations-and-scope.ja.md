@@ -36,7 +36,7 @@ interval 1m
 `source` 宣言の形式:
 
 ```palmscript
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 ```
 
 ルール:
@@ -51,7 +51,7 @@ source hl = hyperliquid.perps("BTC")
 補助インターバルはソースごとに宣言されます。
 
 ```palmscript
-use hl 1h
+use bb 1h
 ```
 
 ルール:

@@ -61,7 +61,7 @@ fn source_aware_runtime_uses_union_of_base_timestamps() {
 
 #[test]
 fn source_interval_references_require_source_scoped_use_declarations() {
-    let err = compile("interval 1m\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.1h.close)")
+    let err = compile("interval 1m\nsource a = gate.usdt_perps(\"BTC_USDT\")\nplot(a.1h.close)")
         .expect_err("missing use should fail");
     assert!(err.diagnostics.iter().any(|diagnostic| diagnostic
         .message

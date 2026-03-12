@@ -50,8 +50,6 @@ pub enum SourceTemplate {
     BybitUsdtPerps,
     GateSpot,
     GateUsdtPerps,
-    HyperliquidSpot,
-    HyperliquidPerps,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -351,8 +349,6 @@ impl SourceTemplate {
             ("bybit", "usdt_perps") => Some(Self::BybitUsdtPerps),
             ("gate", "spot") => Some(Self::GateSpot),
             ("gate", "usdt_perps") => Some(Self::GateUsdtPerps),
-            ("hyperliquid", "spot") => Some(Self::HyperliquidSpot),
-            ("hyperliquid", "perps") => Some(Self::HyperliquidPerps),
             _ => None,
         }
     }
@@ -362,16 +358,14 @@ impl SourceTemplate {
             Self::BinanceSpot | Self::BinanceUsdm => "binance",
             Self::BybitSpot | Self::BybitUsdtPerps => "bybit",
             Self::GateSpot | Self::GateUsdtPerps => "gate",
-            Self::HyperliquidSpot | Self::HyperliquidPerps => "hyperliquid",
         }
     }
 
     pub const fn venue_name(self) -> &'static str {
         match self {
-            Self::BinanceSpot | Self::BybitSpot | Self::GateSpot | Self::HyperliquidSpot => "spot",
+            Self::BinanceSpot | Self::BybitSpot | Self::GateSpot => "spot",
             Self::BinanceUsdm => "usdm",
             Self::BybitUsdtPerps | Self::GateUsdtPerps => "usdt_perps",
-            Self::HyperliquidPerps => "perps",
         }
     }
 
@@ -383,8 +377,6 @@ impl SourceTemplate {
             Self::BybitUsdtPerps => "bybit.usdt_perps",
             Self::GateSpot => "gate.spot",
             Self::GateUsdtPerps => "gate.usdt_perps",
-            Self::HyperliquidSpot => "hyperliquid.spot",
-            Self::HyperliquidPerps => "hyperliquid.perps",
         }
     }
 
@@ -434,9 +426,6 @@ impl SourceTemplate {
                     | Interval::Hour8
                     | Interval::Day1
             ),
-            Self::HyperliquidSpot | Self::HyperliquidPerps => {
-                !matches!(interval, Interval::Sec1 | Interval::Hour6)
-            }
         }
     }
 }
@@ -517,10 +506,6 @@ mod tests {
             Some(SourceTemplate::BinanceUsdm)
         );
         assert_eq!(
-            SourceTemplate::parse("hyperliquid", "spot"),
-            Some(SourceTemplate::HyperliquidSpot)
-        );
-        assert_eq!(
             SourceTemplate::parse("bybit", "spot"),
             Some(SourceTemplate::BybitSpot)
         );
@@ -536,19 +521,9 @@ mod tests {
             SourceTemplate::parse("gate", "usdt_perps"),
             Some(SourceTemplate::GateUsdtPerps)
         );
-        assert_eq!(
-            SourceTemplate::parse("hyperliquid", "perps"),
-            Some(SourceTemplate::HyperliquidPerps)
-        );
         assert_eq!(SourceTemplate::parse("binance", "perps"), None);
-    }
-
-    #[test]
-    fn hyperliquid_templates_reject_unsupported_intervals() {
-        assert!(!SourceTemplate::HyperliquidSpot.supports_interval(Interval::Sec1));
-        assert!(!SourceTemplate::HyperliquidPerps.supports_interval(Interval::Hour6));
-        assert!(SourceTemplate::HyperliquidSpot.supports_interval(Interval::Min1));
-        assert!(SourceTemplate::HyperliquidPerps.supports_interval(Interval::Hour4));
+        assert_eq!(SourceTemplate::parse("hyperliquid", "spot"), None);
+        assert_eq!(SourceTemplate::parse("hyperliquid", "perps"), None);
     }
 
     #[test]

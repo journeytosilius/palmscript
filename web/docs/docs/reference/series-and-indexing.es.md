@@ -10,7 +10,7 @@ fuente:
 
 ```palmscript
 bn.close
-hl.1h.close
+bb.1h.close
 ```
 
 Reglas:
@@ -53,7 +53,7 @@ Cada serie avanza sobre su propio reloj de actualizacion.
 Ejemplos:
 
 - `bn.close[1]` sigue el intervalo base
-- `hl.1h.close[1]` sigue a la fuente `hl` en el reloj de una hora
+- `bb.1h.close[1]` sigue a la fuente `bb` en el reloj de una hora
 
 Las series derivadas heredan los relojes de actualizacion de sus entradas. Una
 serie lenta no se vuelve a contar sobre relojes mas rapidos cuando no avanzo.

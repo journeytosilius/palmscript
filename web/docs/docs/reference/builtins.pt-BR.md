@@ -37,7 +37,7 @@ PalmScript atualmente expoe estas categorias de builtin:
 - saidas: `plot`
 
 Campos de mercado sao selecionados por series qualificadas por fonte, como
-`spot.open`, `spot.close` ou `hl.1h.volume`. Apenas identificadores sao
+`spot.open`, `spot.close` ou `bb.1h.volume`. Apenas identificadores sao
 invocaveis, portanto `spot.close()` e rejeitado.
 
 ## Builtins Tuple-Valued
@@ -355,12 +355,12 @@ Exemplos:
 - `ema(spot.close, 20)` avanca no clock base
 - `highest(spot.1w.close, 5)` avanca no clock semanal
 - `cum(spot.1w.close - spot.1w.close[1])` avanca no clock semanal
-- `crossover(hl.close, bn.close)` avanca quando qualquer serie de source
+- `crossover(bb.close, bn.close)` avanca quando qualquer serie de source
   referenciada avanca
 - `activated(trend_long)` avanca no clock de `trend_long`
 - `barssince(spot.close > spot.close[1])` avanca no clock daquela serie de
   condicao
-- `valuewhen(trigger_series, hl.1h.close, 0)` avanca no clock de
+- `valuewhen(trigger_series, bb.1h.close, 0)` avanca no clock de
   `trigger_series`
 - `highest_since(position_event.long_entry_fill, spot.high)` avanca no clock
   compartilhado pela ancora e pela serie fonte

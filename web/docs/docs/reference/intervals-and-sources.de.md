@@ -26,11 +26,11 @@ Quellen:
 
 ```palmscript
 interval 1m
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 source bn = binance.spot("BTCUSDT")
-use hl 1h
+use bb 1h
 
-plot(bn.close - hl.1h.close)
+plot(bn.close - bb.1h.close)
 ```
 
 Regeln:
@@ -56,8 +56,6 @@ PalmScript unterstuetzt derzeit diese erstklassigen Templates:
 - `bybit.usdt_perps("<symbol>")`
 - `gate.spot("<symbol>")`
 - `gate.usdt_perps("<symbol>")`
-- `hyperliquid.spot("<symbol>")`
-- `hyperliquid.perps("<symbol>")`
 
 Die Intervall-Unterstuetzung ist template-spezifisch:
 
@@ -67,8 +65,6 @@ Die Intervall-Unterstuetzung ist template-spezifisch:
 - `bybit.usdt_perps` akzeptiert `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w` und `1M`
 - `gate.spot` akzeptiert `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d` und `1M`
 - `gate.usdt_perps` akzeptiert `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h` und `1d`
-- `hyperliquid.spot` lehnt `1s` und `6h` ab
-- `hyperliquid.perps` lehnt `1s` und `6h` ab
 
 Auch operative Fetch-Beschraenkungen sind template-spezifisch:
 
@@ -77,14 +73,10 @@ Auch operative Fetch-Beschraenkungen sind template-spezifisch:
 - Bybit-REST-Klines kommen absteigend sortiert zurueck und PalmScript ordnet sie vor der Laufzeitpruefung neu
 - Gate-Candlestick-APIs verwenden Unix-Sekunden und PalmScript normalisiert sie auf Unix-Millisekunden UTC
 - Gate-Spot- und Futures-Paginierung erfolgt in Zeitfenstern, weil die oeffentliche API `limit` nicht mit `from` / `to` kombiniert
-- die Hyperliquid-REST-API stellt pro Feed nur die letzten `5000` Kerzen bereit
-- Marktmodus lehnt jede Hyperliquid-Feed-Anfrage ab, die dieses
-  Aufbewahrungsfenster ueberschreitet
-- Binance-, Bybit- und Gate-Feeds werden intern paginiert und haben nicht
-  dieselbe Gesamtfenster-Grenze
+- Binance-, Bybit- und Gate-Feeds werden intern paginiert
 - Basis-URLs lassen sich mit `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
   `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
-  `PALMSCRIPT_GATE_BASE_URL` und `PALMSCRIPT_HYPERLIQUID_INFO_URL`
+  `PALMSCRIPT_GATE_BASE_URL`
   ueberschreiben
 
 ## Quellen-Feldmenge
@@ -131,7 +123,7 @@ Im Marktmodus:
 PalmScript darf keine Hoeherintervall-Kerze sichtbar machen, bevor diese Kerze
 vollstaendig geschlossen ist.
 
-Das gilt auch fuer quellqualifizierte Zusatzintervalle wie `hl.1h.close`.
+Das gilt auch fuer quellqualifizierte Zusatzintervalle wie `bb.1h.close`.
 
 ## Laufzeit-Ausrichtungsregeln
 

@@ -14,11 +14,9 @@ fn compiled(source: &str) -> CompiledProgram {
 // - MissingSources
 // - InvalidTimeWindow
 // - UnsupportedInterval
-// - RecentHistoryLimitExceeded
 // - RequestFailed
 // - MalformedResponse
 // - NoData
-// - UnknownHyperliquidSpotSymbol
 
 #[test]
 fn market_fetch_error_catalog_matches_contract() {
@@ -53,29 +51,14 @@ fn market_fetch_error_catalog_matches_contract() {
         .with_status(200)
         .with_body("[]")
         .create();
-    let _spot_meta = server
-        .mock("POST", "/missing-spot/info")
-        .match_body(Matcher::Json(json!({ "type": "spotMeta" })))
-        .with_status(200)
-        .with_body(
-            json!({
-                "universe": [{"name": "@107", "tokens": [107, 0]}],
-                "tokens": [{"name": "HYPE", "index": 107}]
-            })
-            .to_string(),
-        )
-        .create();
-
     let source_compiled =
         compiled("interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nplot(a.close)");
     let mut missing_sources_compiled = source_compiled.clone();
     missing_sources_compiled.program.declared_sources.clear();
     let unsupported_interval_compiled =
-        compiled("interval 1s\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.close)");
-    let recent_history_limit_compiled =
-        compiled("interval 1m\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.close)");
+        compiled("interval 1s\nsource a = bybit.usdt_perps(\"BTCUSDT\")\nplot(a.close)");
 
-    let cases: [(&str, Result<(), ExchangeFetchError>); 9] = [
+    let cases: [(&str, Result<(), ExchangeFetchError>); 7] = [
         (
             "missing_base_interval",
             fetch_source_runtime_config(&empty_compiled, 1, 2, &ExchangeEndpoints::default())
@@ -112,16 +95,6 @@ fn market_fetch_error_catalog_matches_contract() {
             .map(|_| ()),
         ),
         (
-            "recent_history_limit_exceeded",
-            fetch_source_runtime_config(
-                &recent_history_limit_compiled,
-                1_704_067_200_000,
-                1_704_067_200_000 + 5_001 * 60_000,
-                &ExchangeEndpoints::default(),
-            )
-            .map(|_| ()),
-        ),
-        (
             "request_failed_http_status",
             fetch_source_runtime_config(
                 &source_compiled,
@@ -132,7 +105,6 @@ fn market_fetch_error_catalog_matches_contract() {
                     binance_usdm_base_url: server.url(),
                     bybit_base_url: server.url(),
                     gate_base_url: server.url(),
-                    hyperliquid_info_url: format!("{}/info", server.url()),
                 },
             )
             .map(|_| ()),
@@ -148,7 +120,6 @@ fn market_fetch_error_catalog_matches_contract() {
                     binance_usdm_base_url: server.url(),
                     bybit_base_url: server.url(),
                     gate_base_url: server.url(),
-                    hyperliquid_info_url: format!("{}/info", server.url()),
                 },
             )
             .map(|_| ()),
@@ -164,23 +135,6 @@ fn market_fetch_error_catalog_matches_contract() {
                     binance_usdm_base_url: server.url(),
                     bybit_base_url: server.url(),
                     gate_base_url: server.url(),
-                    hyperliquid_info_url: format!("{}/info", server.url()),
-                },
-            )
-            .map(|_| ()),
-        ),
-        (
-            "unknown_hyperliquid_spot_symbol",
-            fetch_source_runtime_config(
-                &compiled("interval 1m\nsource a = hyperliquid.spot(\"MISSING\")\nplot(a.close)"),
-                1_704_067_200_000,
-                1_704_067_260_000,
-                &ExchangeEndpoints {
-                    binance_spot_base_url: server.url(),
-                    binance_usdm_base_url: server.url(),
-                    bybit_base_url: server.url(),
-                    gate_base_url: server.url(),
-                    hyperliquid_info_url: format!("{}/missing-spot/info", server.url()),
                 },
             )
             .map(|_| ()),
@@ -191,12 +145,10 @@ fn market_fetch_error_catalog_matches_contract() {
         "exchange-backed runs require a base interval declaration",
         "exchange-backed runs require at least one `source` declaration",
         "invalid market time window: from 1704067260000 must be less than to 1704067260000",
-        "source `a` with template `hyperliquid.perps` does not support interval `1s`",
-        "source `a` (hyperliquid.perps) `BTC` 1m requires 5001 candle(s) for the requested window, but the venue only provides the most recent 5000 candle(s) over REST",
+        "source `a` with template `bybit.usdt_perps` does not support interval `1s`",
         "failed to fetch `a` (binance.spot) `BTCUSDT` 1m: HTTP 500 Internal Server Error",
         "malformed response for `a` (binance.spot) `BTCUSDT` 1m: invalid `open` value",
         "no data returned for `a` (binance.spot) `BTCUSDT` 1m",
-        "unknown Hyperliquid spot symbol `MISSING`",
     ];
 
     for ((name, result), expected_message) in cases.into_iter().zip(expected) {

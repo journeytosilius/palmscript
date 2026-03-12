@@ -24,11 +24,11 @@ Scripts executaveis declaram uma ou mais fontes nomeadas ligadas a exchanges:
 
 ```palmscript
 interval 1m
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 source bn = binance.spot("BTCUSDT")
-use hl 1h
+use bb 1h
 
-plot(bn.close - hl.1h.close)
+plot(bn.close - bb.1h.close)
 ```
 
 Regras:
@@ -51,8 +51,6 @@ PalmScript atualmente suporta estes templates de primeira classe:
 - `bybit.usdt_perps("<symbol>")`
 - `gate.spot("<symbol>")`
 - `gate.usdt_perps("<symbol>")`
-- `hyperliquid.spot("<symbol>")`
-- `hyperliquid.perps("<symbol>")`
 
 O suporte a intervalos depende do template:
 
@@ -62,8 +60,6 @@ O suporte a intervalos depende do template:
 - `bybit.usdt_perps` aceita `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w` e `1M`
 - `gate.spot` aceita `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d` e `1M`
 - `gate.usdt_perps` aceita `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h` e `1d`
-- `hyperliquid.spot` rejeita `1s` e `6h`
-- `hyperliquid.perps` rejeita `1s` e `6h`
 
 Restricoes operacionais de busca tambem dependem do template:
 
@@ -72,15 +68,10 @@ Restricoes operacionais de busca tambem dependem do template:
 - os klines REST da Bybit chegam em ordem decrescente e o PalmScript os reordena antes das verificacoes de alinhamento
 - as APIs de candles da Gate usam Unix seconds e o PalmScript as normaliza para Unix milliseconds UTC
 - a paginacao de Gate spot e futures usa janelas de tempo porque a API publica nao permite `limit` junto com `from` / `to`
-- o REST da Hyperliquid expoe apenas os `5000` candles mais recentes por feed
-- o modo mercado rejeita qualquer requisicao de feed da Hyperliquid que exceda
-  essa janela de retencao
-- feeds da Binance, Bybit e Gate sao paginados internamente e nao possuem o
-  mesmo limite de retencao da janela inteira
+- feeds da Binance, Bybit e Gate sao paginados internamente
 - as URLs base podem ser sobrescritas com
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
-  `PALMSCRIPT_BYBIT_BASE_URL`, `PALMSCRIPT_GATE_BASE_URL` e
-  `PALMSCRIPT_HYPERLIQUID_INFO_URL`
+  `PALMSCRIPT_BYBIT_BASE_URL` e `PALMSCRIPT_GATE_BASE_URL`
 
 ## Conjunto De Campos De Source
 
@@ -127,7 +118,7 @@ No modo mercado:
 PalmScript nao deve expor um candle de intervalo superior antes que ele esteja
 totalmente fechado.
 
-Isso se aplica a intervalos qualificados source-aware como `hl.1h.close`.
+Isso se aplica a intervalos qualificados source-aware como `bb.1h.close`.
 
 ## Regras De Alinhamento Em Runtime
 

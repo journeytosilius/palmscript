@@ -16,7 +16,7 @@ Un script qui declare au moins une `source`.
 ## Template De Source
 
 Un constructeur integre d'exchange / venue comme `binance.spot`,
-`bybit.usdt_perps`, `gate.spot` ou `hyperliquid.perps`.
+`bybit.usdt_perps` ou `gate.spot`.
 
 ## Symbole Natif Du Venue
 

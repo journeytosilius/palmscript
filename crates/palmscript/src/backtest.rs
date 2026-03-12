@@ -53,7 +53,6 @@ pub enum MarkPriceBasis {
     BinanceMarkPriceKlines,
     BybitMarkPriceKlines,
     GateMarkPriceCandlesticks,
-    HyperliquidExecutionFallback,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -107,20 +106,11 @@ pub struct GateUsdtPerpsRiskSnapshot {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct HyperliquidPerpsRiskSnapshot {
-    pub coin: String,
-    pub fetched_at_ms: i64,
-    pub margin_table_id: u32,
-    pub tiers: Vec<RiskTier>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "venue_kind", rename_all = "snake_case")]
 pub enum VenueRiskSnapshot {
     BinanceUsdm(BinanceUsdmRiskSnapshot),
     BybitUsdtPerps(BybitUsdtPerpsRiskSnapshot),
     GateUsdtPerps(GateUsdtPerpsRiskSnapshot),
-    HyperliquidPerps(HyperliquidPerpsRiskSnapshot),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -568,8 +558,7 @@ pub fn run_backtest_with_sources(
     match execution.template {
         crate::interval::SourceTemplate::BinanceSpot
         | crate::interval::SourceTemplate::BybitSpot
-        | crate::interval::SourceTemplate::GateSpot
-        | crate::interval::SourceTemplate::HyperliquidSpot => {
+        | crate::interval::SourceTemplate::GateSpot => {
             if config.perp.is_some() || config.perp_context.is_some() {
                 return Err(BacktestError::SpotPerpConfigMismatch {
                     alias: config.execution_source_alias.clone(),
@@ -578,8 +567,7 @@ pub fn run_backtest_with_sources(
         }
         crate::interval::SourceTemplate::BinanceUsdm
         | crate::interval::SourceTemplate::BybitUsdtPerps
-        | crate::interval::SourceTemplate::GateUsdtPerps
-        | crate::interval::SourceTemplate::HyperliquidPerps => {
+        | crate::interval::SourceTemplate::GateUsdtPerps => {
             if config.perp.is_none() {
                 config.perp = Some(PerpBacktestConfig {
                     leverage: 1.0,

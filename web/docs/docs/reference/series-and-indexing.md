@@ -8,7 +8,7 @@ PalmScript exposes market series through source-qualified forms only:
 
 ```palmscript
 bn.close
-hl.1h.close
+bb.1h.close
 ```
 
 Rules:
@@ -48,7 +48,7 @@ Every series advances on its own update clock.
 Examples:
 
 - `bn.close[1]` follows the base interval
-- `hl.1h.close[1]` follows source `hl` on the one-hour clock
+- `bb.1h.close[1]` follows source `bb` on the one-hour clock
 
 Derived series inherit the update clocks of their inputs. A slower series is not re-counted on faster clocks when it has not advanced.
 

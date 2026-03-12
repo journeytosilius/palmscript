@@ -1,7 +1,5 @@
 mod binance_spot;
 mod binance_usdm;
-mod hyperliquid_perps;
-mod hyperliquid_spot;
 
 use crate::backtest::BacktestError;
 use crate::bytecode::OrderDecl;
@@ -15,8 +13,6 @@ pub(crate) enum VenueOrderProfile {
     BybitUsdtPerps,
     GateSpot,
     GateUsdtPerps,
-    HyperliquidSpot,
-    HyperliquidPerps,
 }
 
 impl VenueOrderProfile {
@@ -28,8 +24,6 @@ impl VenueOrderProfile {
             SourceTemplate::BybitUsdtPerps => Self::BybitUsdtPerps,
             SourceTemplate::GateSpot => Self::GateSpot,
             SourceTemplate::GateUsdtPerps => Self::GateUsdtPerps,
-            SourceTemplate::HyperliquidSpot => Self::HyperliquidSpot,
-            SourceTemplate::HyperliquidPerps => Self::HyperliquidPerps,
         }
     }
 
@@ -41,8 +35,6 @@ impl VenueOrderProfile {
             Self::BybitUsdtPerps => "bybit.usdt_perps",
             Self::GateSpot => "gate.spot",
             Self::GateUsdtPerps => "gate.usdt_perps",
-            Self::HyperliquidSpot => "hyperliquid.spot",
-            Self::HyperliquidPerps => "hyperliquid.perps",
         }
     }
 }
@@ -59,8 +51,6 @@ pub(crate) fn validate_order_for_template(
         VenueOrderProfile::BybitUsdtPerps => binance_usdm::validate(order),
         VenueOrderProfile::GateSpot => binance_spot::validate(order),
         VenueOrderProfile::GateUsdtPerps => binance_usdm::validate(order),
-        VenueOrderProfile::HyperliquidSpot => hyperliquid_spot::validate(order),
-        VenueOrderProfile::HyperliquidPerps => hyperliquid_perps::validate(order),
     };
     result.map_err(|reason| BacktestError::UnsupportedOrderForVenue {
         alias: alias.to_string(),

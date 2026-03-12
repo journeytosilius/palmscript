@@ -26,7 +26,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - event-memory helper: `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - 出力: `plot`
 
-市場フィールドは `spot.open`, `spot.close`, `hl.1h.volume` のようなソース修飾 series を通じて選択されます。呼び出せるのは識別子だけなので、`spot.close()` は拒否されます。
+市場フィールドは `spot.open`, `spot.close`, `bb.1h.volume` のようなソース修飾 series を通じて選択されます。呼び出せるのは識別子だけなので、`spot.close()` は拒否されます。
 
 ## タプル値 Builtins
 
@@ -313,8 +313,8 @@ builtin 結果は、その入力の更新クロックに従います。
 - `ema(spot.close, 20)` はベースクロックで進む
 - `highest(spot.1w.close, 5)` は週次クロックで進む
 - `cum(spot.1w.close - spot.1w.close[1])` は週次クロックで進む
-- `crossover(hl.close, bn.close)` は、参照されたどちらかの source series が進んだときに進む
+- `crossover(bb.close, bn.close)` は、参照されたどちらかの source series が進んだときに進む
 - `activated(trend_long)` は `trend_long` のクロックで進む
 - `barssince(spot.close > spot.close[1])` はその condition series のクロックで進む
-- `valuewhen(trigger_series, hl.1h.close, 0)` は `trigger_series` のクロックで進む
+- `valuewhen(trigger_series, bb.1h.close, 0)` は `trigger_series` のクロックで進む
 - `highest_since(position_event.long_entry_fill, spot.high)` は anchor と source series に共有されたクロックで進む

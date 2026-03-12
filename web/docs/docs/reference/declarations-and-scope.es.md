@@ -38,7 +38,7 @@ base.
 Una declaracion de fuente tiene esta forma:
 
 ```palmscript
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 ```
 
 Reglas:
@@ -53,7 +53,7 @@ Reglas:
 Los intervalos suplementarios se declaran por fuente:
 
 ```palmscript
-use hl 1h
+use bb 1h
 ```
 
 Reglas:

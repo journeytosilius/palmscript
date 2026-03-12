@@ -38,7 +38,7 @@ PalmScript expone actualmente estas categorias builtin:
 - salidas: `plot`
 
 Los campos de mercado se seleccionan mediante series calificadas por fuente
-como `spot.open`, `spot.close` o `hl.1h.volume`. Solo los identificadores son
+como `spot.open`, `spot.close` o `bb.1h.volume`. Solo los identificadores son
 invocables, por lo que `spot.close()` se rechaza.
 
 ## Builtins Que Devuelven Tuplas
@@ -358,12 +358,12 @@ Ejemplos:
 - `ema(spot.close, 20)` avanza sobre el reloj base
 - `highest(spot.1w.close, 5)` avanza sobre el reloj semanal
 - `cum(spot.1w.close - spot.1w.close[1])` avanza sobre el reloj semanal
-- `crossover(hl.close, bn.close)` avanza cuando cualquiera de las series fuente
+- `crossover(bb.close, bn.close)` avanza cuando cualquiera de las series fuente
   referenciadas avanza
 - `activated(trend_long)` avanza sobre el reloj de `trend_long`
 - `barssince(spot.close > spot.close[1])` avanza sobre el reloj de esa serie de
   condicion
-- `valuewhen(trigger_series, hl.1h.close, 0)` avanza sobre el reloj de
+- `valuewhen(trigger_series, bb.1h.close, 0)` avanza sobre el reloj de
   `trigger_series`
 - `highest_since(position_event.long_entry_fill, spot.high)` avanza sobre el
   reloj compartido por la serie ancla y la serie fuente

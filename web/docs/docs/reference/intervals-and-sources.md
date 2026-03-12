@@ -22,11 +22,11 @@ Executable scripts declare one or more named exchange-backed sources:
 
 ```palmscript
 interval 1m
-source hl = hyperliquid.perps("BTC")
+source bb = bybit.usdt_perps("BTCUSDT")
 source bn = binance.spot("BTCUSDT")
-use hl 1h
+use bb 1h
 
-plot(bn.close - hl.1h.close)
+plot(bn.close - bb.1h.close)
 ```
 
 Rules:
@@ -49,8 +49,6 @@ PalmScript currently supports these first-class templates:
 - `bybit.usdt_perps("<symbol>")`
 - `gate.spot("<symbol>")`
 - `gate.usdt_perps("<symbol>")`
-- `hyperliquid.spot("<symbol>")`
-- `hyperliquid.perps("<symbol>")`
 
 Interval support is template-specific:
 
@@ -60,8 +58,6 @@ Interval support is template-specific:
 - `bybit.usdt_perps` accepts `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `12h`, `1d`, `1w`, and `1M`
 - `gate.spot` accepts `1s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, `1d`, and `1M`
 - `gate.usdt_perps` accepts `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `8h`, and `1d`
-- `hyperliquid.spot` rejects `1s` and `6h`
-- `hyperliquid.perps` rejects `1s` and `6h`
 
 Operational fetch constraints are also template-specific:
 
@@ -70,10 +66,8 @@ Operational fetch constraints are also template-specific:
 - Bybit REST klines arrive reverse-sorted and PalmScript reorders them before runtime alignment checks
 - Gate candlestick APIs use Unix seconds and PalmScript normalizes them into Unix milliseconds UTC
 - Gate spot and futures pagination is windowed by time because the public API does not allow `limit` with `from` / `to`
-- Hyperliquid REST only exposes the most recent `5000` candles per feed
-- market mode rejects any Hyperliquid feed request that exceeds that retention window
-- Binance, Bybit, and Gate feeds are paginated internally and do not have the same whole-window retention cap
-- base URLs can be overridden with `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`, `PALMSCRIPT_GATE_BASE_URL`, and `PALMSCRIPT_HYPERLIQUID_INFO_URL`
+- Binance, Bybit, and Gate feeds are paginated internally
+- base URLs can be overridden with `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`, and `PALMSCRIPT_GATE_BASE_URL`
 
 ## Source Field Set
 
@@ -113,7 +107,7 @@ In market mode:
 
 PalmScript must not expose a higher-interval candle before that candle is fully closed.
 
-This applies to source-aware qualified intervals such as `hl.1h.close`.
+This applies to source-aware qualified intervals such as `bb.1h.close`.
 
 ## Runtime Alignment Rules
 

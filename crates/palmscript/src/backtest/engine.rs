@@ -1857,7 +1857,6 @@ fn risk_tiers(snapshot: &VenueRiskSnapshot) -> &[crate::backtest::RiskTier] {
         VenueRiskSnapshot::BinanceUsdm(snapshot) => &snapshot.brackets,
         VenueRiskSnapshot::BybitUsdtPerps(snapshot) => &snapshot.tiers,
         VenueRiskSnapshot::GateUsdtPerps(snapshot) => &snapshot.tiers,
-        VenueRiskSnapshot::HyperliquidPerps(snapshot) => &snapshot.tiers,
     }
 }
 

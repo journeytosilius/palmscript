@@ -8,7 +8,7 @@ PalmScript expoe series de mercado apenas por formas qualificadas por fonte:
 
 ```palmscript
 bn.close
-hl.1h.close
+bb.1h.close
 ```
 
 Regras:
@@ -51,7 +51,7 @@ Toda serie avanca no seu proprio clock de atualizacao.
 Exemplos:
 
 - `bn.close[1]` segue o intervalo base
-- `hl.1h.close[1]` segue a source `hl` no clock de uma hora
+- `bb.1h.close[1]` segue a source `bb` no clock de uma hora
 
 Series derivadas herdam os clocks de atualizacao de suas entradas. Uma serie
 mais lenta nao e recontada em clocks mais rapidos quando nao avancou.
