@@ -40,7 +40,7 @@ const DEFAULT_MAX_PARALLEL_BACKTESTS: usize = 4;
 const DEFAULT_MAX_LSP_SESSIONS: usize = 32;
 const SESSION_HEADER: &str = "x-palmscript-session";
 const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
-const BTCUSDT_BINANCE_SPOT_LISTING_FROM_MS: i64 = 1_502_928_000_000;
+const BTCUSDT_BINANCE_BYBIT_SHARED_FROM_MS: i64 = 1_640_995_200_000;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
@@ -60,8 +60,8 @@ impl PublicDatasetId {
 pub struct PublicDataset {
     pub dataset_id: PublicDatasetId,
     pub display_name: String,
-    pub source_template: SourceTemplate,
-    pub symbol: String,
+    pub sources: Vec<PublicDatasetSource>,
+    pub execution_source_index: usize,
     pub base_interval: Interval,
     pub supported_intervals: Vec<Interval>,
     pub from: i64,
@@ -69,6 +69,12 @@ pub struct PublicDataset {
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PublicDatasetSource {
+    pub source_template: SourceTemplate,
+    pub symbol: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -271,12 +277,21 @@ pub fn public_dataset_catalog() -> PublicDatasetCatalog {
     PublicDatasetCatalog {
         datasets: vec![PublicDataset {
             dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
-            display_name: "BTCUSDT Binance Spot 4h".to_string(),
-            source_template: SourceTemplate::BinanceSpot,
-            symbol: "BTCUSDT".to_string(),
+            display_name: "BTCUSDT Binance + Bybit Spot 4h".to_string(),
+            sources: vec![
+                PublicDatasetSource {
+                    source_template: SourceTemplate::BinanceSpot,
+                    symbol: "BTCUSDT".to_string(),
+                },
+                PublicDatasetSource {
+                    source_template: SourceTemplate::BybitSpot,
+                    symbol: "BTCUSDT".to_string(),
+                },
+            ],
+            execution_source_index: 0,
             base_interval: Interval::Hour4,
-            supported_intervals: vec![Interval::Hour4, Interval::Day1, Interval::Week1],
-            from: BTCUSDT_BINANCE_SPOT_LISTING_FROM_MS,
+            supported_intervals: vec![Interval::Hour4, Interval::Day1],
+            from: BTCUSDT_BINANCE_BYBIT_SHARED_FROM_MS,
             to: next_utc_day_start_ms(),
             initial_capital: 10_000.0,
             fee_bps: 7.5,
@@ -298,27 +313,29 @@ pub fn public_examples() -> Vec<PublicExample> {
         PublicExample {
             id: "starter".to_string(),
             name: "Starter".to_string(),
-            description: "Minimal single-source PalmScript strategy.".to_string(),
+            description: "Cross-exchange starter strategy using Binance and Bybit.".to_string(),
             source: r#"interval 4h
-source spot = binance.spot("BTCUSDT")
-use spot 1d
-use spot 1w
+source bn = binance.spot("BTCUSDT")
+source bb = bybit.spot("BTCUSDT")
+use bn 1d
+use bb 1d
 
-let daily_fast = ema(spot.1d.close, 30)
-let daily_slow = ema(spot.1d.close, 80)
-let weekly_fast = ema(spot.1w.close, 5)
-let weekly_slow = ema(spot.1w.close, 13)
-let fast = ema(spot.close, 13)
-let slow = ema(spot.close, 89)
+let bn_fast = ema(bn.close, 13)
+let bn_slow = ema(bn.close, 55)
+let bb_fast = ema(bb.close, 13)
+let bb_slow = ema(bb.close, 55)
+let bn_daily = ema(bn.1d.close, 20)
+let bb_daily = ema(bb.1d.close, 20)
+let spread = (bn.close - bb.close) / bb.close
 
-let trend_long = above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow)
-let breakout_long = above(spot.close, highest(spot.high, 20)[1])
+let trend_confirmed = above(bn_fast, bn_slow) and above(bb_fast, bb_slow)
+let daily_confirmed = above(bn.1d.close, bn_daily) and above(bb.1d.close, bb_daily)
 
-entry long = trend_long and breakout_long and above(fast, slow)
-exit long = below(fast, slow)
+entry long = trend_confirmed and daily_confirmed and spread < -0.002
+exit long = below(bn_fast, bn_slow) or spread > 0.002
 
-plot(fast - slow)
-export trend_long_state = trend_long
+plot(spread * 10000)
+export spread_bps = spread * 10000
 "#
             .to_string(),
         },
@@ -538,7 +555,10 @@ async fn run_backtest(
                 runtime,
                 VmLimits::default(),
                 BacktestConfig {
-                    execution_source_alias: compiled.program.declared_sources[0].alias.clone(),
+                    execution_source_alias: compiled.program.declared_sources
+                        [cached.dataset.execution_source_index]
+                        .alias
+                        .clone(),
                     initial_capital: dataset.initial_capital,
                     fee_bps: dataset.fee_bps,
                     slippage_bps: dataset.slippage_bps,
@@ -744,13 +764,16 @@ fn validate_dataset_compatibility(
     compiled: &CompiledProgram,
     dataset: &PublicDataset,
 ) -> Result<(), ApiError> {
-    if compiled.program.declared_sources.len() != 1 {
+    if compiled.program.declared_sources.len() != dataset.sources.len() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "public IDE backtests support exactly one declared source",
+            format!(
+                "dataset `{}` requires exactly these sources in order: {}",
+                dataset.dataset_id.as_str(),
+                dataset_sources_label(dataset)
+            ),
         ));
     }
-    let source = &compiled.program.declared_sources[0];
     if compiled.program.base_interval != Some(dataset.base_interval) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -761,23 +784,51 @@ fn validate_dataset_compatibility(
             ),
         ));
     }
-    if source.template != dataset.source_template || source.symbol != dataset.symbol {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "dataset `{}` only supports {}(\"{}\")",
-                dataset.dataset_id.as_str(),
-                dataset.source_template.as_str(),
-                dataset.symbol
-            ),
-        ));
-    }
-    let allowed: BTreeSet<Interval> = dataset.supported_intervals.iter().copied().collect();
-    for interval_ref in &compiled.program.source_intervals {
-        if interval_ref.source_id != source.id {
+
+    for (source, expected) in compiled
+        .program
+        .declared_sources
+        .iter()
+        .zip(&dataset.sources)
+    {
+        if source.template != expected.source_template || source.symbol != expected.symbol {
             return Err(ApiError::new(
                 StatusCode::BAD_REQUEST,
-                "public IDE backtests do not support multiple sources",
+                format!(
+                    "dataset `{}` only supports these sources in order: {}",
+                    dataset.dataset_id.as_str(),
+                    dataset_sources_label(dataset)
+                ),
+            ));
+        }
+    }
+
+    let allowed: BTreeSet<Interval> = dataset.supported_intervals.iter().copied().collect();
+    for interval_ref in &compiled.program.source_intervals {
+        let Some(source) = compiled
+            .program
+            .declared_sources
+            .iter()
+            .find(|source| source.id == interval_ref.source_id)
+        else {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "dataset `{}` received an unknown source reference",
+                    dataset.dataset_id.as_str()
+                ),
+            ));
+        };
+        if !dataset.sources.iter().any(|expected| {
+            expected.source_template == source.template && expected.symbol == source.symbol
+        }) {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "dataset `{}` only supports these sources in order: {}",
+                    dataset.dataset_id.as_str(),
+                    dataset_sources_label(dataset)
+                ),
             ));
         }
         if !allowed.contains(&interval_ref.interval) {
@@ -795,21 +846,32 @@ fn validate_dataset_compatibility(
 }
 
 fn dataset_support_script(dataset: &PublicDataset) -> String {
-    let alias = "spot";
-    let mut source = format!(
-        "interval {}\nsource {alias} = {}(\"{}\")\n",
-        dataset.base_interval.as_str(),
-        dataset.source_template.as_str(),
-        dataset.symbol
-    );
-    for interval in &dataset.supported_intervals {
-        if *interval == dataset.base_interval {
-            continue;
+    let mut source = format!("interval {}\n", dataset.base_interval.as_str());
+    for (index, dataset_source) in dataset.sources.iter().enumerate() {
+        let alias = format!("src{index}");
+        source.push_str(&format!(
+            "source {alias} = {}(\"{}\")\n",
+            dataset_source.source_template.as_str(),
+            dataset_source.symbol
+        ));
+        for interval in &dataset.supported_intervals {
+            if *interval == dataset.base_interval {
+                continue;
+            }
+            source.push_str(&format!("use {alias} {}\n", interval.as_str()));
         }
-        source.push_str(&format!("use {alias} {}\n", interval.as_str()));
     }
-    source.push_str("export public_dataset_close = spot.close\n");
+    source.push_str("export public_dataset_close = src0.close\n");
     source
+}
+
+fn dataset_sources_label(dataset: &PublicDataset) -> String {
+    dataset
+        .sources
+        .iter()
+        .map(|source| format!("{}(\"{}\")", source.source_template.as_str(), source.symbol))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
@@ -823,10 +885,19 @@ mod tests {
         let dataset = PublicDataset {
             dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
             display_name: "Fixture".to_string(),
-            source_template: SourceTemplate::BinanceSpot,
-            symbol: "BTCUSDT".to_string(),
+            sources: vec![
+                PublicDatasetSource {
+                    source_template: SourceTemplate::BinanceSpot,
+                    symbol: "BTCUSDT".to_string(),
+                },
+                PublicDatasetSource {
+                    source_template: SourceTemplate::BybitSpot,
+                    symbol: "BTCUSDT".to_string(),
+                },
+            ],
+            execution_source_index: 0,
             base_interval: Interval::Hour4,
-            supported_intervals: vec![Interval::Hour4, Interval::Day1, Interval::Week1],
+            supported_intervals: vec![Interval::Hour4, Interval::Day1],
             from: 0,
             to: 1_000,
             initial_capital: 10_000.0,
@@ -835,18 +906,32 @@ mod tests {
         };
         let runtime = SourceRuntimeConfig {
             base_interval: Interval::Hour4,
-            feeds: vec![palmscript::runtime::SourceFeed {
-                source_id: 0,
-                interval: Interval::Hour4,
-                bars: vec![palmscript::runtime::Bar {
-                    open: 10.0,
-                    high: 11.0,
-                    low: 9.0,
-                    close: 10.5,
-                    volume: 1.0,
-                    time: 0.0,
-                }],
-            }],
+            feeds: vec![
+                palmscript::runtime::SourceFeed {
+                    source_id: 0,
+                    interval: Interval::Hour4,
+                    bars: vec![palmscript::runtime::Bar {
+                        open: 10.0,
+                        high: 11.0,
+                        low: 9.0,
+                        close: 10.5,
+                        volume: 1.0,
+                        time: 0.0,
+                    }],
+                },
+                palmscript::runtime::SourceFeed {
+                    source_id: 1,
+                    interval: Interval::Hour4,
+                    bars: vec![palmscript::runtime::Bar {
+                        open: 9.8,
+                        high: 10.7,
+                        low: 9.3,
+                        close: 10.2,
+                        volume: 1.0,
+                        time: 0.0,
+                    }],
+                },
+            ],
         };
         PublicIdeState::new(
             PublicIdeServerConfig::default(),
@@ -856,12 +941,14 @@ mod tests {
     }
 
     #[test]
-    fn validates_single_matching_source() {
+    fn validates_matching_multi_source_dataset() {
         let compiled = compile(
             r#"interval 4h
-source spot = binance.spot("BTCUSDT")
-use spot 1d
-export x = spot.close
+source bn = binance.spot("BTCUSDT")
+source bb = bybit.spot("BTCUSDT")
+use bn 1d
+use bb 1d
+export x = bn.close - bb.close
 "#,
         )
         .expect("script should compile");
@@ -874,12 +961,12 @@ export x = spot.close
     }
 
     #[test]
-    fn rejects_multiple_sources() {
+    fn rejects_mismatched_sources() {
         let compiled = compile(
             r#"interval 4h
-source spot = binance.spot("BTCUSDT")
-source alt = binance.spot("ETHUSDT")
-export x = spot.close
+source bn = binance.spot("BTCUSDT")
+source gt = gate.spot("BTC_USDT")
+export x = bn.close - gt.close
 "#,
         )
         .expect("script should compile");
@@ -898,9 +985,23 @@ export x = spot.close
             .into_iter()
             .find(|dataset| dataset.dataset_id == PublicDatasetId::BtcusdtBinanceSpot4h4y)
             .expect("public dataset");
-        assert_eq!(dataset.from, BTCUSDT_BINANCE_SPOT_LISTING_FROM_MS);
+        assert_eq!(dataset.from, BTCUSDT_BINANCE_BYBIT_SHARED_FROM_MS);
         assert!(dataset.to > dataset.from);
         assert_eq!(dataset.to % DAY_MS, 0);
+    }
+
+    #[test]
+    fn public_examples_starter_is_multi_source() {
+        let starter = public_examples()
+            .into_iter()
+            .find(|example| example.id == "starter")
+            .expect("starter example");
+        assert!(starter
+            .source
+            .contains("source bn = binance.spot(\"BTCUSDT\")"));
+        assert!(starter
+            .source
+            .contains("source bb = bybit.spot(\"BTCUSDT\")"));
     }
 
     #[tokio::test]
