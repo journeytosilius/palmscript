@@ -15,6 +15,14 @@ Flujo tipico:
 4. validarlo en el IDE del navegador
 5. ejecutarlo sobre datos historicos en la app
 
+## Optimizaciones Largas
+
+Para trabajos largos de tuning por CLI:
+
+- usa `palmscript run optimize ...` cuando quieras el resultado en primer plano
+- usa `palmscript runs submit optimize ...` cuando la busqueda deba seguir en estado local durable y guardar cada candidato completado
+- vuelve luego con `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>` o `palmscript runs best <run-id> --preset-out best.json`
+
 ## Que Leer Despues
 
 - Primer flujo ejecutable: [Inicio Rapido](quickstart.md)

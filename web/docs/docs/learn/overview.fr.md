@@ -15,6 +15,14 @@ Flux typique :
 4. le valider dans l'IDE navigateur
 5. l'executer sur des donnees historiques dans l'application
 
+## Optimisations Longues
+
+Pour les longues recherches de tuning en CLI :
+
+- utilisez `palmscript run optimize ...` quand vous voulez le resultat au premier plan
+- utilisez `palmscript runs submit optimize ...` quand la recherche doit continuer dans un etat local durable et conserver chaque candidat termine
+- revenez plus tard avec `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>` ou `palmscript runs best <run-id> --preset-out best.json`
+
 ## Que Lire Ensuite
 
 - Premier flux executable : [Demarrage Rapide](quickstart.md)

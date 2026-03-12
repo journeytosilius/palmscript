@@ -417,9 +417,11 @@ pub struct BacktestResult {
 }
 
 pub use optimize::{
-    run_optimize_with_source, OptimizeCandidateSummary, OptimizeConfig, OptimizeError,
-    OptimizeEvaluationSummary, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
-    OptimizeResult, OptimizeRunner,
+    run_optimize_with_source, run_optimize_with_source_resume, OptimizeCandidateSummary,
+    OptimizeConfig, OptimizeError, OptimizeEvaluationSummary, OptimizeObjective,
+    OptimizeParamSpace, OptimizePreset, OptimizeProgressEvent, OptimizeProgressListener,
+    OptimizeProgressState, OptimizeResult, OptimizeResumeState, OptimizeRunner,
+    OptimizeScheduledBatch, OptimizeScheduledTrial,
 };
 pub use walk_forward::{
     run_walk_forward_with_sources, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,

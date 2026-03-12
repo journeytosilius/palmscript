@@ -15,6 +15,14 @@ PalmScript の公開ドキュメントは次の二つを中心に構成されて
 4. ブラウザ IDE で検証する
 5. アプリ内で履歴データに対して実行する
 
+## 長時間の最適化
+
+長い CLI チューニングジョブでは:
+
+- すぐに前面で結果が欲しいなら `palmscript run optimize ...` を使う
+- 探索をローカルの永続状態で続け、完了した各 candidate を保存したいなら `palmscript runs submit optimize ...` を使う
+- 後で `palmscript runs status <run-id>`、`palmscript runs show <run-id>`、`palmscript runs tail <run-id>`、`palmscript runs best <run-id> --preset-out best.json` で戻って確認する
+
 ## 次に読むもの
 
 - 最初の実行フロー: [クイックスタート](quickstart.md)

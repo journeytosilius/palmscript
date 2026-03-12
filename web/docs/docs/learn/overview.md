@@ -15,6 +15,14 @@ Typical workflow:
 4. validate it in the browser IDE
 5. run it over historical data in the app
 
+## Long Optimize Runs
+
+For long CLI tuning jobs:
+
+- use `palmscript run optimize ...` when you want a foreground result immediately
+- use `palmscript runs submit optimize ...` when the search should continue in local durable state and keep every completed candidate
+- come back later with `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>`, or `palmscript runs best <run-id> --preset-out best.json`
+
 ## What To Read Next
 
 - First runnable flow: [Quickstart](quickstart.md)

@@ -16,6 +16,10 @@ pub enum Command {
         #[command(subcommand)]
         mode: Box<RunCommand>,
     },
+    Runs {
+        #[command(subcommand)]
+        mode: Box<RunsCommand>,
+    },
     Check(CheckArgs),
     DumpBytecode(DumpBytecodeArgs),
 }
@@ -27,6 +31,50 @@ pub enum RunCommand {
     WalkForward(WalkForwardRunArgs),
     WalkForwardSweep(WalkForwardSweepRunArgs),
     Optimize(OptimizeRunArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RunsCommand {
+    Serve(RunsServeArgs),
+    Submit {
+        #[command(subcommand)]
+        job: Box<RunSubmitCommand>,
+    },
+    Status(RunLookupArgs),
+    Show(RunLookupArgs),
+    Tail(RunLookupArgs),
+    List(RunsListArgs),
+    Cancel(RunLookupArgs),
+    Resume(RunLookupArgs),
+    Best(RunsBestArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RunSubmitCommand {
+    Optimize(OptimizeRunArgs),
+}
+
+#[derive(Debug, clap::Args)]
+pub struct RunsServeArgs {
+    #[arg(long, hide = true, default_value_t = false)]
+    pub once: bool,
+    #[arg(long, hide = true, default_value_t = 500)]
+    pub poll_ms: u64,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct RunLookupArgs {
+    pub run_id: String,
+}
+
+#[derive(Debug, clap::Args, Default)]
+pub struct RunsListArgs {}
+
+#[derive(Debug, clap::Args)]
+pub struct RunsBestArgs {
+    pub run_id: String,
+    #[arg(long)]
+    pub preset_out: Option<PathBuf>,
 }
 
 #[derive(Debug, clap::Args)]

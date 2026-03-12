@@ -64,6 +64,8 @@ Common commands:
 ./palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
 ./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000
 ./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63
+./palmscript runs submit optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63 --param int:fast_len=8:34 --param float:target_atr_mult=1.5:4.0 --trials 50
+./palmscript runs serve
 ./palmscript run backtest crates/palmscript/examples/strategies/multi_strategy_backtest.ps --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
 ./palmscript run backtest crates/palmscript/examples/strategies/venue_orders_backtest.ps --from 1704067200000 --to 1704931200000 --format text
 ```

@@ -2,6 +2,7 @@ mod args;
 mod commands;
 mod diagnostics;
 mod format;
+mod runs;
 
 use clap::Parser;
 

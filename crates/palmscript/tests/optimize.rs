@@ -3,8 +3,10 @@ mod support;
 use std::collections::BTreeMap;
 
 use palmscript::{
-    compile_with_input_overrides, run_optimize_with_source, BacktestConfig, Interval,
-    OptimizeConfig, OptimizeError, OptimizeObjective, OptimizeParamSpace, OptimizeRunner, VmLimits,
+    compile_with_input_overrides, run_optimize_with_source, run_optimize_with_source_resume,
+    BacktestConfig, Interval, OptimizeCandidateSummary, OptimizeConfig, OptimizeError,
+    OptimizeObjective, OptimizeParamSpace, OptimizeProgressEvent, OptimizeProgressListener,
+    OptimizeProgressState, OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, VmLimits,
     WalkForwardConfig,
 };
 
@@ -40,6 +42,75 @@ fn optimize_backtest_config() -> BacktestConfig {
         slippage_bps: 0.0,
         perp: None,
         perp_context: None,
+    }
+}
+
+fn backtest_optimize_config() -> OptimizeConfig {
+    OptimizeConfig {
+        runner: OptimizeRunner::Backtest,
+        backtest: optimize_backtest_config(),
+        walk_forward: None,
+        params: vec![OptimizeParamSpace::Choice {
+            name: "threshold".to_string(),
+            values: vec![0.0, 100.0],
+        }],
+        objective: OptimizeObjective::EndingEquity,
+        trials: 8,
+        startup_trials: 8,
+        seed: 11,
+        workers: 2,
+        top_n: 2,
+        base_input_overrides: BTreeMap::new(),
+    }
+}
+
+#[derive(Default)]
+struct PendingBatchCapture {
+    pending_batch: Option<OptimizeScheduledBatch>,
+}
+
+impl OptimizeProgressListener for PendingBatchCapture {
+    fn on_event(
+        &mut self,
+        event: OptimizeProgressEvent,
+        _state: &OptimizeProgressState,
+    ) -> Result<(), String> {
+        if let OptimizeProgressEvent::BatchScheduled { batch } = event {
+            self.pending_batch = Some(batch);
+            return Err("stop after scheduling the first batch".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct CancelAfterCheckpoint {
+    completed_candidates: Vec<OptimizeCandidateSummary>,
+    checkpoint_count: usize,
+    should_cancel: bool,
+}
+
+impl OptimizeProgressListener for CancelAfterCheckpoint {
+    fn on_event(
+        &mut self,
+        event: OptimizeProgressEvent,
+        _state: &OptimizeProgressState,
+    ) -> Result<(), String> {
+        match event {
+            OptimizeProgressEvent::CandidateCompleted { candidate, .. } => {
+                self.completed_candidates.push(candidate);
+            }
+            OptimizeProgressEvent::CheckpointWritten => {
+                self.checkpoint_count += 1;
+                self.should_cancel = true;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn should_cancel(&mut self) -> Result<bool, String> {
+        Ok(self.should_cancel)
     }
 }
 
@@ -211,4 +282,87 @@ fn optimize_rejects_missing_walk_forward_config() {
     )
     .expect_err("missing walk-forward config should fail");
     assert!(matches!(err, OptimizeError::MissingParams));
+}
+
+#[test]
+fn optimize_resume_from_pending_batch_matches_fresh_run() {
+    let config = backtest_optimize_config();
+    let baseline = run_optimize_with_source(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        config.clone(),
+    )
+    .expect("fresh optimize should succeed");
+
+    let mut capture = PendingBatchCapture::default();
+    let err = run_optimize_with_source_resume(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        config.clone(),
+        OptimizeResumeState::default(),
+        Some(&mut capture),
+    )
+    .expect_err("captured run should stop after scheduling the first batch");
+    assert!(matches!(err, OptimizeError::ProgressCallback { .. }));
+
+    let resumed = run_optimize_with_source_resume(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        config,
+        OptimizeResumeState {
+            completed_candidates: Vec::new(),
+            pending_batch: capture.pending_batch.clone(),
+        },
+        None,
+    )
+    .expect("resume from pending batch should succeed");
+
+    assert!(capture.pending_batch.is_some());
+    assert_eq!(resumed.best_candidate, baseline.best_candidate);
+    assert_eq!(resumed.top_candidates, baseline.top_candidates);
+}
+
+#[test]
+fn optimize_resume_from_completed_candidates_matches_fresh_run() {
+    let config = backtest_optimize_config();
+    let baseline = run_optimize_with_source(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        config.clone(),
+    )
+    .expect("fresh optimize should succeed");
+
+    let mut capture = CancelAfterCheckpoint::default();
+    let err = run_optimize_with_source_resume(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        config.clone(),
+        OptimizeResumeState::default(),
+        Some(&mut capture),
+    )
+    .expect_err("captured run should cancel after the first checkpoint");
+    assert!(matches!(err, OptimizeError::Canceled));
+    assert!(!capture.completed_candidates.is_empty());
+    assert_eq!(capture.checkpoint_count, 1);
+
+    let resumed = run_optimize_with_source_resume(
+        optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        config,
+        OptimizeResumeState {
+            completed_candidates: capture.completed_candidates.clone(),
+            pending_batch: None,
+        },
+        None,
+    )
+    .expect("resume from completed candidates should succeed");
+
+    assert_eq!(resumed.best_candidate, baseline.best_candidate);
+    assert_eq!(resumed.top_candidates, baseline.top_candidates);
 }

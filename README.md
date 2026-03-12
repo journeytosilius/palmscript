@@ -47,6 +47,8 @@ target/debug/palmscript run market crates/palmscript/examples/strategies/bybit_s
 target/debug/palmscript run market crates/palmscript/examples/strategies/gate_spot.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript run backtest crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
 target/debug/palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
+target/debug/palmscript runs submit optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63 --param int:fast_len=8:34 --param float:target_atr_mult=1.5:4.0 --trials 50
+target/debug/palmscript runs serve
 target/debug/palmscript dump-bytecode crates/palmscript/examples/strategies/sma_cross.ps
 mkdocs build --strict -f web/docs/mkdocs.yml
 sh infra/scripts/build_docs_site.sh

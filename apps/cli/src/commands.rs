@@ -23,10 +23,12 @@ use crate::format::{
     render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
     render_walk_forward_sweep_text, render_walk_forward_text,
 };
+use crate::runs;
 
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Run { mode } => run_mode(*mode),
+        Command::Runs { mode } => runs::run(*mode),
         Command::Check(args) => check_script(args),
         Command::DumpBytecode(args) => dump_bytecode(args),
     }
@@ -334,7 +336,7 @@ fn compile_source(source: &str, path: &Path) -> Result<CompiledProgram, String> 
     compile(source).map_err(|err| format_compile_error(path, &err))
 }
 
-fn compile_with_preset_overrides(
+pub(crate) fn compile_with_preset_overrides(
     source: &str,
     path: &Path,
     preset: Option<&OptimizePreset>,
@@ -345,11 +347,11 @@ fn compile_with_preset_overrides(
     compile_with_input_overrides(source, &overrides).map_err(|err| format_compile_error(path, &err))
 }
 
-fn load_source(path: &Path) -> Result<String, String> {
+pub(crate) fn load_source(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|err| format!("failed to read `{}`: {err}", path.display()))
 }
 
-fn load_preset(
+pub(crate) fn load_preset(
     source: &str,
     script_path: &Path,
     preset_path: Option<&Path>,
@@ -372,7 +374,7 @@ fn load_preset(
     Ok(Some(preset))
 }
 
-fn resolve_execution_source_alias(
+pub(crate) fn resolve_execution_source_alias(
     compiled: &CompiledProgram,
     provided: Option<String>,
 ) -> Result<String, String> {
@@ -548,7 +550,7 @@ fn parse_input_sweep_definitions(raw_sets: &[String]) -> Result<Vec<InputSweepDe
     Ok(inputs)
 }
 
-fn resolve_optimize_params(
+pub(crate) fn resolve_optimize_params(
     args: &OptimizeRunArgs,
     preset: Option<&OptimizePreset>,
 ) -> Result<Vec<OptimizeParamSpace>, String> {
@@ -566,7 +568,7 @@ fn resolve_optimize_params(
         })
 }
 
-fn parse_optimize_param_space(raw: &str) -> Result<OptimizeParamSpace, String> {
+pub(crate) fn parse_optimize_param_space(raw: &str) -> Result<OptimizeParamSpace, String> {
     let (kind, rest) = raw
         .split_once(':')
         .ok_or_else(|| format!("invalid `--param {raw}`: expected kind:name=..."))?;
@@ -648,14 +650,14 @@ fn map_sweep_objective(objective: WalkForwardSweepObjectiveArg) -> WalkForwardSw
     }
 }
 
-fn map_optimize_runner(runner: OptimizeRunnerArg) -> OptimizeRunner {
+pub(crate) fn map_optimize_runner(runner: OptimizeRunnerArg) -> OptimizeRunner {
     match runner {
         OptimizeRunnerArg::WalkForward => OptimizeRunner::WalkForward,
         OptimizeRunnerArg::Backtest => OptimizeRunner::Backtest,
     }
 }
 
-fn map_optimize_objective(objective: OptimizeObjectiveArg) -> OptimizeObjective {
+pub(crate) fn map_optimize_objective(objective: OptimizeObjectiveArg) -> OptimizeObjective {
     match objective {
         OptimizeObjectiveArg::RobustReturn => OptimizeObjective::RobustReturn,
         OptimizeObjectiveArg::TotalReturn => OptimizeObjective::TotalReturn,
@@ -679,17 +681,17 @@ fn format_optimize_error(error: OptimizeError) -> String {
     }
 }
 
-fn default_parallel_workers() -> usize {
+pub(crate) fn default_parallel_workers() -> usize {
     thread::available_parallelism()
         .map(|parallelism| parallelism.get().min(4))
         .unwrap_or(1)
 }
 
-fn default_startup_trials(trials: usize) -> usize {
+pub(crate) fn default_startup_trials(trials: usize) -> usize {
     16.min((trials / 3).max(8)).min(trials)
 }
 
-fn write_optimize_preset(
+pub(crate) fn write_optimize_preset(
     path: &Path,
     script_path: &Path,
     source: &str,
@@ -713,21 +715,21 @@ fn write_optimize_preset(
         .map_err(|err| format!("failed to write preset `{}`: {err}", path.display()))
 }
 
-fn hash_source(source: &str) -> String {
+pub(crate) fn hash_source(source: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(source.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
 #[derive(Clone, Copy)]
-struct PerpCliOptions {
-    from: i64,
-    to: i64,
-    leverage: Option<f64>,
-    margin_mode: Option<BacktestMarginMode>,
+pub(crate) struct PerpCliOptions {
+    pub(crate) from: i64,
+    pub(crate) to: i64,
+    pub(crate) leverage: Option<f64>,
+    pub(crate) margin_mode: Option<BacktestMarginMode>,
 }
 
-fn resolve_perp_context(
+pub(crate) fn resolve_perp_context(
     template: SourceTemplate,
     source: &palmscript::DeclaredMarketSource,
     base_interval: Option<palmscript::Interval>,

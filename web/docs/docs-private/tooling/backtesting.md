@@ -114,6 +114,34 @@ V1 optimizer notes:
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 
+Run the same optimize job through the durable local run registry:
+
+```bash
+palmscript runs submit optimize strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --param int:fast_len=8:34 \
+  --param float:target_atr_mult=1.5:4.0 \
+  --objective robust-return \
+  --trials 50 \
+  --top 5
+
+palmscript runs serve
+palmscript runs status <run-id>
+palmscript runs tail <run-id>
+palmscript runs best <run-id> --preset-out /tmp/adaptive-best.json
+```
+
+Durable optimize notes:
+
+- `runs submit optimize` reuses the same optimizer config model as `run optimize`
+- every completed candidate batch is persisted into local SQLite state plus run artifacts
+- `runs serve` owns execution and can resume interrupted queued or running jobs
+- `runs best` can export the best known preset from the persisted run state without rerunning the search
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:

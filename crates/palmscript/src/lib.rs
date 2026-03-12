@@ -29,21 +29,23 @@ pub mod types;
 pub mod vm;
 
 pub use backtest::{
-    run_backtest_with_sources, run_optimize_with_source, run_walk_forward_sweep_with_source,
-    run_walk_forward_with_sources, BacktestCaptureSummary, BacktestConfig,
-    BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
-    BoolExportDiagnosticSummary, EquityPoint, ExportDiagnosticSummary, ExportValueType,
-    FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric, InputSweepDefinition,
-    NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind,
+    run_backtest_with_sources, run_optimize_with_source, run_optimize_with_source_resume,
+    run_walk_forward_sweep_with_source, run_walk_forward_with_sources, BacktestCaptureSummary,
+    BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
+    BacktestSummary, BoolExportDiagnosticSummary, EquityPoint, ExportDiagnosticSummary,
+    ExportValueType, FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric,
+    InputSweepDefinition, NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind,
     OptimizeCandidateSummary, OptimizeConfig, OptimizeError, OptimizeEvaluationSummary,
-    OptimizeObjective, OptimizeParamSpace, OptimizePreset, OptimizeResult, OptimizeRunner,
-    OrderDiagnostic, OrderEndReason, OrderRecord, OrderStatus, PerpBacktestConfig,
-    PerpBacktestContext, PerpBacktestMetadata, PerpMarginMode, PositionSnapshot,
-    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification, WalkForwardConfig,
-    WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
-    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary,
-    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
-    WalkForwardSweepResult, WalkForwardWindowSummary,
+    OptimizeObjective, OptimizeParamSpace, OptimizePreset, OptimizeProgressEvent,
+    OptimizeProgressListener, OptimizeProgressState, OptimizeResult, OptimizeResumeState,
+    OptimizeRunner, OptimizeScheduledBatch, OptimizeScheduledTrial, OrderDiagnostic,
+    OrderEndReason, OrderRecord, OrderStatus, PerpBacktestConfig, PerpBacktestContext,
+    PerpBacktestMetadata, PerpMarginMode, PositionSnapshot, SideDiagnosticSummary, Trade,
+    TradeDiagnostic, TradeExitClassification, WalkForwardConfig, WalkForwardEquityPoint,
+    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardSegmentResult,
+    WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary, WalkForwardSweepConfig,
+    WalkForwardSweepError, WalkForwardSweepObjective, WalkForwardSweepResult,
+    WalkForwardWindowSummary,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, compile_with_input_overrides, CompiledProgram};

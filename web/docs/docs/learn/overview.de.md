@@ -15,6 +15,14 @@ Typischer Ablauf:
 4. es in der Browser-IDE validieren
 5. es in der App uber historische Daten laufen lassen
 
+## Lange Optimierungen
+
+Fur lange CLI-Tuning-Laufe:
+
+- nutze `palmscript run optimize ...`, wenn du das Ergebnis im Vordergrund willst
+- nutze `palmscript runs submit optimize ...`, wenn die Suche im lokalen dauerhaften Zustand weiterlaufen und jeden abgeschlossenen Kandidaten speichern soll
+- komme spater mit `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>` oder `palmscript runs best <run-id> --preset-out best.json` zuruck
+
 ## Was Du Als Nachstes Lesen Solltest
 
 - Erster ausfuhrbarer Ablauf: [Schnellstart](quickstart.md)

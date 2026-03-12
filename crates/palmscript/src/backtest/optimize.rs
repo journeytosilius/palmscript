@@ -129,6 +129,61 @@ pub struct OptimizeCandidateSummary {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeScheduledTrial {
+    pub trial_id: usize,
+    pub input_overrides: BTreeMap<String, f64>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeScheduledBatch {
+    pub trials: Vec<OptimizeScheduledTrial>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeResumeState {
+    pub completed_candidates: Vec<OptimizeCandidateSummary>,
+    pub pending_batch: Option<OptimizeScheduledBatch>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeProgressState {
+    pub candidate_count: usize,
+    pub completed_trials: usize,
+    pub best_candidate: Option<OptimizeCandidateSummary>,
+    pub top_candidates: Vec<OptimizeCandidateSummary>,
+    pub pending_batch: Option<OptimizeScheduledBatch>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "event_kind", rename_all = "snake_case")]
+pub enum OptimizeProgressEvent {
+    BatchScheduled {
+        batch: OptimizeScheduledBatch,
+    },
+    CandidateCompleted {
+        candidate: OptimizeCandidateSummary,
+        entered_top_n: bool,
+    },
+    BestCandidateImproved {
+        candidate: OptimizeCandidateSummary,
+    },
+    CheckpointWritten,
+    Canceled,
+}
+
+pub trait OptimizeProgressListener {
+    fn on_event(
+        &mut self,
+        event: OptimizeProgressEvent,
+        state: &OptimizeProgressState,
+    ) -> Result<(), String>;
+
+    fn should_cancel(&mut self) -> Result<bool, String> {
+        Ok(false)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OptimizePreset {
     pub version: u32,
     pub script_path: Option<String>,
@@ -179,6 +234,12 @@ pub enum OptimizeError {
     EmptyChoice { name: String },
     #[error("optimizer worker thread panicked")]
     WorkerPanicked,
+    #[error("optimize progress callback failed: {message}")]
+    ProgressCallback { message: String },
+    #[error("optimize resume state is invalid: {message}")]
+    InvalidResumeState { message: String },
+    #[error("optimize run canceled")]
+    Canceled,
 }
 
 pub fn run_optimize_with_source(
@@ -187,14 +248,87 @@ pub fn run_optimize_with_source(
     vm_limits: VmLimits,
     config: OptimizeConfig,
 ) -> Result<OptimizeResult, OptimizeError> {
-    validate_optimize_config(&config)?;
-    let mut rng = StdRng::seed_from_u64(config.seed);
-    let mut all_candidates = Vec::with_capacity(config.trials);
-    let mut top_candidates = Vec::new();
-    let mut seen_candidate_keys = BTreeSet::new();
+    run_optimize_with_source_resume(
+        source,
+        runtime,
+        vm_limits,
+        config,
+        OptimizeResumeState::default(),
+        None,
+    )
+}
 
-    let mut next_trial_id = 0usize;
+pub fn run_optimize_with_source_resume(
+    source: &str,
+    runtime: SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: OptimizeConfig,
+    resume: OptimizeResumeState,
+    mut listener: Option<&mut dyn OptimizeProgressListener>,
+) -> Result<OptimizeResult, OptimizeError> {
+    validate_optimize_config(&config)?;
+    let mut all_candidates = sorted_candidates(resume.completed_candidates);
+    validate_resume_state(&config, &all_candidates, resume.pending_batch.as_ref())?;
+    let mut top_candidates = build_top_candidates(&all_candidates, config.top_n);
+    let mut pending_batch = resume.pending_batch.clone();
+    let replay = replay_generation_state(&config, &all_candidates, pending_batch.as_ref())?;
+    let mut next_trial_id = replay.generated_trial_count;
+    let mut seen_candidate_keys = replay.seen_candidate_keys;
+    let mut rng = replay.rng;
+
+    if let Some(batch) = pending_batch.clone() {
+        let state = progress_state(
+            &config,
+            &all_candidates,
+            &top_candidates,
+            Some(batch.clone()),
+        );
+        emit_progress_event(
+            &mut listener,
+            OptimizeProgressEvent::BatchScheduled {
+                batch: batch.clone(),
+            },
+            &state,
+        )?;
+        let completed_trial_ids = all_candidates
+            .iter()
+            .map(|candidate| candidate.trial_id)
+            .collect::<BTreeSet<_>>();
+        evaluate_scheduled_batch(
+            source,
+            &runtime,
+            vm_limits,
+            &config,
+            &batch,
+            &completed_trial_ids,
+            &mut |candidate| {
+                handle_candidate_completion(
+                    &config,
+                    &mut all_candidates,
+                    &mut top_candidates,
+                    &pending_batch,
+                    candidate,
+                    &mut listener,
+                )
+            },
+        )?;
+        all_candidates.sort_by_key(|candidate| candidate.trial_id);
+        emit_progress_event(
+            &mut listener,
+            OptimizeProgressEvent::CheckpointWritten,
+            &progress_state(&config, &all_candidates, &top_candidates, None),
+        )?;
+    }
+
     while next_trial_id < config.trials {
+        if should_cancel(&mut listener)? {
+            emit_progress_event(
+                &mut listener,
+                OptimizeProgressEvent::Canceled,
+                &progress_state(&config, &all_candidates, &top_candidates, None),
+            )?;
+            return Err(OptimizeError::Canceled);
+        }
         let batch_len = (config.trials - next_trial_id).min(TPE_UPDATE_BATCH_SIZE);
         let batch_inputs = suggest_batch(
             &config,
@@ -204,19 +338,48 @@ pub fn run_optimize_with_source(
             next_trial_id,
             batch_len,
         );
-        let mut batch_results = evaluate_batch(
+        let batch = scheduled_batch(next_trial_id, batch_inputs);
+        pending_batch = Some(batch.clone());
+        emit_progress_event(
+            &mut listener,
+            OptimizeProgressEvent::BatchScheduled {
+                batch: batch.clone(),
+            },
+            &progress_state(
+                &config,
+                &all_candidates,
+                &top_candidates,
+                pending_batch.clone(),
+            ),
+        )?;
+        let completed_trial_ids = all_candidates
+            .iter()
+            .map(|candidate| candidate.trial_id)
+            .collect::<BTreeSet<_>>();
+        evaluate_scheduled_batch(
             source,
             &runtime,
             vm_limits,
             &config,
-            next_trial_id,
-            batch_inputs,
+            &batch,
+            &completed_trial_ids,
+            &mut |candidate| {
+                handle_candidate_completion(
+                    &config,
+                    &mut all_candidates,
+                    &mut top_candidates,
+                    &pending_batch,
+                    candidate,
+                    &mut listener,
+                )
+            },
         )?;
-        batch_results.sort_by_key(|candidate| candidate.trial_id);
-        for candidate in batch_results {
-            insert_top_candidate(&mut top_candidates, candidate.clone(), config.top_n);
-            all_candidates.push(candidate);
-        }
+        all_candidates.sort_by_key(|candidate| candidate.trial_id);
+        emit_progress_event(
+            &mut listener,
+            OptimizeProgressEvent::CheckpointWritten,
+            &progress_state(&config, &all_candidates, &top_candidates, None),
+        )?;
         next_trial_id += batch_len;
     }
 
@@ -231,6 +394,294 @@ pub fn run_optimize_with_source(
         config,
         best_candidate,
         top_candidates,
+    })
+}
+
+struct ReplayGenerationState {
+    rng: StdRng,
+    seen_candidate_keys: BTreeSet<String>,
+    generated_trial_count: usize,
+}
+
+fn sorted_candidates(
+    mut candidates: Vec<OptimizeCandidateSummary>,
+) -> Vec<OptimizeCandidateSummary> {
+    candidates.sort_by_key(|candidate| candidate.trial_id);
+    candidates
+}
+
+fn build_top_candidates(
+    candidates: &[OptimizeCandidateSummary],
+    top_n: usize,
+) -> Vec<OptimizeCandidateSummary> {
+    let mut top = Vec::new();
+    for candidate in candidates {
+        insert_top_candidate(&mut top, candidate.clone(), top_n);
+    }
+    top.sort_by(compare_candidates);
+    top
+}
+
+fn scheduled_batch(
+    starting_trial_id: usize,
+    batch_inputs: Vec<BTreeMap<String, f64>>,
+) -> OptimizeScheduledBatch {
+    OptimizeScheduledBatch {
+        trials: batch_inputs
+            .into_iter()
+            .enumerate()
+            .map(|(offset, input_overrides)| OptimizeScheduledTrial {
+                trial_id: starting_trial_id + offset,
+                input_overrides,
+            })
+            .collect(),
+    }
+}
+
+fn progress_state(
+    config: &OptimizeConfig,
+    all_candidates: &[OptimizeCandidateSummary],
+    top_candidates: &[OptimizeCandidateSummary],
+    pending_batch: Option<OptimizeScheduledBatch>,
+) -> OptimizeProgressState {
+    OptimizeProgressState {
+        candidate_count: config.trials,
+        completed_trials: all_candidates.len(),
+        best_candidate: top_candidates.first().cloned(),
+        top_candidates: top_candidates.to_vec(),
+        pending_batch,
+    }
+}
+
+fn emit_progress_event(
+    listener: &mut Option<&mut dyn OptimizeProgressListener>,
+    event: OptimizeProgressEvent,
+    state: &OptimizeProgressState,
+) -> Result<(), OptimizeError> {
+    if let Some(listener) = listener.as_deref_mut() {
+        listener
+            .on_event(event, state)
+            .map_err(|message| OptimizeError::ProgressCallback { message })?;
+    }
+    Ok(())
+}
+
+fn should_cancel(
+    listener: &mut Option<&mut dyn OptimizeProgressListener>,
+) -> Result<bool, OptimizeError> {
+    match listener.as_deref_mut() {
+        Some(listener) => listener
+            .should_cancel()
+            .map_err(|message| OptimizeError::ProgressCallback { message }),
+        None => Ok(false),
+    }
+}
+
+fn handle_candidate_completion(
+    config: &OptimizeConfig,
+    all_candidates: &mut Vec<OptimizeCandidateSummary>,
+    top_candidates: &mut Vec<OptimizeCandidateSummary>,
+    pending_batch: &Option<OptimizeScheduledBatch>,
+    candidate: OptimizeCandidateSummary,
+    listener: &mut Option<&mut dyn OptimizeProgressListener>,
+) -> Result<(), OptimizeError> {
+    let prior_best = top_candidates.first().cloned();
+    insert_top_candidate(top_candidates, candidate.clone(), config.top_n);
+    let entered_top_n = top_candidates
+        .iter()
+        .any(|existing| existing.trial_id == candidate.trial_id);
+    all_candidates.push(candidate.clone());
+    all_candidates.sort_by_key(|existing| existing.trial_id);
+    let state = progress_state(
+        config,
+        all_candidates,
+        top_candidates,
+        pending_batch.clone(),
+    );
+    emit_progress_event(
+        listener,
+        OptimizeProgressEvent::CandidateCompleted {
+            candidate: candidate.clone(),
+            entered_top_n,
+        },
+        &state,
+    )?;
+    if top_candidates.first().map(|best| best.trial_id)
+        != prior_best.as_ref().map(|best| best.trial_id)
+    {
+        emit_progress_event(
+            listener,
+            OptimizeProgressEvent::BestCandidateImproved { candidate },
+            &state,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_resume_state(
+    config: &OptimizeConfig,
+    completed_candidates: &[OptimizeCandidateSummary],
+    pending_batch: Option<&OptimizeScheduledBatch>,
+) -> Result<(), OptimizeError> {
+    let mut seen_trial_ids = BTreeSet::new();
+    for candidate in completed_candidates {
+        if candidate.trial_id >= config.trials {
+            return Err(OptimizeError::InvalidResumeState {
+                message: format!(
+                    "completed candidate trial_id {} exceeds configured trials {}",
+                    candidate.trial_id, config.trials
+                ),
+            });
+        }
+        if !seen_trial_ids.insert(candidate.trial_id) {
+            return Err(OptimizeError::InvalidResumeState {
+                message: format!("duplicate completed trial_id {}", candidate.trial_id),
+            });
+        }
+    }
+
+    if let Some(batch) = pending_batch {
+        if batch.trials.is_empty() {
+            return Err(OptimizeError::InvalidResumeState {
+                message: "pending batch must include at least one trial".to_string(),
+            });
+        }
+        if batch.trials.len() > TPE_UPDATE_BATCH_SIZE {
+            return Err(OptimizeError::InvalidResumeState {
+                message: format!(
+                    "pending batch has {} trials but batch size is {}",
+                    batch.trials.len(),
+                    TPE_UPDATE_BATCH_SIZE
+                ),
+            });
+        }
+        let mut pending_ids = batch
+            .trials
+            .iter()
+            .map(|trial| trial.trial_id)
+            .collect::<Vec<_>>();
+        pending_ids.sort_unstable();
+        pending_ids.dedup();
+        if pending_ids.len() != batch.trials.len() {
+            return Err(OptimizeError::InvalidResumeState {
+                message: "pending batch contains duplicate trial ids".to_string(),
+            });
+        }
+        let batch_start = *pending_ids.first().expect("pending batch is non-empty");
+        let batch_end = pending_ids.last().expect("pending batch is non-empty") + 1;
+        if batch_end > config.trials {
+            return Err(OptimizeError::InvalidResumeState {
+                message: format!(
+                    "pending batch ends at trial {} but configured trials are {}",
+                    batch_end, config.trials
+                ),
+            });
+        }
+        for expected in batch_start..batch_end {
+            if !pending_ids.contains(&expected) {
+                return Err(OptimizeError::InvalidResumeState {
+                    message: "pending batch trial ids must be contiguous".to_string(),
+                });
+            }
+        }
+        for expected in 0..batch_start {
+            if !seen_trial_ids.contains(&expected) {
+                return Err(OptimizeError::InvalidResumeState {
+                    message: format!(
+                        "completed candidates must be contiguous before pending batch; missing trial {}",
+                        expected
+                    ),
+                });
+            }
+        }
+        for candidate in completed_candidates {
+            if candidate.trial_id >= batch_end {
+                return Err(OptimizeError::InvalidResumeState {
+                    message: format!(
+                        "completed trial {} appears after pending batch ending at {}",
+                        candidate.trial_id, batch_end
+                    ),
+                });
+            }
+        }
+    } else {
+        for expected in 0..completed_candidates.len() {
+            if !seen_trial_ids.contains(&expected) {
+                return Err(OptimizeError::InvalidResumeState {
+                    message: format!(
+                        "completed candidates must be contiguous without pending batch; missing trial {}",
+                        expected
+                    ),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn replay_generation_state(
+    config: &OptimizeConfig,
+    completed_candidates: &[OptimizeCandidateSummary],
+    pending_batch: Option<&OptimizeScheduledBatch>,
+) -> Result<ReplayGenerationState, OptimizeError> {
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut seen_candidate_keys = BTreeSet::new();
+    let mut generated_trial_count = 0usize;
+
+    while generated_trial_count < completed_candidates.len() {
+        let batch_len = (config.trials - generated_trial_count).min(TPE_UPDATE_BATCH_SIZE);
+        let completed_before_batch = completed_candidates
+            .iter()
+            .filter(|candidate| candidate.trial_id < generated_trial_count)
+            .cloned()
+            .collect::<Vec<_>>();
+        let batch_inputs = suggest_batch(
+            config,
+            &completed_before_batch,
+            &mut seen_candidate_keys,
+            &mut rng,
+            generated_trial_count,
+            batch_len,
+        );
+        generated_trial_count += batch_inputs.len();
+    }
+
+    if let Some(batch) = pending_batch {
+        let batch_start = batch
+            .trials
+            .first()
+            .map(|trial| trial.trial_id)
+            .expect("validated pending batch is non-empty");
+        let completed_before_batch = completed_candidates
+            .iter()
+            .filter(|candidate| candidate.trial_id < batch_start)
+            .cloned()
+            .collect::<Vec<_>>();
+        let batch_len = batch.trials.len();
+        let replayed = scheduled_batch(
+            batch_start,
+            suggest_batch(
+                config,
+                &completed_before_batch,
+                &mut seen_candidate_keys,
+                &mut rng,
+                batch_start,
+                batch_len,
+            ),
+        );
+        if replayed != *batch {
+            return Err(OptimizeError::InvalidResumeState {
+                message: "pending batch does not match deterministic optimizer replay".to_string(),
+            });
+        }
+        generated_trial_count = batch_start + batch_len;
+    }
+
+    Ok(ReplayGenerationState {
+        rng,
+        seen_candidate_keys,
+        generated_trial_count,
     })
 }
 
@@ -297,25 +748,30 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
     Ok(())
 }
 
-fn evaluate_batch(
+fn evaluate_scheduled_batch<F>(
     source: &str,
     runtime: &SourceRuntimeConfig,
     vm_limits: VmLimits,
     config: &OptimizeConfig,
-    starting_trial_id: usize,
-    batch_inputs: Vec<BTreeMap<String, f64>>,
-) -> Result<Vec<OptimizeCandidateSummary>, OptimizeError> {
-    let mut results = Vec::with_capacity(batch_inputs.len());
-    let mut batch_offset = 0usize;
-    for chunk in batch_inputs.chunks(config.workers.max(1)) {
+    batch: &OptimizeScheduledBatch,
+    completed_trial_ids: &BTreeSet<usize>,
+    on_candidate: &mut F,
+) -> Result<(), OptimizeError>
+where
+    F: FnMut(OptimizeCandidateSummary) -> Result<(), OptimizeError>,
+{
+    for chunk in batch.trials.chunks(config.workers.max(1)) {
         let chunk_results = thread::scope(|scope| {
             let mut handles = Vec::with_capacity(chunk.len());
-            for (offset, overrides) in chunk.iter().enumerate() {
+            for trial in chunk.iter() {
+                if completed_trial_ids.contains(&trial.trial_id) {
+                    continue;
+                }
                 let source = source.to_string();
                 let runtime = runtime.clone();
                 let config = config.clone();
-                let overrides = overrides.clone();
-                let trial_id = starting_trial_id + batch_offset + offset;
+                let overrides = trial.input_overrides.clone();
+                let trial_id = trial.trial_id;
                 handles.push(scope.spawn(move || {
                     evaluate_candidate(&source, runtime, vm_limits, config, trial_id, overrides)
                 }));
@@ -327,10 +783,11 @@ fn evaluate_batch(
             }
             Ok::<_, OptimizeError>(chunk_results)
         })?;
-        results.extend(chunk_results);
-        batch_offset += chunk.len();
+        for candidate in chunk_results {
+            on_candidate(candidate)?;
+        }
     }
-    Ok(results)
+    Ok(())
 }
 
 fn evaluate_candidate(

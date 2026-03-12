@@ -17,6 +17,16 @@ fn palmscript_cmd() -> std::process::Command {
     std::process::Command::new(assert_cmd::cargo::cargo_bin!("palmscript"))
 }
 
+fn stdout_string(output: &std::process::Output) -> String {
+    String::from_utf8(output.stdout.clone()).expect("stdout is utf-8")
+}
+
+fn extract_key_value(output: &std::process::Output, key: &str) -> Option<String> {
+    stdout_string(output)
+        .lines()
+        .find_map(|line| line.strip_prefix(&format!("{key}=")).map(str::to_string))
+}
+
 fn repo_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/palmscript")
@@ -103,6 +113,10 @@ fn mock_gate_futures_interval(
         .create();
 }
 
+fn optimize_script() -> &'static str {
+    "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true"
+}
+
 #[test]
 fn help_prints_usage() {
     let mut cmd = palmscript_cmd();
@@ -111,6 +125,7 @@ fn help_prints_usage() {
         .success()
         .stdout(predicate::str::contains("Usage:"))
         .stdout(predicate::str::contains("run"))
+        .stdout(predicate::str::contains("runs"))
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("dump-bytecode"));
 }
@@ -1726,4 +1741,213 @@ fn run_optimize_supports_bybit_usdt_perps_execution_source() {
     assert!(output.status.success());
     let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
     assert_eq!(json["candidate_count"], Value::from(8));
+}
+
+#[test]
+fn runs_submit_status_and_serve_persist_optimize_job() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(dir.path(), "optimize.ps", optimize_script());
+    let state_dir = dir.path().join("runs-state");
+    let preset_out = dir.path().join("best.json");
+
+    let submit = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .env("PALMSCRIPT_RUNS_NO_AUTOSTART", "1")
+        .args([
+            "runs",
+            "submit",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--runner",
+            "backtest",
+            "--param",
+            "choice:threshold=0,100",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+        ])
+        .output()
+        .expect("runs submit executes");
+    assert!(submit.status.success());
+    let run_id = extract_key_value(&submit, "run_id").expect("run id");
+    let artifact_dir = extract_key_value(&submit, "artifact_dir").expect("artifact dir");
+
+    let status = palmscript_cmd()
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .args(["runs", "status", &run_id])
+        .output()
+        .expect("runs status executes");
+    assert!(status.status.success());
+    let status_stdout = stdout_string(&status);
+    assert!(status_stdout.contains("status=queued"));
+    assert!(status_stdout.contains("progress=0/8"));
+
+    let serve = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .env("PALMSCRIPT_RUNS_NO_AUTOSTART", "1")
+        .args(["runs", "serve", "--once"])
+        .output()
+        .expect("runs serve executes");
+    assert!(serve.status.success());
+
+    let show = palmscript_cmd()
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .args(["runs", "show", &run_id])
+        .output()
+        .expect("runs show executes");
+    assert!(show.status.success());
+    let show_stdout = stdout_string(&show);
+    assert!(show_stdout.contains("status=completed"));
+    assert!(show_stdout.contains("completed_trials=8"));
+
+    let best = palmscript_cmd()
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .args([
+            "runs",
+            "best",
+            &run_id,
+            "--preset-out",
+            preset_out.to_str().unwrap(),
+        ])
+        .output()
+        .expect("runs best executes");
+    assert!(best.status.success());
+    assert!(preset_out.exists());
+    let preset_json: Value =
+        serde_json::from_str(&fs::read_to_string(&preset_out).expect("preset readable"))
+            .expect("preset is json");
+    assert!(preset_json["best_input_overrides"]["threshold"].is_number());
+
+    let artifact_path = PathBuf::from(&artifact_dir);
+    assert!(artifact_path.join("manifest.json").exists());
+    assert!(artifact_path.join("events.jsonl").exists());
+    assert!(artifact_path.join("result.json").exists());
+    assert!(artifact_path.join("best_preset.json").exists());
+}
+
+#[test]
+fn runs_cancel_and_resume_requeue_optimize_job() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(dir.path(), "optimize.ps", optimize_script());
+    let state_dir = dir.path().join("runs-state");
+
+    let submit = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .env("PALMSCRIPT_RUNS_NO_AUTOSTART", "1")
+        .args([
+            "runs",
+            "submit",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--runner",
+            "backtest",
+            "--param",
+            "choice:threshold=0,100",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+        ])
+        .output()
+        .expect("runs submit executes");
+    assert!(submit.status.success());
+    let run_id = extract_key_value(&submit, "run_id").expect("run id");
+
+    let cancel = palmscript_cmd()
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .args(["runs", "cancel", &run_id])
+        .output()
+        .expect("runs cancel executes");
+    assert!(cancel.status.success());
+    assert!(stdout_string(&cancel).contains("status=canceled"));
+
+    let resume = palmscript_cmd()
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .env("PALMSCRIPT_RUNS_NO_AUTOSTART", "1")
+        .args(["runs", "resume", &run_id])
+        .output()
+        .expect("runs resume executes");
+    assert!(resume.status.success());
+    assert!(stdout_string(&resume).contains("status=queued"));
+
+    let serve = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .env("PALMSCRIPT_RUNS_NO_AUTOSTART", "1")
+        .args(["runs", "serve", "--once"])
+        .output()
+        .expect("runs serve executes");
+    assert!(serve.status.success());
+
+    let status = palmscript_cmd()
+        .env("PALMSCRIPT_RUNS_STATE_DIR", &state_dir)
+        .args(["runs", "status", &run_id])
+        .output()
+        .expect("runs status executes");
+    assert!(status.status.success());
+    assert!(stdout_string(&status).contains("status=completed"));
 }

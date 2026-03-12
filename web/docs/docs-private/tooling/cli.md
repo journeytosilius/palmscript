@@ -11,6 +11,8 @@ Typical flow:
 1. validate a script with `palmscript check`
 2. run it with `palmscript run market`
 3. inspect the compiled form with `palmscript dump-bytecode` when you want to understand how the script is compiled
+4. submit long optimize jobs with `palmscript runs submit optimize`
+5. inspect or resume them later with `palmscript runs status`, `show`, `tail`, `best`, and `resume`
 
 ## Validate Without Running
 
@@ -43,6 +45,29 @@ palmscript dump-bytecode strategy.ps --format json
 ```
 
 This prints the compiled form rather than executing the script.
+
+## Durable Optimize Runs
+
+Use the `runs` command family when `run optimize` would be too long to babysit in one terminal:
+
+```bash
+palmscript runs submit optimize strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --param int:fast_len=8:34 \
+  --param float:target_atr_mult=1.5:4.0 \
+  --trials 50
+
+palmscript runs serve
+palmscript runs status <run-id>
+palmscript runs show <run-id>
+palmscript runs best <run-id> --preset-out best.json
+```
+
+These commands keep local durable state under the platform state directory, persist artifacts for each run, and let you resume interrupted optimize work without changing strategy syntax.
 
 ## Output Formats
 
