@@ -54,6 +54,12 @@ The first public IDE release is intentionally narrow:
 - live compile diagnostics shown above a formatted backtest summary plus hosted backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 
+Operationally, the hosted dataset fetch path now caps Gate requests to the
+venue's 1000-candle public limit per HTTP call. When the IDE server still gets
+a venue-side fetch failure, the logged error includes the request URL and a
+truncated response-body snippet for both non-200 HTTP responses and malformed
+JSON payloads so production debugging stays actionable.
+
 Dark mode uses a VS Code-like shell palette with a Dracula-style Monaco theme.
 VS Code and the hosted Monaco editor now share builtin signatures, summaries,
 and callable completion snippets through the same `ide.rs` metadata and LSP

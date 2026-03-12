@@ -19,6 +19,7 @@ use thiserror::Error;
 use crate::bytecode::SignalRole;
 use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
+use crate::exchange::{MarkPriceBasis, VenueRiskSnapshot};
 use crate::order::{OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::output::{OutputValue, Outputs};
 use crate::position::PositionSide;
@@ -46,71 +47,6 @@ pub enum PerpMarginMode {
 pub struct PerpBacktestConfig {
     pub leverage: f64,
     pub margin_mode: PerpMarginMode,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MarkPriceBasis {
-    BinanceMarkPriceKlines,
-    BybitMarkPriceKlines,
-    GateMarkPriceCandlesticks,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RiskTier {
-    pub lower_bound: f64,
-    pub upper_bound: Option<f64>,
-    pub max_leverage: f64,
-    pub maintenance_margin_rate: f64,
-    pub maintenance_amount: f64,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum BinanceUsdmRiskSource {
-    SignedLeverageBrackets,
-    PublicExchangeInfoApproximation,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BinanceUsdmRiskSnapshot {
-    pub symbol: String,
-    pub fetched_at_ms: i64,
-    pub source: BinanceUsdmRiskSource,
-    pub brackets: Vec<RiskTier>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum BybitUsdtPerpsRiskSource {
-    PublicRiskLimit,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BybitUsdtPerpsRiskSnapshot {
-    pub symbol: String,
-    pub fetched_at_ms: i64,
-    pub source: BybitUsdtPerpsRiskSource,
-    pub tiers: Vec<RiskTier>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum GateUsdtPerpsRiskSource {
-    PublicRiskLimitTiers,
-    PublicContractApproximation,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct GateUsdtPerpsRiskSnapshot {
-    pub contract: String,
-    pub fetched_at_ms: i64,
-    pub source: GateUsdtPerpsRiskSource,
-    pub tiers: Vec<RiskTier>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "venue_kind", rename_all = "snake_case")]
-pub enum VenueRiskSnapshot {
-    BinanceUsdm(BinanceUsdmRiskSnapshot),
-    BybitUsdtPerps(BybitUsdtPerpsRiskSnapshot),
-    GateUsdtPerps(GateUsdtPerpsRiskSnapshot),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
