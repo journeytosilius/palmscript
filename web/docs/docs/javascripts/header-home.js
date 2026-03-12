@@ -1,36 +1,114 @@
-function getPalmScriptLocaleHomeHref() {
-  const { origin, pathname } = window.location;
-  const localeMatch = pathname.match(/^\/([^/]+)\/docs(?:\/|$)/);
-  if (localeMatch) {
-    return `${origin}/${localeMatch[1]}/`;
+const DEFAULT_PALMSCRIPT_LOCALE = "en";
+const PALMSCRIPT_HOME_LOCALE_PATHS = {
+  en: "",
+  es: "es",
+  "pt-BR": "pt-br",
+  de: "de",
+  ja: "ja",
+  fr: "fr",
+};
+
+function normalizePalmScriptLocaleCode(locale) {
+  if (!locale) {
+    return null;
   }
 
-  return `${origin}/`;
+  const trimmedLocale = locale.trim();
+  if (!trimmedLocale) {
+    return null;
+  }
+
+  for (const supportedLocale of Object.keys(PALMSCRIPT_HOME_LOCALE_PATHS)) {
+    if (supportedLocale.toLowerCase() === trimmedLocale.toLowerCase()) {
+      return supportedLocale;
+    }
+  }
+
+  const primaryLanguage = trimmedLocale.split("-")[0]?.toLowerCase();
+  if (!primaryLanguage) {
+    return null;
+  }
+
+  for (const supportedLocale of Object.keys(PALMSCRIPT_HOME_LOCALE_PATHS)) {
+    if (supportedLocale.toLowerCase() === primaryLanguage) {
+      return supportedLocale;
+    }
+  }
+
+  return null;
 }
 
-function buildPalmScriptHomeLink(label) {
-  const link = document.createElement("a");
-  link.href = getPalmScriptLocaleHomeHref();
+function getPalmScriptDocsLocaleCode(locationLike) {
+  const activeLocation = locationLike ?? window.location;
+  const pathnameLocale = normalizePalmScriptLocaleCode(
+    activeLocation.pathname.match(/^\/([^/]+)\/docs(?:\/|$)/)?.[1],
+  );
+  if (pathnameLocale) {
+    return pathnameLocale;
+  }
+
+  const documentLocale =
+    typeof document !== "undefined"
+      ? normalizePalmScriptLocaleCode(document.documentElement?.lang)
+      : null;
+  if (documentLocale) {
+    return documentLocale;
+  }
+
+  return DEFAULT_PALMSCRIPT_LOCALE;
+}
+
+function getPalmScriptLocaleHomeHref(locationLike) {
+  const activeLocation = locationLike ?? window.location;
+  const locale = getPalmScriptDocsLocaleCode(activeLocation);
+  const homeLocalePath = PALMSCRIPT_HOME_LOCALE_PATHS[locale] ?? "";
+  if (!homeLocalePath) {
+    return `${activeLocation.origin}/`;
+  }
+
+  return `${activeLocation.origin}/${homeLocalePath}/`;
+}
+
+function applyPalmScriptHomeLinkAttributes(link, href, label) {
+  link.href = href;
   link.className = "ps-home-link";
   link.setAttribute("aria-label", "PalmScript home");
   link.textContent = label;
+  link.removeAttribute("target");
+  link.removeAttribute("rel");
   return link;
+}
+
+function buildPalmScriptHomeLink(label, href = getPalmScriptLocaleHomeHref()) {
+  const link = document.createElement("a");
+  return applyPalmScriptHomeLinkAttributes(link, href, label);
+}
+
+function upsertPalmScriptHomeLink(topic, label) {
+  const href = getPalmScriptLocaleHomeHref();
+  const existingLink = topic.querySelector(".ps-home-link");
+  if (existingLink) {
+    applyPalmScriptHomeLinkAttributes(existingLink, href, label);
+    return;
+  }
+
+  topic.replaceChildren(buildPalmScriptHomeLink(label, href));
 }
 
 function wirePalmScriptHeaderHomeLink() {
   const topic = document.querySelector(".md-header__title .md-header__topic");
-  if (!topic || topic.querySelector(".ps-home-link")) {
+  if (!topic) {
     return;
   }
 
-  topic.replaceChildren(buildPalmScriptHomeLink("PalmScript"));
+  upsertPalmScriptHomeLink(topic, "PalmScript");
 }
 
 function wirePalmScriptHeaderTopicHomeLink() {
   const topic = document.querySelector(
     '.md-header__title [data-md-component="header-topic"] .md-ellipsis',
   );
-  if (!topic || topic.querySelector(".ps-home-link")) {
+  if (!topic) {
     return;
   }
 
@@ -39,18 +117,17 @@ function wirePalmScriptHeaderTopicHomeLink() {
     return;
   }
 
-  topic.replaceChildren(buildPalmScriptHomeLink(label));
+  upsertPalmScriptHomeLink(topic, label);
 }
 
 function wirePalmScriptHeaderLogoLink() {
-  const logo = document.querySelector("a.md-header__button.md-logo");
-  if (!logo) {
-    return;
+  const href = getPalmScriptLocaleHomeHref();
+  const logos = document.querySelectorAll("a.md-logo");
+  for (const logo of logos) {
+    logo.href = href;
+    logo.removeAttribute("target");
+    logo.removeAttribute("rel");
   }
-
-  logo.href = getPalmScriptLocaleHomeHref();
-  logo.removeAttribute("target");
-  logo.removeAttribute("rel");
 }
 
 function isExternalHref(href) {
@@ -96,8 +173,19 @@ function wirePalmScriptDocsUi() {
   wirePalmScriptDocsLinks();
 }
 
-if (typeof document$ !== "undefined") {
-  document$.subscribe(wirePalmScriptDocsUi);
-} else {
-  document.addEventListener("DOMContentLoaded", wirePalmScriptDocsUi);
+if (typeof document !== "undefined") {
+  if (typeof document$ !== "undefined") {
+    document$.subscribe(wirePalmScriptDocsUi);
+  } else {
+    document.addEventListener("DOMContentLoaded", wirePalmScriptDocsUi);
+  }
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    applyPalmScriptHomeLinkAttributes,
+    getPalmScriptDocsLocaleCode,
+    getPalmScriptLocaleHomeHref,
+    normalizePalmScriptLocaleCode,
+  };
 }
