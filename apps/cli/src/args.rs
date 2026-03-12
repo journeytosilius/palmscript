@@ -12,6 +12,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    Docs(DocsArgs),
     Run {
         #[command(subcommand)]
         mode: Box<RunCommand>,
@@ -22,6 +23,15 @@ pub enum Command {
     },
     Check(CheckArgs),
     DumpBytecode(DumpBytecodeArgs),
+}
+
+#[derive(Debug, clap::Args)]
+pub struct DocsArgs {
+    pub topic: Option<String>,
+    #[arg(long, conflicts_with_all = ["topic", "list"])]
+    pub all: bool,
+    #[arg(long, conflicts_with_all = ["topic", "all"])]
+    pub list: bool,
 }
 
 #[derive(Debug, Subcommand)]

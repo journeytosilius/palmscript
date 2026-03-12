@@ -124,10 +124,51 @@ fn help_prints_usage() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Usage:"))
+        .stdout(predicate::str::contains("docs"))
         .stdout(predicate::str::contains("run"))
         .stdout(predicate::str::contains("runs"))
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("dump-bytecode"));
+}
+
+#[test]
+fn docs_list_exposes_embedded_topics() {
+    let mut cmd = palmscript_cmd();
+    cmd.args(["docs", "--list"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("doc_count="))
+        .stdout(predicate::str::contains("topic=tooling/cli"))
+        .stdout(predicate::str::contains("topic=reference/cli"));
+}
+
+#[test]
+fn docs_topic_renders_one_embedded_page() {
+    let mut cmd = palmscript_cmd();
+    cmd.args(["docs", "tooling/cli"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("topic=tooling/cli"))
+        .stdout(predicate::str::contains("# CLI"))
+        .stdout(predicate::str::contains("palmscript docs --all"));
+}
+
+#[test]
+fn docs_all_renders_full_embedded_snapshot() {
+    let mut cmd = palmscript_cmd();
+    cmd.args(["docs", "--all"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("PalmScript embedded English docs"))
+        .stdout(predicate::str::contains(
+            "===== BEGIN DOC tooling/cli =====",
+        ))
+        .stdout(predicate::str::contains(
+            "===== BEGIN DOC reference/cli =====",
+        ))
+        .stdout(predicate::str::contains(
+            "===== END DOC reference/cli =====",
+        ));
 }
 
 #[test]

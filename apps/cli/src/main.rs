@@ -1,6 +1,7 @@
 mod args;
 mod commands;
 mod diagnostics;
+mod docs;
 mod format;
 mod runs;
 

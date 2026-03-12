@@ -14,11 +14,13 @@ use palmscript::{
 use sha2::{Digest, Sha256};
 
 use crate::args::{
-    BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs,
-    MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg, OutputFormat,
-    RunCommand, WalkForwardRunArgs, WalkForwardSweepObjectiveArg, WalkForwardSweepRunArgs,
+    BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DocsArgs,
+    DumpBytecodeArgs, MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg,
+    OutputFormat, RunCommand, WalkForwardRunArgs, WalkForwardSweepObjectiveArg,
+    WalkForwardSweepRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
+use crate::docs;
 use crate::format::{
     render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
     render_walk_forward_sweep_text, render_walk_forward_text,
@@ -27,11 +29,17 @@ use crate::runs;
 
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
+        Command::Docs(args) => print_docs(args),
         Command::Run { mode } => run_mode(*mode),
         Command::Runs { mode } => runs::run(*mode),
         Command::Check(args) => check_script(args),
         Command::DumpBytecode(args) => dump_bytecode(args),
     }
+}
+
+fn print_docs(args: DocsArgs) -> Result<(), String> {
+    print!("{}", docs::render(&args)?);
+    Ok(())
 }
 
 fn run_mode(mode: RunCommand) -> Result<(), String> {

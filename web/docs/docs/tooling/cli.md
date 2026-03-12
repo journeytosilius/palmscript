@@ -46,6 +46,24 @@ palmscript dump-bytecode strategy.ps --format json
 
 This prints the compiled form rather than executing the script.
 
+## Read Embedded Docs In The CLI
+
+The CLI embeds the public English docs snapshot at build time so agents and offline workflows can read the canonical docs without opening the site.
+
+```bash
+palmscript docs --list
+palmscript docs tooling/cli
+palmscript docs --all
+```
+
+Use:
+
+- `palmscript docs --list` to discover exact topic paths
+- `palmscript docs <topic>` to read one embedded page
+- `palmscript docs --all` to stream the full embedded English docs set in one terminal-friendly output
+
+The embedded docs are generated from `web/docs/docs/` during the CLI build and stay aligned with the public documentation tree.
+
 ## Durable Optimize Runs
 
 Use the `runs` command family when `run optimize` would be too long to babysit in one terminal:

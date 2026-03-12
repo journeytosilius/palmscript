@@ -41,6 +41,8 @@ cargo build --bin palmscript
 cargo build --bin palmscript-ide-server
 npm --prefix web/ide run build
 target/debug/palmscript check crates/palmscript/examples/strategies/sma_cross.ps
+target/debug/palmscript docs --list
+target/debug/palmscript docs --all
 target/debug/palmscript run market crates/palmscript/examples/strategies/sma_cross.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market crates/palmscript/examples/strategies/cross_source_spread.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market crates/palmscript/examples/strategies/bybit_spot.ps --from 1704067200000 --to 1704153600000

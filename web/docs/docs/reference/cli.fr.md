@@ -19,6 +19,26 @@ Arguments:
 
 - `<script.ps>`: path to the PalmScript source file
 
+## `palmscript docs`
+
+```bash
+palmscript docs [<topic>] [--list|--all]
+```
+
+Reads the embedded public English docs snapshot shipped inside the CLI binary.
+
+Arguments and flags:
+
+- `<topic>`: exact embedded docs topic path, for example `tooling/cli` or `reference/intervals-and-sources`
+- `--list`: print every embedded topic with its title and relative docs path
+- `--all`: print the full embedded English docs set in one terminal-friendly stream
+
+Notes:
+
+- if neither `<topic>` nor a flag is passed, the command prints usage plus the topic list
+- `--list` is the best discovery mode before calling a specific topic
+- the embedded docs are generated from `web/docs/docs/` at build time
+
 ## `palmscript run market`
 
 ```bash
