@@ -67,7 +67,7 @@ Operational fetch constraints are also template-specific:
 - Gate candlestick APIs use Unix seconds and PalmScript normalizes them into Unix milliseconds UTC
 - Gate spot and futures pagination is windowed by time because the public API does not allow `limit` with `from` / `to`
 - Binance, Bybit, and Gate feeds are paginated internally
-- base URLs can be overridden with `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`, and `PALMSCRIPT_GATE_BASE_URL`
+- base URLs can be overridden with `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`, and `PALMSCRIPT_GATE_BASE_URL`; Gate accepts either the host root such as `https://api.gateio.ws` or the full `/api/v4` base URL
 
 ## Source Field Set
 

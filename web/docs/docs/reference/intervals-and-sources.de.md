@@ -76,8 +76,9 @@ Auch operative Fetch-Beschraenkungen sind template-spezifisch:
 - Binance-, Bybit- und Gate-Feeds werden intern paginiert
 - Basis-URLs lassen sich mit `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
   `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
-  `PALMSCRIPT_GATE_BASE_URL`
-  ueberschreiben
+  `PALMSCRIPT_GATE_BASE_URL` ueberschreiben; fuer Gate funktionieren sowohl die
+  Host-Wurzel, zum Beispiel `https://api.gateio.ws`, als auch die vollstaendige
+  `/api/v4`-Basis-URL
 
 ## Quellen-Feldmenge
 

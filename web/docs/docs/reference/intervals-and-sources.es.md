@@ -73,7 +73,9 @@ Las restricciones operativas de carga tambien dependen del template:
 - los feeds de Binance, Bybit y Gate se paginan internamente
 - las URLs base se pueden sobreescribir con
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
-  `PALMSCRIPT_BYBIT_BASE_URL` y `PALMSCRIPT_GATE_BASE_URL`
+  `PALMSCRIPT_BYBIT_BASE_URL` y `PALMSCRIPT_GATE_BASE_URL`; para Gate se
+  acepta tanto la raiz del host, por ejemplo `https://api.gateio.ws`, como la
+  URL base completa `/api/v4`
 
 ## Conjunto De Campos De Fuente
 
