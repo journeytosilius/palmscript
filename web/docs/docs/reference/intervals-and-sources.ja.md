@@ -69,7 +69,9 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 - Binance / Bybit / Gate フィードは内部でページ分割される
 - ベース URL は `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
   `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
-  `PALMSCRIPT_GATE_BASE_URL` で上書きできる
+  `PALMSCRIPT_GATE_BASE_URL` で上書きできる。Gate では
+  `https://api.gateio.ws` のようなホストルートでも、完全な `/api/v4`
+  ベース URL でも利用できる
 
 ## ソースフィールド集合
 

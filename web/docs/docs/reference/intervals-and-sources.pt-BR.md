@@ -71,7 +71,9 @@ Restricoes operacionais de busca tambem dependem do template:
 - feeds da Binance, Bybit e Gate sao paginados internamente
 - as URLs base podem ser sobrescritas com
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
-  `PALMSCRIPT_BYBIT_BASE_URL` e `PALMSCRIPT_GATE_BASE_URL`
+  `PALMSCRIPT_BYBIT_BASE_URL` e `PALMSCRIPT_GATE_BASE_URL`; no Gate, tanto a
+  raiz do host, por exemplo `https://api.gateio.ws`, quanto a URL base completa
+  `/api/v4` sao aceitas
 
 ## Conjunto De Campos De Source
 

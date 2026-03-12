@@ -76,7 +76,9 @@ Les contraintes operationnelles de recuperation dependent aussi du template :
 - les flux Binance, Bybit et Gate sont pagines en interne
 - les URL de base peuvent etre surchargees avec
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
-  `PALMSCRIPT_BYBIT_BASE_URL` et `PALMSCRIPT_GATE_BASE_URL`
+  `PALMSCRIPT_BYBIT_BASE_URL` et `PALMSCRIPT_GATE_BASE_URL`; pour Gate, la
+  racine de l'hote, par exemple `https://api.gateio.ws`, et l'URL de base
+  complete `/api/v4` sont toutes deux acceptees
 
 ## Ensemble Des Champs De Source
 

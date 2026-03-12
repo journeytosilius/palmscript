@@ -1204,19 +1204,18 @@ fn fetch_gate_spot_bars(
                     "unable to advance Gate spot pagination".to_string(),
                 )
             })?;
-        let response = client
-            .get(format!(
-                "{}/spot/candlesticks",
-                base_url.trim_end_matches('/')
-            ))
-            .query(&GateSpotCandlesticksQuery {
+        let response = gate_get_with_query_fallback(
+            client,
+            base_url,
+            "/spot/candlesticks",
+            &GateSpotCandlesticksQuery {
                 currency_pair: source.symbol.as_str(),
                 interval: interval_text,
                 from: ms_to_api_seconds(window_start_ms),
                 to: ms_to_api_seconds(window_end_ms),
-            })
-            .send()
-            .map_err(|err| request_failed(source, interval, err.to_string()))?;
+            },
+        )
+        .map_err(|err| request_failed(source, interval, err.to_string()))?;
         if response.status() != StatusCode::OK {
             return Err(request_failed(
                 source,
@@ -1279,19 +1278,18 @@ fn fetch_gate_futures_bars(
                     "unable to advance Gate futures pagination".to_string(),
                 )
             })?;
-        let response = client
-            .get(format!(
-                "{}/futures/usdt/candlesticks",
-                base_url.trim_end_matches('/')
-            ))
-            .query(&GateFuturesCandlesticksQuery {
+        let response = gate_get_with_query_fallback(
+            client,
+            base_url,
+            "/futures/usdt/candlesticks",
+            &GateFuturesCandlesticksQuery {
                 contract: contract.as_str(),
                 interval: interval_text,
                 from: ms_to_api_seconds(window_start_ms),
                 to: ms_to_api_seconds(window_end_ms),
-            })
-            .send()
-            .map_err(|err| request_failed(source, interval, err.to_string()))?;
+            },
+        )
+        .map_err(|err| request_failed(source, interval, err.to_string()))?;
         if response.status() != StatusCode::OK {
             return Err(request_failed(
                 source,
@@ -1623,20 +1621,18 @@ fn fetch_gate_usdt_perps_risk_snapshot(
     source: &DeclaredMarketSource,
     endpoints: &ExchangeEndpoints,
 ) -> Result<GateUsdtPerpsRiskSnapshot, ExchangeFetchError> {
-    let tiers_url = format!(
-        "{}/futures/usdt/risk_limit_tiers",
-        endpoints.gate_base_url.trim_end_matches('/')
-    );
-    let response = client
-        .get(&tiers_url)
-        .query(&[("contract", source.symbol.as_str())])
-        .send()
-        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
-            alias: source.alias.clone(),
-            template: source.template.as_str(),
-            symbol: source.symbol.clone(),
-            message: err.to_string(),
-        })?;
+    let response = gate_get_with_query_fallback(
+        client,
+        &endpoints.gate_base_url,
+        "/futures/usdt/risk_limit_tiers",
+        &[("contract", source.symbol.as_str())],
+    )
+    .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+        alias: source.alias.clone(),
+        template: source.template.as_str(),
+        symbol: source.symbol.clone(),
+        message: err.to_string(),
+    })?;
     if response.status() == StatusCode::OK {
         let mut rows: Vec<GateFuturesRiskLimitTier> =
             response
@@ -1688,19 +1684,17 @@ fn fetch_gate_usdt_contract_snapshot(
     source: &DeclaredMarketSource,
     endpoints: &ExchangeEndpoints,
 ) -> Result<GateUsdtPerpsRiskSnapshot, ExchangeFetchError> {
-    let response = client
-        .get(format!(
-            "{}/futures/usdt/contracts/{}",
-            endpoints.gate_base_url.trim_end_matches('/'),
-            source.symbol
-        ))
-        .send()
-        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
-            alias: source.alias.clone(),
-            template: source.template.as_str(),
-            symbol: source.symbol.clone(),
-            message: err.to_string(),
-        })?;
+    let response = gate_get_fallback(
+        client,
+        &endpoints.gate_base_url,
+        &format!("/futures/usdt/contracts/{}", source.symbol),
+    )
+    .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+        alias: source.alias.clone(),
+        template: source.template.as_str(),
+        symbol: source.symbol.clone(),
+        message: err.to_string(),
+    })?;
     if response.status() != StatusCode::OK {
         return Err(ExchangeFetchError::RiskRequestFailed {
             alias: source.alias.clone(),
@@ -1745,6 +1739,70 @@ fn fetch_gate_usdt_contract_snapshot(
             maintenance_amount: 0.0,
         }],
     })
+}
+
+fn gate_get_with_query_fallback<Q: Serialize + ?Sized>(
+    client: &Client,
+    base_url: &str,
+    path: &str,
+    query: &Q,
+) -> Result<reqwest::blocking::Response, reqwest::Error> {
+    let mut urls = gate_url_candidates(base_url, path).into_iter();
+    let first_url = urls
+        .next()
+        .expect("Gate URL candidates should be non-empty");
+    let first_response = client.get(first_url).query(query).send()?;
+    if first_response.status() == StatusCode::OK || !gate_base_url_needs_api_prefix(base_url) {
+        return Ok(first_response);
+    }
+
+    let mut last_response = first_response;
+    for url in urls {
+        let response = client.get(url).query(query).send()?;
+        if response.status() == StatusCode::OK {
+            return Ok(response);
+        }
+        last_response = response;
+    }
+    Ok(last_response)
+}
+
+fn gate_get_fallback(
+    client: &Client,
+    base_url: &str,
+    path: &str,
+) -> Result<reqwest::blocking::Response, reqwest::Error> {
+    let mut urls = gate_url_candidates(base_url, path).into_iter();
+    let first_url = urls
+        .next()
+        .expect("Gate URL candidates should be non-empty");
+    let first_response = client.get(first_url).send()?;
+    if first_response.status() == StatusCode::OK || !gate_base_url_needs_api_prefix(base_url) {
+        return Ok(first_response);
+    }
+
+    let mut last_response = first_response;
+    for url in urls {
+        let response = client.get(url).send()?;
+        if response.status() == StatusCode::OK {
+            return Ok(response);
+        }
+        last_response = response;
+    }
+    Ok(last_response)
+}
+
+fn gate_url_candidates(base_url: &str, path: &str) -> Vec<String> {
+    let trimmed = base_url.trim_end_matches('/');
+    let mut urls = vec![format!("{trimmed}{path}")];
+    if gate_base_url_needs_api_prefix(base_url) {
+        urls.push(format!("{trimmed}/api/v4{path}"));
+    }
+    urls
+}
+
+fn gate_base_url_needs_api_prefix(base_url: &str) -> bool {
+    !base_url.trim_end_matches('/').ends_with("/api/v4")
 }
 
 fn fetch_binance_server_time(
@@ -2347,6 +2405,60 @@ mod tests {
 
         assert_eq!(config.feeds[0].bars[0].time, 1704067200000.0);
         assert_eq!(config.feeds[0].bars[1].time, 1704067260000.0);
+    }
+
+    #[test]
+    fn fetch_source_runtime_config_accepts_gate_host_root_base_url() {
+        let mut server = Server::new();
+        let _gate = server
+            .mock("GET", "/api/v4/spot/candlesticks")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("currency_pair".into(), "BTC_USDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [
+                        1704067200_i64,
+                        "1000.0",
+                        "100.5",
+                        "101.0",
+                        "99.0",
+                        "100.0",
+                        "10.0"
+                    ],
+                    [
+                        1704067260_i64,
+                        "1100.0",
+                        "101.5",
+                        "102.0",
+                        "100.0",
+                        "101.0",
+                        "11.0"
+                    ]
+                ])
+                .to_string(),
+            )
+            .create();
+
+        let compiled = compile("interval 1m\nsource gt = gate.spot(\"BTC_USDT\")\nplot(gt.close)")
+            .expect("compile");
+        let config = fetch_source_runtime_config(
+            &compiled,
+            1704067200000,
+            1704067320000,
+            &ExchangeEndpoints {
+                binance_spot_base_url: String::new(),
+                binance_usdm_base_url: String::new(),
+                bybit_base_url: String::new(),
+                gate_base_url: server.url(),
+            },
+        )
+        .expect("config");
+
+        assert_eq!(config.feeds.len(), 1);
+        assert_eq!(config.feeds[0].bars.len(), 2);
     }
 
     #[test]
