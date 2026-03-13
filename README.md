@@ -49,14 +49,13 @@ target/debug/palmscript run market crates/palmscript/examples/strategies/bybit_s
 target/debug/palmscript run market crates/palmscript/examples/strategies/gate_spot.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript run backtest crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
 target/debug/palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
-target/debug/palmscript runs submit optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63 --trials 50
-target/debug/palmscript runs serve
+target/debug/palmscript run optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63 --trials 50 --preset-out best.json
 target/debug/palmscript dump-bytecode crates/palmscript/examples/strategies/sma_cross.ps
 mkdocs build --strict -f web/docs/mkdocs.yml
 sh infra/scripts/build_docs_site.sh
 ```
 
-`run optimize` and `runs submit optimize` now default to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
+`run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 
 Exchange-backed source endpoints can be overridden with environment variables for mock servers and venue-specific routing:
 

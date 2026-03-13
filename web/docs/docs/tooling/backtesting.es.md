@@ -5,6 +5,8 @@ Esta pagina vuelve a estar disponible publicamente porque PalmScript ahora es de
 ## English Canonical Content
 
 
+# Backtesting
+
 PalmScript exposes a deterministic backtester on top of the existing
 source-aware runtime.
 
@@ -128,10 +130,10 @@ V1 optimizer notes:
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
 
-Run the same optimize job through the durable local run registry:
+Run optimize in the foreground when you want a direct result:
 
 ```bash
-palmscript runs submit optimize strategy.ps \
+palmscript run optimize strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --train-bars 252 \
@@ -139,22 +141,17 @@ palmscript runs submit optimize strategy.ps \
   --step-bars 63 \
   --objective robust-return \
   --trials 50 \
-  --top 5
-
-palmscript runs serve
-palmscript runs status <run-id>
-palmscript runs tail <run-id>
-palmscript runs best <run-id> --preset-out /tmp/adaptive-best.json
+  --top 5 \
+  --preset-out /tmp/adaptive-best.json
 ```
 
-Durable optimize notes:
+Foreground optimize notes:
 
-- `runs submit optimize` reuses the same optimizer config model as `run optimize`
-- when `--param` is omitted, durable optimize runs use the same preset-or-input-metadata inference path as foreground optimize runs
-- every completed candidate batch is persisted into local SQLite state plus run artifacts
-- `runs serve` owns execution and can resume interrupted queued or running jobs
-- `runs best` can export the best known preset from the persisted run state without rerunning the search
-- the persisted result and manifest include the final holdout evaluation when holdout protection is enabled
+- `run optimize` reuses the same optimizer config model shown above
+- when `--param` is omitted, optimize uses the same preset-or-input-metadata inference path as any other CLI optimize run
+- every trial still respects bounded workers, deterministic seeding, and the final untouched holdout when holdout protection is enabled
+- `--preset-out` exports the best known preset from the completed search so you can rerun it immediately in backtest or walk-forward mode
+- the final result includes the holdout summary when holdout protection is enabled
 
 ## Default Safety Profile
 

@@ -56,4 +56,4 @@ plot(bn.close - bb.close)
 input fast_len = 21 optimize(int, 8, 34, 1)
 ```
 
-これにより `--param` を渡さない場合でも、`run optimize` と `runs submit optimize` はスクリプトから探索空間を推論できます。
+これにより `--param` を渡さない場合でも、`run optimize` はスクリプトから探索空間を推論できます。

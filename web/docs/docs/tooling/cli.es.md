@@ -5,6 +5,8 @@ Esta pagina vuelve a estar disponible publicamente porque PalmScript ahora es de
 ## English Canonical Content
 
 
+# CLI
+
 The public command-line entrypoint is `palmscript`.
 
 Use this page for the normal user workflow. Use [CLI Command Reference](../reference/cli.md) for the compact command and flag listing.
@@ -16,8 +18,8 @@ Typical flow:
 1. validate a script with `palmscript check`
 2. run it with `palmscript run market`
 3. inspect the compiled form with `palmscript dump-bytecode` when you want to understand how the script is compiled
-4. submit long optimize jobs with `palmscript runs submit optimize`
-5. inspect or resume them later with `palmscript runs status`, `show`, `tail`, `best`, and `resume`
+4. tune strategies with `palmscript run optimize` and save the best preset with `--preset-out`
+5. rerun the winner with `run backtest` or `run walk-forward` before you trust it
 
 ## Validate Without Running
 
@@ -69,26 +71,20 @@ Use:
 
 The embedded docs are generated from `web/docs/docs/` during the CLI build and stay aligned with the public documentation tree.
 
-## Durable Optimize Runs
+## Optimize Strategies
 
-Use the `runs` command family when `run optimize` would be too long to babysit in one terminal:
+Use `run optimize` directly when tuning a strategy from the CLI:
 
 ```bash
-palmscript runs submit optimize strategy.ps \
+palmscript run optimize strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
-  --trials 50
-
-palmscript runs serve
-palmscript runs status <run-id>
-palmscript runs show <run-id>
-palmscript runs best <run-id> --preset-out best.json
+  --trials 50 \
+  --preset-out best.json
 ```
-
-These commands keep local durable state under the platform state directory, persist artifacts for each run, and let you resume interrupted optimize work without changing strategy syntax.
 
 Walk-forward optimize now reserves a final untouched holdout window by default. If you pass `--test-bars 63`, PalmScript also reserves the last `63` execution bars as an unseen holdout unless you override that with `--holdout-bars <N>` or disable it with `--no-holdout`.
 

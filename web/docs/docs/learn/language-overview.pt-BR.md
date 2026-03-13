@@ -56,4 +56,4 @@ plot(bn.close - bb.close)
 input fast_len = 21 optimize(int, 8, 34, 1)
 ```
 
-Isso permite que `run optimize` e `runs submit optimize` infiram o espaco de busca do proprio script quando `--param` nao for informado.
+Isso permite que `run optimize` infira o espaco de busca do proprio script quando `--param` nao for informado.

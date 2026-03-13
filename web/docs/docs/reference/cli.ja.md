@@ -5,6 +5,8 @@ PalmScript がオープンソース化されたため、このページは再び
 ## English Canonical Content
 
 
+# CLI Command Reference
+
 This page is the compact public command reference for the `palmscript` CLI. For workflows and examples, see [CLI](../tooling/cli.md).
 
 ## `palmscript check`
@@ -112,100 +114,6 @@ Default safety behavior:
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
-
-## `palmscript runs serve`
-
-```bash
-palmscript runs serve
-```
-
-Runs the local optimize daemon loop over queued durable runs.
-
-Arguments and flags:
-
-- no public flags in v1
-
-Notes:
-
-- the hidden `--once` and `--poll-ms` flags are reserved for internal orchestration and tests
-
-## `palmscript runs submit optimize`
-
-```bash
-palmscript runs submit optimize <script.ps> ...same flags as `palmscript run optimize`...
-```
-
-Queues a durable local optimize job and writes a source snapshot plus run artifacts into the PalmScript state directory.
-
-Output:
-
-- `run_id=<id>`
-- `status=queued`
-- `artifact_dir=<path>`
-
-Default safety behavior:
-
-- when the optimizer runs in the default walk-forward mode, the CLI reserves a final untouched holdout window automatically
-- the default holdout size is `test-bars`
-- use `--holdout-bars <N>` to reserve a different final holdout size
-- use `--no-holdout` only when you intentionally want to disable that protection
-- when `--param` is omitted, durable optimize submission infers its search space from the preset or compiled `input ... optimize(...)` metadata exactly like `palmscript run optimize`
-
-## `palmscript runs status`
-
-```bash
-palmscript runs status <run-id>
-```
-
-Prints compact run status including progress, best score, and artifact directory.
-
-## `palmscript runs show`
-
-```bash
-palmscript runs show <run-id>
-```
-
-Prints the persisted manifest for one durable run, including best candidate and failure information when present.
-
-## `palmscript runs tail`
-
-```bash
-palmscript runs tail <run-id>
-```
-
-Streams persisted run events until the durable job reaches `completed`, `failed`, or `canceled`.
-
-## `palmscript runs list`
-
-```bash
-palmscript runs list
-```
-
-Lists durable optimize runs in reverse creation order.
-
-## `palmscript runs cancel`
-
-```bash
-palmscript runs cancel <run-id>
-```
-
-Cancels a queued durable run immediately or marks a running durable run for cooperative cancellation between optimizer batches.
-
-## `palmscript runs resume`
-
-```bash
-palmscript runs resume <run-id>
-```
-
-Requeues a canceled or failed durable run from its persisted source snapshot and candidate state.
-
-## `palmscript runs best`
-
-```bash
-palmscript runs best <run-id> [--preset-out <path>]
-```
-
-Prints the best known overrides for a durable run, or exports them as an optimize preset when `--preset-out` is provided.
 
 ## `palmscript dump-bytecode`
 

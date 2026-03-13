@@ -20,8 +20,9 @@ Typischer Ablauf:
 Fur lange CLI-Tuning-Laufe:
 
 - nutze `palmscript run optimize ...`, wenn du das Ergebnis im Vordergrund willst
-- nutze `palmscript runs submit optimize ...`, wenn die Suche im lokalen dauerhaften Zustand weiterlaufen und jeden abgeschlossenen Kandidaten speichern soll
-- komme spater mit `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>` oder `palmscript runs best <run-id> --preset-out best.json` zuruck
+- nutze `palmscript run optimize ...` fuer direkte Optimierung in der CLI
+- speichere brauchbare Kandidaten mit `--preset-out best.json`, damit du sie mit `run backtest` oder `run walk-forward` erneut pruefen kannst
+- lasse den standardmaessigen unangetasteten Holdout aktiv, sofern du diesen Schutz nicht bewusst abschaltest
 
 ## Was Du Als Nachstes Lesen Solltest
 

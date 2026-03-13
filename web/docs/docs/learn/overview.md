@@ -19,9 +19,9 @@ Typical workflow:
 
 For long CLI tuning jobs:
 
-- use `palmscript run optimize ...` when you want a foreground result immediately
-- use `palmscript runs submit optimize ...` when the search should continue in local durable state and keep every completed candidate
-- come back later with `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>`, or `palmscript runs best <run-id> --preset-out best.json`
+- use `palmscript run optimize ...` for direct tuning from the CLI
+- save survivors with `--preset-out best.json` so they can be rerun with `run backtest` or `run walk-forward`
+- keep the default untouched holdout enabled unless you are intentionally disabling that protection
 
 ## What To Read Next
 

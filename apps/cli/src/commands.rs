@@ -26,13 +26,10 @@ use crate::format::{
     render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
     render_walk_forward_sweep_text, render_walk_forward_text,
 };
-use crate::runs;
-
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Docs(args) => print_docs(args),
         Command::Run { mode } => run_mode(*mode),
-        Command::Runs { mode } => runs::run(*mode),
         Command::Check(args) => check_script(args),
         Command::DumpBytecode(args) => dump_bytecode(args),
     }

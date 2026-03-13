@@ -56,4 +56,4 @@ Los `input` numericos ahora pueden declarar metadata de busqueda para el optimiz
 input fast_len = 21 optimize(int, 8, 34, 1)
 ```
 
-Esto hace que `run optimize` y `runs submit optimize` puedan inferir el espacio de busqueda desde el propio script cuando no se pasa `--param`.
+Esto hace que `run optimize` puedan inferir el espacio de busqueda desde el propio script cuando no se pasa `--param`.

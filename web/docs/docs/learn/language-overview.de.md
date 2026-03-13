@@ -56,4 +56,4 @@ Numerische `input`-Deklarationen koennen jetzt Suchraum-Metadaten direkt im Skri
 input fast_len = 21 optimize(int, 8, 34, 1)
 ```
 
-Dadurch koennen `run optimize` und `runs submit optimize` den Suchraum aus dem Skript selbst ableiten, wenn kein `--param` uebergeben wird.
+Dadurch koennen `run optimize` den Suchraum aus dem Skript selbst ableiten, wenn kein `--param` uebergeben wird.

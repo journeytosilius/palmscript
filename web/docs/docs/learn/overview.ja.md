@@ -20,8 +20,9 @@ PalmScript の公開ドキュメントは次の二つを中心に構成されて
 長い CLI チューニングジョブでは:
 
 - すぐに前面で結果が欲しいなら `palmscript run optimize ...` を使う
-- 探索をローカルの永続状態で続け、完了した各 candidate を保存したいなら `palmscript runs submit optimize ...` を使う
-- 後で `palmscript runs status <run-id>`、`palmscript runs show <run-id>`、`palmscript runs tail <run-id>`、`palmscript runs best <run-id> --preset-out best.json` で戻って確認する
+- CLI から直接最適化したいなら `palmscript run optimize ...` を使う
+- 有望な candidate は `--preset-out best.json` で保存し、`run backtest` や `run walk-forward` で再評価する
+- 明示的に無効化したい場合を除き、既定の untouched holdout を有効のままにする
 
 ## 次に読むもの
 

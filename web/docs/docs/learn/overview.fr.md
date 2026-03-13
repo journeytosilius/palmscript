@@ -20,8 +20,9 @@ Flux typique :
 Pour les longues recherches de tuning en CLI :
 
 - utilisez `palmscript run optimize ...` quand vous voulez le resultat au premier plan
-- utilisez `palmscript runs submit optimize ...` quand la recherche doit continuer dans un etat local durable et conserver chaque candidat termine
-- revenez plus tard avec `palmscript runs status <run-id>`, `palmscript runs show <run-id>`, `palmscript runs tail <run-id>` ou `palmscript runs best <run-id> --preset-out best.json`
+- utilisez `palmscript run optimize ...` pour optimiser directement depuis la CLI
+- enregistrez les candidats utiles avec `--preset-out best.json` afin de les rejouer avec `run backtest` ou `run walk-forward`
+- laissez le holdout final intact actif par defaut, sauf si vous voulez desactiver cette protection volontairement
 
 ## Que Lire Ensuite
 

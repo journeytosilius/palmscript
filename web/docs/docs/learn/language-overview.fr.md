@@ -56,4 +56,4 @@ Les `input` numeriques peuvent maintenant declarer des metadonnees de recherche 
 input fast_len = 21 optimize(int, 8, 34, 1)
 ```
 
-Ainsi, `run optimize` et `runs submit optimize` peuvent inferer l espace de recherche depuis le script lui-meme quand `--param` n est pas fourni.
+Ainsi, `run optimize` peuvent inferer l espace de recherche depuis le script lui-meme quand `--param` n est pas fourni.
