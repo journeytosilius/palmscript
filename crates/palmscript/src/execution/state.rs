@@ -8,8 +8,8 @@ use crate::compiler::compile;
 
 use super::{
     now_ms, ExecutionError, ExecutionMode, ExecutionSessionHealth, ExecutionSessionStatus,
-    PaperSessionExport, PaperSessionLogEvent, PaperSessionManifest, PaperSessionSnapshot,
-    SubmitPaperSession,
+    PaperExecutionSource, PaperSessionExport, PaperSessionLogEvent, PaperSessionManifest,
+    PaperSessionSnapshot, SubmitPaperSession,
 };
 
 const EXECUTION_ENV_VAR: &str = "PALMSCRIPT_EXECUTION_STATE_DIR";
@@ -197,6 +197,16 @@ pub fn submit_paper_session(
         history_capacity: compiled.program.history_capacity,
         endpoints: request.endpoints,
         config: request.config,
+        execution_sources: compiled
+            .program
+            .declared_sources
+            .iter()
+            .map(|source| PaperExecutionSource {
+                alias: source.alias.clone(),
+                template: source.template,
+                symbol: source.symbol.clone(),
+            })
+            .collect(),
         warmup_from_ms: None,
         latest_runtime_to_ms: None,
     };

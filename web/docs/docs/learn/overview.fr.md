@@ -52,4 +52,5 @@ PalmScript inclut maintenant aussi un daemon local d'execution paper :
 - `palmscript run paper ...` cree une session paper persistante
 - `palmscript execution serve` traite ces sessions avec des donnees d'exchange reelles sur des bougies fermees
 - la session reutilise la meme VM compilee, la meme simulation d'ordres et les memes regles de portefeuille que le backtest
+- les snapshots paper montrent maintenant aussi le bid/ask top-of-book, le prix median derive et les prix last/mark lorsqu'ils existent
 - la v1 utilise uniquement de l'argent fictif et n'envoie jamais d'ordres reels

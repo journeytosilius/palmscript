@@ -39,7 +39,7 @@ Current backtest-oriented outputs include:
 - deterministic improvement hints
 - optional per-bar decision traces with `--diagnostics full-trace`
 
-PalmScript also now includes a local execution daemon for paper sessions. The daemon reuses the same compiled VM and order simulator as backtest mode, but drives them from live exchange-backed closed bars under a persistent local paper ledger.
+PalmScript also now includes a local execution daemon for paper sessions. The daemon reuses the same compiled VM and order simulator as backtest mode, drives them from live exchange-backed closed bars under a persistent local paper ledger, and surfaces shared top-of-book / last / mark quote snapshots so agents can inspect live paper-session valuation and feed health directly from the CLI.
 
 That makes the CLI and JSON output suitable for automated strategy iteration by agents as well as manual inspection by humans.
 

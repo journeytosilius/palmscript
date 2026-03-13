@@ -26,6 +26,37 @@ fn mock_binance_interval(server: &mut Server, interval: &str, rows: &[serde_json
         .create();
 }
 
+fn mock_binance_book_ticker(server: &mut Server) {
+    server
+        .mock("GET", "/api/v3/ticker/bookTicker")
+        .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+        .with_status(200)
+        .with_body(
+            serde_json::json!({
+                "symbol": "BTCUSDT",
+                "bidPrice": "12.50",
+                "askPrice": "13.50",
+            })
+            .to_string(),
+        )
+        .create();
+}
+
+fn mock_binance_last_price(server: &mut Server) {
+    server
+        .mock("GET", "/api/v3/ticker/price")
+        .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+        .with_status(200)
+        .with_body(
+            serde_json::json!({
+                "symbol": "BTCUSDT",
+                "price": "13.00",
+            })
+            .to_string(),
+        )
+        .create();
+}
+
 fn source() -> &'static str {
     "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
@@ -51,6 +82,8 @@ fn paper_daemon_processes_a_submitted_session_against_mocked_exchange_bars() {
             serde_json::json!([1704067380000_i64, "13", "13", "13", "13", "1000"]),
         ],
     );
+    mock_binance_book_ticker(&mut server);
+    mock_binance_last_price(&mut server);
 
     std::env::set_var("PALMSCRIPT_EXECUTION_STATE_DIR", state_dir.path());
     std::env::set_var("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url());
@@ -82,6 +115,7 @@ fn paper_daemon_processes_a_submitted_session_against_mocked_exchange_bars() {
 
     let export = load_paper_session_export(&manifest.session_id).expect("paper export should load");
     assert_eq!(export.manifest.status, ExecutionSessionStatus::Live);
+    assert_eq!(status.subscription_count, 1);
     let result = export
         .latest_result
         .expect("paper session should persist a latest result");
@@ -91,9 +125,25 @@ fn paper_daemon_processes_a_submitted_session_against_mocked_exchange_bars() {
     assert_eq!(
         export
             .snapshot
+            .as_ref()
             .expect("paper snapshot should exist")
             .latest_closed_bar_time_ms,
         Some(1704067380000_i64)
+    );
+    let snapshot = export.snapshot.expect("paper snapshot should exist");
+    assert_eq!(snapshot.feed_snapshots.len(), 1);
+    let feed = &snapshot.feed_snapshots[0];
+    assert_eq!(feed.execution_alias, "spot");
+    assert_eq!(
+        feed.top_of_book
+            .as_ref()
+            .expect("top of book should be present")
+            .mid_price,
+        13.0
+    );
+    assert_eq!(
+        snapshot.open_positions[0].market_price, 13.0,
+        "open position valuation should use top-of-book mid"
     );
 
     std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");

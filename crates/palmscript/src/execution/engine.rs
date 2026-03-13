@@ -9,12 +9,14 @@ use super::{
     append_log_event, load_paper_session_manifest, load_paper_session_script,
     load_paper_session_snapshot, persist_session_manifest, persist_session_result,
     persist_session_snapshot, render_snapshot_from_result, ExecutionError, ExecutionSessionHealth,
-    ExecutionSessionStatus, PaperSessionLogEvent, PaperSessionManifest,
+    ExecutionSessionStatus, FeedSnapshotState, PaperFeedSnapshot, PaperSessionLogEvent,
+    PaperSessionManifest,
 };
 
 pub(crate) fn process_paper_session(
     session_id: &str,
     now_ms: i64,
+    feed_snapshots: &[PaperFeedSnapshot],
 ) -> Result<PaperSessionManifest, ExecutionError> {
     let mut manifest = load_paper_session_manifest(session_id)?;
     if manifest.stop_requested {
@@ -51,10 +53,16 @@ pub(crate) fn process_paper_session(
     )?;
 
     manifest.warmup_from_ms = Some(bootstrap.warmup_from_ms);
+    let live_health = infer_health(feed_snapshots);
     if manifest.latest_runtime_to_ms == Some(bootstrap.runtime_to_ms)
-        && manifest.status == ExecutionSessionStatus::Live
+        && matches!(
+            manifest.status,
+            ExecutionSessionStatus::Live | ExecutionSessionStatus::WarmingUp
+        )
         && load_paper_session_snapshot(session_id).is_ok()
     {
+        manifest.health = live_health;
+        manifest.status = ExecutionSessionStatus::Live;
         manifest.updated_at_ms = now_ms;
         persist_session_manifest(&manifest)?;
         return Ok(manifest);
@@ -107,12 +115,17 @@ pub(crate) fn process_paper_session(
             update_manifest_status(
                 &mut manifest,
                 ExecutionSessionStatus::Live,
-                ExecutionSessionHealth::Live,
+                live_health,
                 None,
                 "paper session updated",
             )?;
-            let snapshot =
-                render_snapshot_from_result(&manifest, &result, bootstrap.runtime_to_ms, now_ms);
+            let snapshot = render_snapshot_from_result(
+                &manifest,
+                &result,
+                bootstrap.runtime_to_ms,
+                now_ms,
+                feed_snapshots,
+            );
             persist_session_result(session_id, &result)?;
             persist_session_snapshot(session_id, &snapshot)?;
             append_log_event(
@@ -145,6 +158,22 @@ pub(crate) fn process_paper_session(
             )?;
             Ok(manifest)
         }
+    }
+}
+
+fn infer_health(feed_snapshots: &[PaperFeedSnapshot]) -> ExecutionSessionHealth {
+    if feed_snapshots.is_empty() {
+        return ExecutionSessionHealth::Live;
+    }
+    let healthy = feed_snapshots.iter().all(|feed| {
+        feed.top_of_book
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.state == FeedSnapshotState::Live)
+    });
+    if healthy {
+        ExecutionSessionHealth::Live
+    } else {
+        ExecutionSessionHealth::Degraded
     }
 }
 

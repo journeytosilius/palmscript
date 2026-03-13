@@ -145,11 +145,27 @@ The v1 execution layer is intentionally conservative:
 
 - `paper` only, no real authenticated order placement
 - local daemon only, no remote control plane
-- closed-bar polling against the exchange-backed source adapters
+- closed-bar VM evaluation against the exchange-backed source adapters
 - one persistent local ledger per paper session
 - the same strategy semantics, portfolio caps, cooldowns, and max-bars exits as backtest mode
 
-When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` polls the supported exchange-backed sources, warms the VM with pre-session history, and then updates the session on each new closed execution bar without generating fake pre-session fills.
+When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` warms the VM with pre-session history, updates the strategy only when a new execution candle closes, and keeps one shared live quote bus for the active paper sessions.
+
+The shared quote layer currently provides, per execution alias:
+
+- top-of-book best bid / best ask
+- derived mid price
+- last price when the venue exposes it
+- mark price for perp venues when the venue exposes it
+
+Paper session snapshots and exports now include those quote snapshots so agents can inspect current spread, valuation source, and feed health directly from `paper-status` or `paper-export`. Open paper positions are valued from live top-of-book mid prices when available; perp snapshots prefer live mark price when present.
+
+The current paper engine is still intentionally conservative:
+
+- the PalmScript VM stays bar-close only
+- forming candles do not advance the strategy
+- top-of-book is used for live paper valuation and feed health
+- no real live order placement, queue-position simulation, or market-impact model is added in this slice
 
 Useful inspection commands:
 

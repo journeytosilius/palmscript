@@ -52,4 +52,5 @@ PalmScript enthaelt jetzt auch einen lokalen Paper-Ausfuehrungs-Daemon:
 - `palmscript run paper ...` legt eine persistente Paper-Session an
 - `palmscript execution serve` verarbeitet diese Sessions mit echten Exchange-Daten auf geschlossenen Kerzen
 - die Session verwendet dieselbe kompilierte VM, dieselbe Ordersimulation und dieselben Portfolio-Regeln wie der Backtester
+- die Paper-Snapshots zeigen jetzt auch Top-of-Book Bid/Ask, den daraus abgeleiteten Mid Price und Last-/Mark-Preise, wenn vorhanden
 - v1 verwendet nur Spielgeld und sendet niemals echte Orders

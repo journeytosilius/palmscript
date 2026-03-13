@@ -64,7 +64,7 @@ Backtests can also run in portfolio mode when you repeat `--execution-source`. I
 
 Backtest-oriented CLI commands now also expose a richer diagnostics surface. `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`. Summary mode keeps compact machine-readable cohort, drawdown, source-alignment, holdout-drift, robustness, and hint data. Full-trace mode adds one typed per-bar decision trace per execution bar so agents can inspect why a signal or order was queued, blocked, expired, or forced out.
 
-PalmScript also now ships a first-class local paper-execution loop. `run paper` snapshots a script into a persistent local paper session, and `execution serve` polls the supported exchange-backed sources on closed bars while reusing the same compiled VM, backtest order semantics, portfolio caps, cooldowns, and time-based exits. v1 execution is paper only and never places real live orders.
+PalmScript also now ships a first-class local paper-execution loop. `run paper` snapshots a script into a persistent local paper session, and `execution serve` maintains one shared live quote bus per local service so paper sessions can reuse top-of-book bid/ask, last-price, and mark-price snapshots without duplicating upstream venue fetches. The VM still evaluates only on closed execution bars, but open paper positions are now valued from live top-of-book mid prices when available. v1 execution is still paper only and never places real live orders.
 
 Exchange-backed source endpoints can be overridden with environment variables for mock servers and venue-specific routing:
 

@@ -177,7 +177,8 @@ Notes:
 
 - `run paper` submits a persistent local paper session; it does not start the daemon itself
 - the session snapshots the script source and queues it under the local execution state root
-- v1 paper mode uses the existing VM and deterministic order simulator with closed-bar exchange polling, not real live order placement
+- v1 paper mode uses the existing VM and deterministic order simulator with closed-bar strategy evaluation, not real live order placement
+- `paper-status` and `paper-export` now include shared live quote snapshots for each execution alias: top-of-book bid/ask, derived mid price, and venue last/mark prices when available
 
 ## `palmscript run paper-list`
 
@@ -248,6 +249,12 @@ Exports the full persisted paper session bundle, including manifest, snapshot, a
 ```bash
 palmscript execution serve [--poll-interval-ms <N>] [--once]
 ```
+
+Notes:
+
+- one local execution service can host many paper sessions
+- active paper sessions share one in-process quote cache per venue/symbol instead of duplicating upstream quote fetches
+- the daemon status output now includes the current `subscription_count`
 
 Arguments and flags:
 

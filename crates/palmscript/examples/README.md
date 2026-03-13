@@ -58,6 +58,8 @@ The same checked-in strategies can also be queued into the local paper daemon wi
 ./palmscript run paper-export <session-id> --format json
 ```
 
+Paper snapshots now include the latest top-of-book bid/ask, derived mid price, and any available last/mark price snapshots for each execution alias. That makes it easier for agents to inspect live paper-session valuation and quote health without leaving the CLI.
+
 Paper mode is local-only and fake-money-only in v1, but it reuses the same compiled VM, backtest order semantics, portfolio caps, cooldowns, and `max_bars_in_trade` controls as ordinary backtests.
 
 Common commands:

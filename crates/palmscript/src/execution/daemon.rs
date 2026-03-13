@@ -6,6 +6,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::engine::process_paper_session;
+use super::market_data::SharedMarketDataBus;
 use super::state::{
     default_execution_state_root, list_paper_sessions, read_json_file, write_json_file,
 };
@@ -27,6 +28,8 @@ pub struct ExecutionDaemonStatus {
     pub running: bool,
     pub stop_requested: bool,
     pub active_sessions: Vec<String>,
+    #[serde(default)]
+    pub subscription_count: usize,
     pub state_root: String,
 }
 
@@ -41,6 +44,7 @@ pub fn serve_execution_daemon(
     let daemon_path = daemon_status_path(&state_root);
     let stop_path = daemon_stop_path(&state_root);
     let started_at_ms = now_ms();
+    let mut feed_bus = SharedMarketDataBus::new()?;
     if stop_path.exists() {
         fs::remove_file(&stop_path).map_err(|err| ExecutionError::Io {
             path: stop_path.display().to_string(),
@@ -63,6 +67,7 @@ pub fn serve_execution_daemon(
             })
             .map(|manifest| manifest.session_id.clone())
             .collect::<Vec<_>>();
+        feed_bus.sync(&manifests, now_ms());
         let stop_requested = stop_path.exists();
         let status = ExecutionDaemonStatus {
             pid: std::process::id(),
@@ -73,6 +78,7 @@ pub fn serve_execution_daemon(
             running: true,
             stop_requested,
             active_sessions: active_sessions.clone(),
+            subscription_count: feed_bus.subscription_count(),
             state_root: state_root.display().to_string(),
         };
         write_json_file(&daemon_path, &status)?;
@@ -80,7 +86,14 @@ pub fn serve_execution_daemon(
             break;
         }
         for session_id in active_sessions {
-            let _ = process_paper_session(&session_id, now_ms())?;
+            let manifest = manifests
+                .iter()
+                .find(|manifest| manifest.session_id == session_id)
+                .ok_or_else(|| ExecutionError::UnknownSession {
+                    session_id: session_id.clone(),
+                })?;
+            let feed_snapshots = feed_bus.snapshots_for_manifest(manifest, now_ms());
+            let _ = process_paper_session(&session_id, now_ms(), &feed_snapshots)?;
         }
         if config.once {
             let mut final_status = status.clone();
@@ -101,6 +114,7 @@ pub fn serve_execution_daemon(
         running: false,
         stop_requested: true,
         active_sessions: Vec::new(),
+        subscription_count: 0,
         state_root: state_root.display().to_string(),
     };
     write_json_file(&daemon_path, &final_status)?;

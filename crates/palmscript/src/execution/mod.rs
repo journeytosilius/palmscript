@@ -22,6 +22,7 @@ use crate::backtest::{
     PerpMarginMode, PositionSnapshot,
 };
 use crate::exchange::ExchangeEndpoints;
+use crate::interval::SourceTemplate;
 use crate::runtime::VmLimits;
 
 pub use daemon::{
@@ -75,6 +76,56 @@ pub struct PaperSessionConfig {
     pub vm_limits: VmLimits,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaperExecutionSource {
+    pub alias: String,
+    pub template: SourceTemplate,
+    pub symbol: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedSnapshotState {
+    Live,
+    Stale,
+    Missing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValuationPriceSource {
+    Candle,
+    Mid,
+    Mark,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TopOfBookSnapshot {
+    pub time_ms: i64,
+    pub best_bid: f64,
+    pub best_ask: f64,
+    pub mid_price: f64,
+    pub state: FeedSnapshotState,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PriceSnapshot {
+    pub time_ms: i64,
+    pub price: f64,
+    pub state: FeedSnapshotState,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PaperFeedSnapshot {
+    pub execution_alias: String,
+    pub template: SourceTemplate,
+    pub symbol: String,
+    pub top_of_book: Option<TopOfBookSnapshot>,
+    pub last_price: Option<PriceSnapshot>,
+    pub mark_price: Option<PriceSnapshot>,
+    pub valuation_source: Option<ValuationPriceSource>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PaperSessionManifest {
     pub session_id: String,
@@ -92,6 +143,8 @@ pub struct PaperSessionManifest {
     pub history_capacity: usize,
     pub endpoints: ExchangeEndpoints,
     pub config: PaperSessionConfig,
+    #[serde(default)]
+    pub execution_sources: Vec<PaperExecutionSource>,
     pub warmup_from_ms: Option<i64>,
     pub latest_runtime_to_ms: Option<i64>,
 }
@@ -109,6 +162,8 @@ pub struct PaperSessionSnapshot {
     pub summary: Option<BacktestSummary>,
     pub diagnostics_summary: Option<BacktestDiagnosticSummary>,
     pub open_positions: Vec<PositionSnapshot>,
+    #[serde(default)]
+    pub feed_snapshots: Vec<PaperFeedSnapshot>,
     pub open_order_count: usize,
     pub filled_order_count: usize,
     pub cancelled_order_count: usize,
@@ -223,6 +278,13 @@ pub(crate) fn render_snapshot_from_result(
     result: &BacktestResult,
     runtime_to_ms: i64,
     updated_at_ms: i64,
+    feed_snapshots: &[PaperFeedSnapshot],
 ) -> PaperSessionSnapshot {
-    paper::snapshot_from_result(manifest, result, runtime_to_ms, updated_at_ms)
+    paper::snapshot_from_result(
+        manifest,
+        result,
+        runtime_to_ms,
+        updated_at_ms,
+        feed_snapshots,
+    )
 }
