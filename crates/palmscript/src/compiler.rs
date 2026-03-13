@@ -5690,17 +5690,18 @@ impl<'a> Compiler<'a> {
         match &stmt.kind {
             StmtKind::Let { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
-                let slot = self.analysis.resolved_let_slots[&stmt.id];
+                let Some(slot) = self.resolved_let_slot(stmt.id, stmt.span) else {
+                    return;
+                };
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
                         .with_a(slot)
                         .with_span(stmt.span),
                 );
-                let local = &self.program.locals[slot as usize];
-                self.scopes
-                    .last_mut()
-                    .unwrap()
-                    .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
+                let Some(ty) = self.local_type(slot, stmt.span) else {
+                    return;
+                };
+                self.insert_scope_symbol(name.clone(), slot, ty, stmt.span);
             }
             StmtKind::LetTuple { names, expr } => {
                 self.emit_expr(expr, expr_info, user_calls);
@@ -5709,56 +5710,59 @@ impl<'a> Compiler<'a> {
                         .with_a(names.len() as u16)
                         .with_span(stmt.span),
                 );
-                let slots = self.analysis.resolved_let_tuple_slots[&stmt.id].clone();
+                let Some(slots) = self.resolved_let_tuple_slots(stmt.id, names.len(), stmt.span)
+                else {
+                    return;
+                };
                 for (binding, slot) in names.iter().zip(slots.iter()).rev() {
                     self.emit(
                         Instruction::new(OpCode::StoreLocal)
                             .with_a(*slot)
                             .with_span(stmt.span),
                     );
-                    let local = &self.program.locals[*slot as usize];
-                    self.scopes.last_mut().unwrap().insert(
-                        binding.name.clone(),
-                        CompilerSymbol {
-                            slot: *slot,
-                            ty: local.ty,
-                        },
-                    );
+                    let Some(ty) = self.local_type(*slot, stmt.span) else {
+                        return;
+                    };
+                    self.insert_scope_symbol(binding.name.clone(), *slot, ty, stmt.span);
                 }
             }
             StmtKind::Const { name, expr, .. } | StmtKind::Input { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
-                let slot = self.analysis.resolved_let_slots[&stmt.id];
+                let Some(slot) = self.resolved_let_slot(stmt.id, stmt.span) else {
+                    return;
+                };
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
                         .with_a(slot)
                         .with_span(stmt.span),
                 );
-                let local = &self.program.locals[slot as usize];
-                self.scopes
-                    .last_mut()
-                    .unwrap()
-                    .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
+                let Some(ty) = self.local_type(slot, stmt.span) else {
+                    return;
+                };
+                self.insert_scope_symbol(name.clone(), slot, ty, stmt.span);
             }
             StmtKind::Export { name, expr, .. }
             | StmtKind::Regime { name, expr, .. }
             | StmtKind::Trigger { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
-                let slot = self.analysis.resolved_output_slots[&stmt.id];
+                let Some(slot) = self.resolved_output_slot(stmt.id, stmt.span) else {
+                    return;
+                };
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
                         .with_a(slot)
                         .with_span(stmt.span),
                 );
-                let local = &self.program.locals[slot as usize];
-                self.scopes
-                    .last_mut()
-                    .unwrap()
-                    .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
+                let Some(ty) = self.local_type(slot, stmt.span) else {
+                    return;
+                };
+                self.insert_scope_symbol(name.clone(), slot, ty, stmt.span);
             }
             StmtKind::Signal { expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
-                let slot = self.analysis.resolved_output_slots[&stmt.id];
+                let Some(slot) = self.resolved_output_slot(stmt.id, stmt.span) else {
+                    return;
+                };
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
                         .with_a(slot)
@@ -5766,7 +5770,9 @@ impl<'a> Compiler<'a> {
                 );
             }
             StmtKind::Order { spec, .. } => {
-                let resolved = self.analysis.resolved_order_field_slots[&stmt.id];
+                let Some(resolved) = self.resolved_order_field_slots(stmt.id, stmt.span) else {
+                    return;
+                };
                 match &spec.kind {
                     OrderSpecKind::Market => {}
                     OrderSpecKind::Limit { price, .. } => {
@@ -5830,7 +5836,9 @@ impl<'a> Compiler<'a> {
                 }
             }
             StmtKind::OrderSize { expr, .. } => {
-                let resolved = self.analysis.resolved_order_field_slots[&stmt.id];
+                let Some(resolved) = self.resolved_order_field_slots(stmt.id, stmt.span) else {
+                    return;
+                };
                 match classify_order_size_expr(expr) {
                     OrderSizeExpr::CapitalFraction(size_expr) => {
                         if let Some(slot) = resolved.size_slot {
@@ -6041,7 +6049,9 @@ impl<'a> Compiler<'a> {
                 field,
                 ..
             } => {
-                let slot = self.source_slot(source, *interval, *field);
+                let Some(slot) = self.source_slot(source, *interval, *field, expr.span) else {
+                    return;
+                };
                 self.emit(
                     Instruction::new(OpCode::LoadLocal)
                         .with_a(slot)
@@ -7659,7 +7669,9 @@ impl<'a> Compiler<'a> {
                 field,
                 ..
             } => {
-                let slot = self.source_slot(source, *interval, *field);
+                let Some(slot) = self.source_slot(source, *interval, *field, expr.span) else {
+                    return;
+                };
                 self.bump_slot_history(slot, required_history);
                 self.emit(
                     Instruction::new(OpCode::LoadSeries)
@@ -7703,6 +7715,11 @@ impl<'a> Compiler<'a> {
 
     fn emit(&mut self, instruction: Instruction) {
         self.program.instructions.push(instruction);
+    }
+
+    fn push_internal_compile_error(&mut self, message: impl Into<String>, span: Span) {
+        self.diagnostics
+            .push(Diagnostic::new(DiagnosticKind::Compile, message, span));
     }
 
     fn emit_placeholder(&mut self, opcode: OpCode, span: Span) -> usize {
@@ -7753,15 +7770,37 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn source_slot(&self, source: &str, interval: Option<Interval>, field: MarketField) -> u16 {
-        let source_id = self
+    fn source_slot(
+        &mut self,
+        source: &str,
+        interval: Option<Interval>,
+        field: MarketField,
+        span: Span,
+    ) -> Option<u16> {
+        let Some(source_id) = self
             .analysis
             .declared_sources
             .iter()
             .find(|decl| decl.alias == source)
             .map(|decl| decl.id)
-            .expect("source slots should only be emitted for validated aliases");
-        self.analysis.source_slots[&(source_id, interval, field)]
+        else {
+            self.push_internal_compile_error(
+                format!("missing compiled source alias `{source}` during emission"),
+                span,
+            );
+            return None;
+        };
+        let key = (source_id, interval, field);
+        self.analysis.source_slots.get(&key).copied().or_else(|| {
+            self.push_internal_compile_error(
+                format!(
+                    "missing compiled source slot for `{}` during emission",
+                    format_source_series_ref(source, interval, field)
+                ),
+                span,
+            );
+            None
+        })
     }
 
     fn next_callsite(&mut self) -> u16 {
@@ -7787,6 +7826,105 @@ impl<'a> Compiler<'a> {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+
+    fn resolved_let_slot(&mut self, stmt_id: NodeId, span: Span) -> Option<u16> {
+        self.analysis
+            .resolved_let_slots
+            .get(&stmt_id)
+            .copied()
+            .or_else(|| {
+                self.push_internal_compile_error(
+                    format!("missing resolved local slot for statement {stmt_id}"),
+                    span,
+                );
+                None
+            })
+    }
+
+    fn resolved_let_tuple_slots(
+        &mut self,
+        stmt_id: NodeId,
+        expected_len: usize,
+        span: Span,
+    ) -> Option<Vec<u16>> {
+        let slots = self
+            .analysis
+            .resolved_let_tuple_slots
+            .get(&stmt_id)
+            .cloned()
+            .or_else(|| {
+                self.push_internal_compile_error(
+                    format!("missing resolved tuple slots for statement {stmt_id}"),
+                    span,
+                );
+                None
+            })?;
+        if slots.len() != expected_len {
+            self.push_internal_compile_error(
+                format!(
+                    "resolved tuple slot count mismatch for statement {stmt_id}: expected {expected_len}, found {}",
+                    slots.len()
+                ),
+                span,
+            );
+            return None;
+        }
+        Some(slots)
+    }
+
+    fn resolved_output_slot(&mut self, stmt_id: NodeId, span: Span) -> Option<u16> {
+        self.analysis
+            .resolved_output_slots
+            .get(&stmt_id)
+            .copied()
+            .or_else(|| {
+                self.push_internal_compile_error(
+                    format!("missing resolved output slot for statement {stmt_id}"),
+                    span,
+                );
+                None
+            })
+    }
+
+    fn resolved_order_field_slots(
+        &mut self,
+        stmt_id: NodeId,
+        span: Span,
+    ) -> Option<ResolvedOrderFieldSlots> {
+        self.analysis
+            .resolved_order_field_slots
+            .get(&stmt_id)
+            .copied()
+            .or_else(|| {
+                self.push_internal_compile_error(
+                    format!("missing resolved order field slots for statement {stmt_id}"),
+                    span,
+                );
+                None
+            })
+    }
+
+    fn local_type(&mut self, slot: u16, span: Span) -> Option<Type> {
+        self.program
+            .locals
+            .get(slot as usize)
+            .map(|local| local.ty)
+            .or_else(|| {
+                self.push_internal_compile_error(
+                    format!("missing compiled local for slot {slot}"),
+                    span,
+                );
+                None
+            })
+    }
+
+    fn insert_scope_symbol(&mut self, name: String, slot: u16, ty: Type, span: Span) {
+        let Some(scope) = self.scopes.last_mut() else {
+            self.push_internal_compile_error("missing compiler scope during emission", span);
+            return;
+        };
+        scope.insert(name, CompilerSymbol { slot, ty });
     }
 
     fn push_scope(&mut self) {
@@ -7844,4 +7982,93 @@ fn collect_input_decls(ast: &Ast, analysis: &Analysis) -> Vec<InputDecl> {
         });
     }
     inputs
+}
+
+fn format_source_series_ref(
+    source: &str,
+    interval: Option<Interval>,
+    field: MarketField,
+) -> String {
+    match interval {
+        Some(interval) => format!("{source}.{}.{}", interval.as_str(), field.as_str()),
+        None => format!("{source}.{}", field.as_str()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_compiler<'a>(
+        source: &'a str,
+        ast: &'a Ast,
+    ) -> (
+        Compiler<'a>,
+        HashMap<NodeId, ExprInfo>,
+        HashMap<NodeId, FunctionSpecializationKey>,
+    ) {
+        let analysis = Analyzer::new(ast)
+            .analyze(ast)
+            .expect("analysis should succeed");
+        let expr_info = analysis.expr_info.clone();
+        let user_calls = analysis.user_function_calls.clone();
+        let mut compiler = Compiler::new(source, ast);
+        compiler.analysis = analysis;
+        compiler.program.locals = compiler.analysis.locals.clone();
+        compiler.rebuild_scopes();
+        (compiler, expr_info, user_calls)
+    }
+
+    #[test]
+    fn emit_stmt_reports_missing_resolved_local_slot_instead_of_panicking() {
+        let source = "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nlet x = 1\nplot(x)";
+        let tokens = lexer::lex(source).expect("lex should succeed");
+        let ast = parser::parse(&tokens).expect("parse should succeed");
+        let (mut compiler, expr_info, user_calls) = build_compiler(source, &ast);
+
+        let stmt = &ast.statements[0];
+        compiler.analysis.resolved_let_slots.remove(&stmt.id);
+        compiler.emit_stmt(stmt, &expr_info, &user_calls);
+
+        assert_eq!(compiler.diagnostics.len(), 1);
+        assert_eq!(compiler.diagnostics[0].kind, DiagnosticKind::Compile);
+        assert!(compiler.diagnostics[0]
+            .message
+            .contains("missing resolved local slot"),);
+    }
+
+    #[test]
+    fn emit_stmt_reports_missing_compiler_scope_instead_of_panicking() {
+        let source = "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nlet x = 1\nplot(x)";
+        let tokens = lexer::lex(source).expect("lex should succeed");
+        let ast = parser::parse(&tokens).expect("parse should succeed");
+        let (mut compiler, expr_info, user_calls) = build_compiler(source, &ast);
+
+        compiler.scopes.clear();
+        compiler.emit_stmt(&ast.statements[0], &expr_info, &user_calls);
+
+        assert_eq!(compiler.diagnostics.len(), 1);
+        assert_eq!(compiler.diagnostics[0].kind, DiagnosticKind::Compile);
+        assert_eq!(
+            compiler.diagnostics[0].message,
+            "missing compiler scope during emission"
+        );
+    }
+
+    #[test]
+    fn emit_expr_reports_missing_source_slot_instead_of_panicking() {
+        let source = "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nplot(src.close)";
+        let tokens = lexer::lex(source).expect("lex should succeed");
+        let ast = parser::parse(&tokens).expect("parse should succeed");
+        let (mut compiler, expr_info, user_calls) = build_compiler(source, &ast);
+
+        compiler.analysis.source_slots.clear();
+        compiler.emit_stmt(&ast.statements[0], &expr_info, &user_calls);
+
+        assert!(compiler.diagnostics.iter().any(|diagnostic| diagnostic.kind
+            == DiagnosticKind::Compile
+            && diagnostic
+                .message
+                .contains("missing compiled source slot for `src.close`")),);
+    }
 }
