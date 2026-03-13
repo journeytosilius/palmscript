@@ -246,6 +246,72 @@ plot(left.close)",
 }
 
 #[test]
+fn parses_named_order_arguments_for_all_order_constructors() {
+    compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+entry long = left.close > left.close[1]
+exit long = left.close < left.close[1]
+order entry long = market(venue = exec)
+order exit long = stop_limit(
+    trigger_price = left.close[1],
+    limit_price = left.close[1],
+    tif = tif.gtc,
+    post_only = false,
+    trigger_ref = trigger_ref.mark,
+    expire_time_ms = 0,
+    venue = exec
+)
+protect long = take_profit_market(
+    trigger_price = left.close[1],
+    trigger_ref = trigger_ref.mark,
+    venue = exec
+)
+target long = take_profit_limit(
+    trigger_price = left.close[1],
+    limit_price = left.close[1],
+    tif = tif.gtc,
+    post_only = false,
+    trigger_ref = trigger_ref.mark,
+    expire_time_ms = 0,
+    venue = exec
+)
+plot(left.close)",
+    )
+    .expect("all order constructors should accept named execution arguments");
+}
+
+#[test]
+fn rejects_mixing_positional_and_named_order_arguments() {
+    let message = compile_err(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+entry long = left.close > left.close[1]
+exit long = false
+order entry long = limit(left.close[1], tif = tif.gtc, post_only = false, venue = exec)
+plot(left.close)",
+    );
+    assert!(message
+        .contains("order constructors must use either positional arguments or named arguments"));
+}
+
+#[test]
+fn rejects_non_identifier_execution_binding_in_order_arguments() {
+    let message = compile_err(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+entry long = left.close > left.close[1]
+exit long = false
+order entry long = market(venue = left.close)
+plot(left.close)",
+    );
+    assert!(message.contains("`venue` must reference an execution alias identifier"));
+}
+
+#[test]
 fn parses_attached_exit_declarations_with_position_fields() {
     compile(
         "interval 1m

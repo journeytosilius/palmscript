@@ -336,6 +336,107 @@ plot(left.close)",
 }
 
 #[test]
+fn attached_exits_can_bind_to_a_single_execution_alias() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution bin_exec = binance.spot(\"BTCUSDT\")
+execution gate_exec = gate.spot(\"BTC_USDT\")
+entry long = left.close > left.close[1]
+entry short = false
+exit long = false
+exit short = false
+order entry long = market(venue = gate_exec)
+protect long = stop_market(trigger_price = position.entry_price - 10, trigger_ref = trigger_ref.last, venue = gate_exec)
+target long = take_profit_market(trigger_price = position.entry_price + 1, trigger_ref = trigger_ref.last, venue = gate_exec)
+plot(left.close)",
+    )
+    .expect("script should compile");
+    let runtime = runtime_with_execution_feeds(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                12.0,
+                12.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                13.0,
+                13.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 21.0, 21.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                22.0,
+                22.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                23.0,
+                23.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                101.0,
+                101.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                102.0,
+                102.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                103.0,
+                103.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 200.0, 200.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                201.0,
+                201.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                202.0,
+                202.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                203.0,
+                203.0,
+            ),
+        ],
+    );
+    let mut config = config("bin_exec");
+    config.portfolio_execution_aliases = vec!["bin_exec".to_string(), "gate_exec".to_string()];
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config)
+        .expect("backtest succeeds");
+
+    assert!(!result.fills.is_empty());
+    assert!(result
+        .fills
+        .iter()
+        .all(|fill| fill.execution_alias == "gate_exec"));
+    assert!(result
+        .orders
+        .iter()
+        .all(|order| order.execution_alias == "gate_exec"));
+}
+
+#[test]
 fn first_class_signal_declarations_drive_backtests() {
     let compiled = compile(
         "interval 1m
