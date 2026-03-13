@@ -23,7 +23,7 @@ callables, paineis de backtest e tabelas de trades e orders sem uma coluna de
 JSON bruto. A barra superior mantem o logo do PalmScript dentro do cabecalho,
 junto com um seletor de tema claro/escuro. O modo escuro usa uma shell
 inspirada no VS Code com um tema estilo Dracula no editor.
-A entrada hospedada e `/app/`. [https://palmscript.dev/app](https://palmscript.dev/app) redireciona para ela.
+A entrada hospedada e `/`. [https://palmscript.dev/](https://palmscript.dev/) serve o IDE do navegador diretamente.
 
 ## Destaques Da Linguagem
 

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
@@ -379,32 +379,18 @@ pub async fn build_public_dataset_cache(
 pub fn browser_ide_router(state: PublicIdeState) -> Router {
     Router::new()
         .route("/", get(index_html))
-        .route("/app", get(app_root_redirect))
-        .route("/app/", get(index_html))
         .route("/favicon.png", get(ide_favicon_png))
-        .route("/app/favicon.png", get(ide_favicon_png))
         .route("/ide/app.js", get(ide_web_js))
-        .route("/app/ide/app.js", get(ide_web_js))
         .route("/ide/app.css", get(ide_web_css))
-        .route("/app/ide/app.css", get(ide_web_css))
         .route("/ide/palmscript-logo.png", get(ide_logo_png))
-        .route("/app/ide/palmscript-logo.png", get(ide_logo_png))
         .route("/api/healthz", get(healthz))
-        .route("/app/api/healthz", get(healthz))
         .route("/api/examples", get(list_examples))
-        .route("/app/api/examples", get(list_examples))
         .route("/api/datasets", get(list_datasets))
-        .route("/app/api/datasets", get(list_datasets))
         .route("/api/check", post(check_script))
-        .route("/app/api/check", post(check_script))
         .route("/api/hover", post(hover_info))
-        .route("/app/api/hover", post(hover_info))
         .route("/api/completions", post(completions))
-        .route("/app/api/completions", post(completions))
         .route("/api/backtest", post(run_backtest))
-        .route("/app/api/backtest", post(run_backtest))
         .route("/api/lsp", get(lsp_socket))
-        .route("/app/api/lsp", get(lsp_socket))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -421,10 +407,6 @@ async fn index_html() -> impl IntoResponse {
         )],
         Html(include_str!("../../../web/ide/server-index.html")),
     )
-}
-
-async fn app_root_redirect() -> impl IntoResponse {
-    Redirect::permanent("/app/")
 }
 
 async fn ide_web_js() -> impl IntoResponse {
@@ -1026,12 +1008,12 @@ export x = bn.close - bb.close
     }
 
     #[tokio::test]
-    async fn app_prefixed_dataset_endpoint_returns_catalog() {
+    async fn datasets_endpoint_returns_catalog() {
         let app = browser_ide_router(fixture_state());
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/app/api/datasets")
+                    .uri("/api/datasets")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1046,7 +1028,7 @@ export x = bn.close - bb.close
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/app/ide/app.js")
+                    .uri("/ide/app.js")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1075,7 +1057,7 @@ export x = bn.close - bb.close
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/app/ide/app.css")
+                    .uri("/ide/app.css")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1097,7 +1079,7 @@ export x = bn.close - bb.close
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/app/ide/palmscript-logo.png")
+                    .uri("/ide/palmscript-logo.png")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1119,7 +1101,7 @@ export x = bn.close - bb.close
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/app/favicon.png")
+                    .uri("/favicon.png")
                     .body(Body::empty())
                     .expect("request"),
             )

@@ -2,7 +2,7 @@
 
 ## 1. Abre El IDE Del Navegador
 
-Usa el IDE alojado en [https://palmscript.dev/app/](https://palmscript.dev/app/).
+Usa el IDE alojado en [https://palmscript.dev/](https://palmscript.dev/).
 
 ## 2. Pega Un Script
 

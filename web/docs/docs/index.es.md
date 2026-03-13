@@ -23,7 +23,7 @@ paneles de backtest y tablas de trades y orders sin una columna de JSON crudo.
 La barra superior mantiene el logo de PalmScript dentro del encabezado, junto
 con un interruptor claro/oscuro. El modo oscuro usa una shell inspirada en
 VS Code con un tema tipo Dracula en el editor.
-La entrada alojada es `/app/`. [https://palmscript.dev/app](https://palmscript.dev/app) redirige ahi.
+La entrada alojada es `/`. [https://palmscript.dev/](https://palmscript.dev/) sirve el IDE del navegador directamente.
 
 ## Puntos Destacados Del Lenguaje
 

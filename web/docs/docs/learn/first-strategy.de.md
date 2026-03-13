@@ -31,7 +31,7 @@ order entry long = market()
 
 ## In Der Browser-IDE Ausprobieren
 
-Offne [https://palmscript.dev/app/](https://palmscript.dev/app/), fige das
+Offne [https://palmscript.dev/](https://palmscript.dev/), fige das
 Skript in den Editor ein und fuhre es mit den Datumssteuerungen im Header uber
 den verfugbaren BTCUSDT-Verlauf aus. Du solltest sehen, dass das
 Diagnose-Panel sauber bleibt und danach die Backtest-Zusammenfassung, Trades

@@ -30,7 +30,7 @@ Representative checked-in examples:
 
 ## Try It In The Browser IDE
 
-Open [https://palmscript.dev/app/](https://palmscript.dev/app/), paste the example into the editor, and run it against the available BTCUSDT history in the app.
+Open [https://palmscript.dev/](https://palmscript.dev/), paste the example into the editor, and run it against the available BTCUSDT history in the app.
 
 ## What To Watch For
 

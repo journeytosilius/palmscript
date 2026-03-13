@@ -23,9 +23,8 @@ BTCUSDT 履歴に対する日付範囲選択、ライブ診断、呼び出し可
 trades/orders テーブルを備えています。ツールバーには PalmScript ロゴと
 ライト/ダーク切り替えがあります。ダークモードは VS Code 風のシェルと
 Dracula 風のエディタテーマを使います。
-ホスト入口は `/app/` です。
-[https://palmscript.dev/app](https://palmscript.dev/app) はそこへ
-リダイレクトされます。
+ホスト入口は `/` です。
+[https://palmscript.dev/](https://palmscript.dev/) がブラウザ IDE を直接提供します。
 
 ## 言語の特徴
 

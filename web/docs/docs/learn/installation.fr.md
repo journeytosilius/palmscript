@@ -2,7 +2,7 @@
 
 PalmScript est actuellement presente publiquement via l'IDE navigateur heberge :
 
-[https://palmscript.dev/app/](https://palmscript.dev/app/)
+[https://palmscript.dev/](https://palmscript.dev/)
 
 Avant de suivre les exemples de `Apprendre`, assurez-vous que :
 

@@ -2,7 +2,7 @@
 
 PalmScript は現在、ホストされたブラウザ IDE を通じて公開デモされています。
 
-[https://palmscript.dev/app/](https://palmscript.dev/app/)
+[https://palmscript.dev/](https://palmscript.dev/)
 
 `学ぶ` の例を進める前に、次を確認してください。
 

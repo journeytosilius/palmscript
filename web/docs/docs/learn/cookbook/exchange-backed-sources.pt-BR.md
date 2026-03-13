@@ -31,7 +31,7 @@ Exemplos representativos incluidos no repositorio:
 
 ## Teste No IDE Do Navegador
 
-Abra [https://palmscript.dev/app/](https://palmscript.dev/app/), cole o exemplo
+Abra [https://palmscript.dev/](https://palmscript.dev/), cole o exemplo
 no editor e execute-o sobre o historico BTCUSDT disponivel na app.
 
 ## O Que Observar

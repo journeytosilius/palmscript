@@ -31,7 +31,7 @@ Exemples representatifs inclus dans le depot :
 
 ## L'Essayer Dans L'IDE Navigateur
 
-Ouvrez [https://palmscript.dev/app/](https://palmscript.dev/app/), collez
+Ouvrez [https://palmscript.dev/](https://palmscript.dev/), collez
 l'exemple dans l'editeur, puis executez-le sur l'historique BTCUSDT
 disponible dans l'application.
 

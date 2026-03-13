@@ -19,7 +19,7 @@ if spot.close > weekly_basis {
 
 ## Probiere Es In Der Browser-IDE
 
-Oeffne [https://palmscript.dev/app/](https://palmscript.dev/app/), fuege das
+Oeffne [https://palmscript.dev/](https://palmscript.dev/), fuege das
 Beispiel in den Editor ein und fuehre es ueber einen Datumsbereich aus, der
 mehrere Wochenschluesse abdeckt.
 

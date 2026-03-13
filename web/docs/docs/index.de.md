@@ -23,7 +23,7 @@ Backtest-Panels und Trades-/Orders-Tabellen ohne rohe JSON-Spalte. Die
 Werkzeugleiste behalt das PalmScript-Logo im Kopfbereich und bietet einen
 Hell/Dunkel-Schalter. Der Dunkelmodus nutzt eine an VS Code angelehnte Shell
 mit einem Dracula-artigen Editor-Thema.
-Der gehostete Einstiegspunkt ist `/app/`. [https://palmscript.dev/app](https://palmscript.dev/app) leitet dorthin weiter.
+Der gehostete Einstiegspunkt ist `/`. [https://palmscript.dev/](https://palmscript.dev/) serviert die Browser-IDE direkt.
 
 ## Sprach-Highlights
 

@@ -18,7 +18,7 @@ if spot.close > weekly_basis {
 
 ## ブラウザ IDE で試す
 
-[https://palmscript.dev/app/](https://palmscript.dev/app/) を開き、この例をエディタに貼り付け、複数の週足終値を含む日付範囲で実行してください。
+[https://palmscript.dev/](https://palmscript.dev/) を開き、この例をエディタに貼り付け、複数の週足終値を含む日付範囲で実行してください。
 
 ## 確認するポイント
 

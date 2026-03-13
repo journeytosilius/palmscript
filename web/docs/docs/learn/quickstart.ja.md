@@ -3,7 +3,7 @@
 ## 1. ブラウザ IDE を開く
 
 ホストされている IDE を使います:
-[https://palmscript.dev/app/](https://palmscript.dev/app/)
+[https://palmscript.dev/](https://palmscript.dev/)
 
 ## 2. スクリプトを貼り付ける
 

@@ -30,7 +30,7 @@ order entry long = market()
 
 ## Pruebala En El IDE Del Navegador
 
-Abre [https://palmscript.dev/app/](https://palmscript.dev/app/), pega el script
+Abre [https://palmscript.dev/](https://palmscript.dev/), pega el script
 en el editor y ejecutalo sobre el historial disponible de BTCUSDT con los
 controles de fecha del encabezado. Deberias ver el panel de diagnosticos limpio
 y despues el resumen del backtest, trades y orders poblados a partir de las

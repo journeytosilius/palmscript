@@ -23,8 +23,8 @@ d'autocompletion pour les callables, des panneaux de backtest et des tableaux
 trades/orders sans colonne JSON brute. La barre d'outils conserve le logo
 PalmScript dans l'en-tete ainsi qu'un commutateur clair/sombre. Le mode sombre
 utilise une coque inspiree de VS Code avec un theme d'editeur de style Dracula.
-Le point d'entree heberge est `/app/`.
-[https://palmscript.dev/app](https://palmscript.dev/app) y redirige.
+Le point d'entree heberge est `/`.
+[https://palmscript.dev/](https://palmscript.dev/) sert directement l'IDE navigateur.
 
 ## Points Forts Du Langage
 

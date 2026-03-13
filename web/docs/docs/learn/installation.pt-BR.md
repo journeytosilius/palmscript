@@ -2,7 +2,7 @@
 
 PalmScript e demonstrado publicamente no momento por meio do IDE hospedado no navegador:
 
-[https://palmscript.dev/app/](https://palmscript.dev/app/)
+[https://palmscript.dev/](https://palmscript.dev/)
 
 Antes de seguir os exemplos de `Aprenda`, certifique-se de que:
 

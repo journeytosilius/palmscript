@@ -2,7 +2,7 @@
 
 ## 1. Offne Die Browser-IDE
 
-Nutze die gehostete IDE unter [https://palmscript.dev/app/](https://palmscript.dev/app/).
+Nutze die gehostete IDE unter [https://palmscript.dev/](https://palmscript.dev/).
 
 ## 2. Fuge Ein Skript Ein
 

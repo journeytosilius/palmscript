@@ -21,7 +21,7 @@ Documentation:
 - German docs: <https://palmscript.dev/de/docs/>
 - Japanese docs: <https://palmscript.dev/ja/docs/>
 - French docs: <https://palmscript.dev/fr/docs/>
-- hosted IDE: <https://palmscript.dev/app/>
+- hosted IDE: <https://palmscript.dev/>
 - local source: [web/docs/docs/index.md](web/docs/docs/index.md)
 
 Start here:
@@ -90,8 +90,8 @@ of a text title, plus a light/dark mode switch. Dark mode uses a VS Code-like
 shell with a Dracula-inspired Monaco theme, the shell typography uses Inter,
 and the browser tab favicon now matches the current PalmScript logo.
 
-The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
-redirects there.
+The hosted IDE entrypoint is `/`. `https://palmscript.dev/` serves the
+browser IDE directly, while the public docs remain under `/docs/`.
 
 The documentation build is locale-aware. English is the canonical default at
 `/docs/`, Spanish is served at `/es/docs/`, Portuguese (Brazil) is served at

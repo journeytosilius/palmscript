@@ -23,7 +23,7 @@ Default bind address:
 
 - `127.0.0.1:8080`
 - local entrypoint: `/`
-- hosted reverse-proxy entrypoint: `/app/`
+- hosted entrypoint: `/`
 
 Override with:
 
@@ -83,9 +83,9 @@ shell does not yet wire the browser UI into the websocket LSP transport.
 - `POST /api/backtest`
 - `WS /api/lsp`
 
-The hosted deployment also exposes the same surface under `/app/...`. The
-public docs nginx front door normalizes `https://palmscript.dev/app` to
-`/app/` and proxies `/app/...` to
+The hosted deployment serves the browser IDE directly from `/`. The public
+docs nginx front door keeps `/docs/...` on the static site and proxies `/`,
+`/api/...`, `/ide/...`, and `/favicon.png` to
 `https://palmscript-ide-backend-production.up.railway.app`.
 
 ## Session and resource limits

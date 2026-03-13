@@ -30,7 +30,7 @@ order entry long = market()
 
 ## ブラウザ IDE で試す
 
-[https://palmscript.dev/app/](https://palmscript.dev/app/) を開き、
+[https://palmscript.dev/](https://palmscript.dev/) を開き、
 スクリプトをエディタに貼り付け、ヘッダーの日付コントロールで利用可能な
 BTCUSDT 履歴に対して実行してください。診断パネルがクリーンなままで、その
 後クロスシグナルからバックテスト要約、trades、orders が埋まるはずです。

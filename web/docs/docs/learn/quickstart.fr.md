@@ -2,7 +2,7 @@
 
 ## 1. Ouvrir L'IDE Navigateur
 
-Utilisez l'IDE heberge sur [https://palmscript.dev/app/](https://palmscript.dev/app/).
+Utilisez l'IDE heberge sur [https://palmscript.dev/](https://palmscript.dev/).
 
 ## 2. Coller Un Script
 
