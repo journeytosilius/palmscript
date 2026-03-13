@@ -35,3 +35,13 @@ PalmScript の公開ドキュメントは次の二つを中心に構成されて
 
 - `学ぶ` は PalmScript を効果的に使う方法を説明します。
 - `リファレンス` は PalmScript の意味を定義します。
+
+## Latest Diagnostics Additions
+
+PalmScript now exposes richer machine-readable backtest diagnostics in every public locale build:
+
+- `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
+- summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
+- full-trace mode adds one typed per-bar decision trace per execution bar
+- optimize output now includes top-candidate holdout checks plus parameter stability summaries
+

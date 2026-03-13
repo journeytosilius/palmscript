@@ -1,7 +1,8 @@
 use crate::backtest::bridge::{capture_request, PreparedBacktest};
 use crate::backtest::diagnostics::{
-    build_diagnostics_summary, build_order_diagnostics, snapshot_from_step, DiagnosticsAccumulator,
-    OrderDiagnosticContext,
+    build_backtest_hints, build_cohort_diagnostics, build_diagnostics_summary,
+    build_drawdown_diagnostics, build_order_diagnostics, snapshot_from_step,
+    DiagnosticsAccumulator, OrderDiagnosticContext,
 };
 use crate::backtest::orders::{
     add_to_position, adjusted_price, close_position, close_trade_slice, empty_request_slots,
@@ -15,9 +16,10 @@ use crate::backtest::orders::{
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
-    EquityPoint, FeatureSnapshot, Fill, OpportunityEventKind, OrderEndReason, OrderRecord,
-    OrderStatus, PerpBacktestMetadata, PositionSnapshot, Trade, TradeDiagnostic,
-    TradeExitClassification,
+    DecisionReason, DiagnosticsDetailMode, EquityPoint, FeatureSnapshot, Fill,
+    OpportunityEventKind, OrderDecisionTrace, OrderEndReason, OrderRecord, OrderStatus,
+    PerBarDecisionTrace, PerpBacktestMetadata, PositionSnapshot, SignalDecisionTrace, Trade,
+    TradeDiagnostic, TradeExitClassification,
 };
 use crate::bytecode::{
     LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, RiskControlKind,
@@ -99,6 +101,12 @@ struct TargetConsumptionState {
     short_stage: u8,
 }
 
+#[derive(Default)]
+struct StepDecisionTrace {
+    signal_decisions: Vec<SignalDecisionTrace>,
+    order_decisions: Vec<OrderDecisionTrace>,
+}
+
 pub(crate) fn simulate_backtest(
     mut stepper: RuntimeStepper,
     execution_bars: Vec<Bar>,
@@ -137,6 +145,7 @@ pub(crate) fn simulate_backtest(
     let mut target_consumption = TargetConsumptionState::default();
     let mut entry_progress = EntryProgressState::default();
     let mut diagnostics = DiagnosticsAccumulator::new(&prepared.exports);
+    let mut per_bar_trace = Vec::<PerBarDecisionTrace>::new();
 
     while let Some(open_time) = stepper.peek_open_time() {
         let next_execution = execution_bars.get(execution_cursor).copied();
@@ -146,6 +155,9 @@ pub(crate) fn simulate_backtest(
             current_execution.and_then(|_| aligned_mark_bars.get(execution_cursor).copied());
         let mut position_events = PositionEventStep::default();
         let mut filled_record_indices = Vec::new();
+        let mut decision_trace =
+            matches!(config.diagnostics_detail, DiagnosticsDetailMode::FullTrace)
+                .then(StepDecisionTrace::default);
         if let Some(bar) = current_execution {
             if let Some(open_trade) = open_trade.as_mut() {
                 update_open_trade_excursions(open_trade, bar.high, bar.low);
@@ -166,6 +178,7 @@ pub(crate) fn simulate_backtest(
                 &mut trade_diagnostics,
                 &mut total_realized_pnl,
                 last_snapshot.clone(),
+                decision_trace.as_mut(),
             ) {
                 if let Some(snapshot) = timeout_outcome.snapshot {
                     set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
@@ -212,6 +225,7 @@ pub(crate) fn simulate_backtest(
                 current_position_snapshot(position.as_ref(), bar.open, bar.time),
                 execution_cursor,
                 bar.time,
+                decision_trace.as_mut(),
             );
             pending_conflict_time = None;
             let mut filled_this_bar = false;
@@ -230,9 +244,24 @@ pub(crate) fn simulate_backtest(
 
                 match evaluation {
                     crate::backtest::orders::Evaluation::None => {
+                        record_order_decision(
+                            decision_trace.as_mut(),
+                            Some(orders[active.record_index].id),
+                            Some(role),
+                            match active.state {
+                                WorkingState::Ready => DecisionReason::AwaitingTrigger,
+                                WorkingState::RestingLimit { .. } => DecisionReason::AwaitingFill,
+                            },
+                        );
                         active_orders[slot] = Some(active);
                     }
                     crate::backtest::orders::Evaluation::Expire => {
+                        record_order_decision(
+                            decision_trace.as_mut(),
+                            Some(orders[active.record_index].id),
+                            Some(role),
+                            DecisionReason::TifExpired,
+                        );
                         update_order_record(
                             &mut orders[active.record_index],
                             OrderRecordUpdate {
@@ -249,6 +278,12 @@ pub(crate) fn simulate_backtest(
                         );
                     }
                     crate::backtest::orders::Evaluation::Cancel(reason) => {
+                        record_order_decision(
+                            decision_trace.as_mut(),
+                            Some(orders[active.record_index].id),
+                            Some(role),
+                            decision_reason_for_order_end(reason),
+                        );
                         update_order_record(
                             &mut orders[active.record_index],
                             OrderRecordUpdate {
@@ -268,6 +303,12 @@ pub(crate) fn simulate_backtest(
                         active_after_time,
                         trigger_time,
                     } => {
+                        record_order_decision(
+                            decision_trace.as_mut(),
+                            Some(orders[active.record_index].id),
+                            Some(role),
+                            DecisionReason::AwaitingFill,
+                        );
                         orders[active.record_index].trigger_time = Some(trigger_time);
                         active.state = WorkingState::RestingLimit { active_after_time };
                         active_orders[slot] = Some(active);
@@ -705,6 +746,17 @@ pub(crate) fn simulate_backtest(
                 liquidation_price: position.as_ref().and_then(|state| state.liquidation_price),
             });
             last_mark_price = Some(mark_price);
+            if let Some(trace) = decision_trace.as_mut() {
+                ensure_no_signal_traces(trace, &prepared);
+                per_bar_trace.push(PerBarDecisionTrace {
+                    bar_index: execution_cursor,
+                    time: bar.time,
+                    position_snapshot: fill_position.clone(),
+                    feature_snapshot: snapshot.clone(),
+                    signal_decisions: std::mem::take(&mut trace.signal_decisions),
+                    order_decisions: std::mem::take(&mut trace.order_decisions),
+                });
+            }
             execution_cursor += 1;
         } else {
             diagnostics.observe_exports(
@@ -730,6 +782,7 @@ pub(crate) fn simulate_backtest(
             decision_position_snapshot.as_ref(),
             snapshot.as_ref(),
             step_bar_index,
+            decision_trace.as_mut(),
         );
         enqueue_attached_requests(
             step_time,
@@ -745,10 +798,12 @@ pub(crate) fn simulate_backtest(
             decision_position_snapshot.as_ref(),
             snapshot.as_ref(),
             step_bar_index,
+            decision_trace.as_mut(),
         );
         last_snapshot = snapshot;
     }
 
+    let source_alignment = stepper.source_alignment_diagnostics();
     let outputs = stepper.finish();
     let order_diagnostics = build_order_diagnostics(&orders, &order_contexts);
     let diagnostics_summary = build_diagnostics_summary(&order_diagnostics, &trade_diagnostics);
@@ -796,6 +851,39 @@ pub(crate) fn simulate_backtest(
         &trade_diagnostics,
         (ending_equity - config.initial_capital) / config.initial_capital,
     );
+    let cohorts = build_cohort_diagnostics(&trade_diagnostics, &export_summaries);
+    let drawdown = build_drawdown_diagnostics(&equity_curve);
+    let hints = build_backtest_hints(
+        &BacktestSummary {
+            starting_equity: config.initial_capital,
+            ending_equity,
+            realized_pnl: total_realized_pnl,
+            unrealized_pnl,
+            total_return: (ending_equity - config.initial_capital) / config.initial_capital,
+            trade_count,
+            winning_trade_count,
+            losing_trade_count,
+            win_rate,
+            max_drawdown,
+            max_gross_exposure,
+        },
+        &diagnostics_summary,
+        &cohorts,
+        &drawdown,
+    );
+    let summary = BacktestSummary {
+        starting_equity: config.initial_capital,
+        ending_equity,
+        realized_pnl: total_realized_pnl,
+        unrealized_pnl,
+        total_return: (ending_equity - config.initial_capital) / config.initial_capital,
+        trade_count,
+        winning_trade_count,
+        losing_trade_count,
+        win_rate,
+        max_drawdown,
+        max_gross_exposure,
+    };
 
     Ok(BacktestResult {
         outputs,
@@ -809,21 +897,14 @@ pub(crate) fn simulate_backtest(
             capture_summary,
             export_summaries,
             opportunity_events,
+            per_bar_trace,
+            cohorts,
+            drawdown,
+            source_alignment,
+            hints,
         },
         equity_curve,
-        summary: BacktestSummary {
-            starting_equity: config.initial_capital,
-            ending_equity,
-            realized_pnl: total_realized_pnl,
-            unrealized_pnl,
-            total_return: (ending_equity - config.initial_capital) / config.initial_capital,
-            trade_count,
-            winning_trade_count,
-            losing_trade_count,
-            win_rate,
-            max_drawdown,
-            max_gross_exposure,
-        },
+        summary,
         open_position,
         perp: config
             .perp
@@ -1091,7 +1172,9 @@ fn enqueue_signal_requests(
     position_snapshot: Option<&PositionSnapshot>,
     snapshot: Option<&FeatureSnapshot>,
     bar_index: usize,
+    decision_trace: Option<&mut StepDecisionTrace>,
 ) {
+    let mut decision_trace = decision_trace;
     for event in &output.trigger_events {
         let Some(role) = prepared.signal_roles.get(&event.output_id).copied() else {
             continue;
@@ -1122,6 +1205,18 @@ fn enqueue_signal_requests(
             position_snapshot,
             snapshot,
         );
+        record_signal_decision(
+            decision_trace.as_deref_mut(),
+            &event.name,
+            Some(role),
+            match event_kind {
+                OpportunityEventKind::SignalConflicted => DecisionReason::ConflictingSignals,
+                OpportunityEventKind::SignalReplacedPendingOrder => {
+                    DecisionReason::SignalReplacedPendingOrder
+                }
+                _ => DecisionReason::SignalQueued,
+            },
+        );
         pending_requests[slot] = Some(capture_request(template, signal_time, output));
         pending_snapshots[slot] = snapshot.cloned();
         pending_signal_names[slot] = Some(event.name.clone());
@@ -1146,10 +1241,12 @@ fn enqueue_attached_requests(
     position_snapshot: Option<&PositionSnapshot>,
     snapshot: Option<&FeatureSnapshot>,
     bar_index: usize,
+    decision_trace: Option<&mut StepDecisionTrace>,
 ) {
     let (Some(before), Some(after)) = (position_before_step, position_after_step) else {
         return;
     };
+    let mut decision_trace = decision_trace;
     if before.side != after.side {
         return;
     }
@@ -1172,6 +1269,16 @@ fn enqueue_attached_requests(
             signal_time,
             position_snapshot,
             snapshot,
+        );
+        record_signal_decision(
+            decision_trace.as_deref_mut(),
+            role.canonical_name(),
+            Some(role),
+            if pending_requests[slot].is_some() {
+                DecisionReason::SignalReplacedPendingOrder
+            } else {
+                DecisionReason::SignalQueued
+            },
         );
         pending_requests[slot] = Some(capture_request(template, signal_time, output));
         pending_snapshots[slot] = snapshot.cloned();
@@ -1197,7 +1304,9 @@ fn place_pending_requests(
     placed_position: Option<PositionSnapshot>,
     bar_index: usize,
     time: f64,
+    decision_trace: Option<&mut StepDecisionTrace>,
 ) {
+    let mut decision_trace = decision_trace;
     for role in ROLE_PRIORITY {
         let slot = role_index(role);
         let Some(request) = pending_requests[slot].take() else {
@@ -1223,9 +1332,27 @@ fn place_pending_requests(
                 placed_position.as_ref(),
                 placed_snapshot.as_ref().or(signal_snapshot.as_ref()),
             );
+            record_signal_decision(
+                decision_trace.as_deref_mut(),
+                signal_name.as_deref().unwrap_or(role.canonical_name()),
+                Some(role),
+                DecisionReason::CooldownActive,
+            );
             continue;
         }
         if !request_applicable(request, position, entry_progress) {
+            let decision_reason = if matches!(
+                (
+                    role.is_entry(),
+                    role.is_long(),
+                    position.map(|state| state.side)
+                ),
+                (true, true, Some(PositionSide::Long)) | (true, false, Some(PositionSide::Short))
+            ) {
+                DecisionReason::SameSidePosition
+            } else {
+                DecisionReason::NoPosition
+            };
             diagnostics.record_signal_event(
                 if matches!(
                     (
@@ -1246,6 +1373,12 @@ fn place_pending_requests(
                 time,
                 placed_position.as_ref(),
                 placed_snapshot.as_ref(),
+            );
+            record_signal_decision(
+                decision_trace.as_deref_mut(),
+                signal_name.as_deref().unwrap_or(role.canonical_name()),
+                Some(role),
+                decision_reason,
             );
             continue;
         }
@@ -1294,6 +1427,12 @@ fn place_pending_requests(
         if let Some(reason) = missing_field_reason(request) {
             record.status = OrderStatus::Rejected;
             record.end_reason = Some(reason);
+            record_order_decision(
+                decision_trace.as_deref_mut(),
+                Some(record.id),
+                Some(role),
+                DecisionReason::MissingOrderField,
+            );
             orders.push(record);
             continue;
         }
@@ -1886,6 +2025,76 @@ fn update_order_record(record: &mut OrderRecord, update: OrderRecordUpdate) {
     record.end_reason = update.end_reason;
 }
 
+fn record_signal_decision(
+    trace: Option<&mut StepDecisionTrace>,
+    name: &str,
+    role: Option<SignalRole>,
+    reason: DecisionReason,
+) {
+    let Some(trace) = trace else {
+        return;
+    };
+    trace.signal_decisions.push(SignalDecisionTrace {
+        name: name.to_string(),
+        role,
+        reason,
+    });
+}
+
+fn record_order_decision(
+    trace: Option<&mut StepDecisionTrace>,
+    order_id: Option<usize>,
+    role: Option<SignalRole>,
+    reason: DecisionReason,
+) {
+    let Some(trace) = trace else {
+        return;
+    };
+    trace.order_decisions.push(OrderDecisionTrace {
+        order_id,
+        role,
+        reason,
+    });
+}
+
+fn ensure_no_signal_traces(trace: &mut StepDecisionTrace, prepared: &PreparedBacktest) {
+    for role in prepared.signal_roles.values().copied() {
+        if trace
+            .signal_decisions
+            .iter()
+            .any(|decision| decision.role == Some(role))
+        {
+            continue;
+        }
+        trace.signal_decisions.push(SignalDecisionTrace {
+            name: role.canonical_name().to_string(),
+            role: Some(role),
+            reason: DecisionReason::NoSignal,
+        });
+    }
+}
+
+fn decision_reason_for_order_end(reason: OrderEndReason) -> DecisionReason {
+    match reason {
+        OrderEndReason::RoleInvalidated => DecisionReason::RoleInvalidated,
+        OrderEndReason::MissingPrice
+        | OrderEndReason::MissingTriggerPrice
+        | OrderEndReason::MissingExpireTime
+        | OrderEndReason::MissingSizeFraction
+        | OrderEndReason::MissingRiskStopPrice
+        | OrderEndReason::InvalidSizeFraction
+        | OrderEndReason::InvalidRiskPct
+        | OrderEndReason::InvalidRiskDistance => DecisionReason::MissingOrderField,
+        OrderEndReason::InsufficientCollateral => DecisionReason::InsufficientCollateral,
+        OrderEndReason::IocUnfilled | OrderEndReason::FokUnfilled => DecisionReason::TifExpired,
+        OrderEndReason::PostOnlyWouldCross => DecisionReason::PostOnlyWouldCross,
+        OrderEndReason::Replaced
+        | OrderEndReason::Rearmed
+        | OrderEndReason::OcoCancelled
+        | OrderEndReason::PositionClosed => DecisionReason::VenueRuleRejected,
+    }
+}
+
 fn classify_exit(role: SignalRole) -> TradeExitClassification {
     match role {
         SignalRole::LongEntry
@@ -2014,6 +2223,7 @@ fn maybe_force_time_exit(
     trade_diagnostics: &mut Vec<TradeDiagnostic>,
     total_realized_pnl: &mut f64,
     snapshot: Option<FeatureSnapshot>,
+    decision_trace: Option<&mut StepDecisionTrace>,
 ) -> Option<CloseOutcome> {
     let position_side = position.as_ref()?.side;
     let max_bars = risk_control_bars(controls, position_side, RiskControlKind::MaxBarsInTrade)?;
@@ -2021,6 +2231,13 @@ fn maybe_force_time_exit(
     if bars_held < max_bars {
         return None;
     }
+
+    record_order_decision(
+        decision_trace,
+        None,
+        Some(exit_signal_role(position_side)),
+        DecisionReason::ForcedMaxBarsExit,
+    );
 
     Some(maybe_close_position_for_role(
         exit_signal_role(position_side),

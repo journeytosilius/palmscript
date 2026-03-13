@@ -11,8 +11,9 @@ use thiserror::Error;
 
 use crate::backtest::{
     bridge, run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
-    BacktestConfig, BacktestError, BacktestSummary, WalkForwardConfig, WalkForwardResult,
-    WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    BacktestConfig, BacktestError, BacktestSummary, DiagnosticsDetailMode, ImprovementHint,
+    ImprovementHintKind, WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -162,6 +163,8 @@ pub struct OptimizeConfig {
     pub backtest: BacktestConfig,
     pub walk_forward: Option<WalkForwardConfig>,
     #[serde(default)]
+    pub diagnostics_detail: DiagnosticsDetailMode,
+    #[serde(default)]
     pub holdout: Option<OptimizeHoldoutConfig>,
     pub params: Vec<OptimizeParamSpace>,
     pub objective: OptimizeObjective,
@@ -185,6 +188,16 @@ pub struct OptimizeHoldoutResult {
     pub to: i64,
     pub summary: WalkForwardWindowSummary,
     pub diagnostics: WalkForwardSegmentDiagnostics,
+    pub drift: HoldoutDriftSummary,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct HoldoutDriftSummary {
+    pub total_return_delta: f64,
+    pub execution_asset_return_delta: f64,
+    pub trade_count_delta: i64,
+    pub win_rate_delta: f64,
+    pub max_drawdown_delta: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -193,6 +206,10 @@ pub enum OptimizeEvaluationSummary {
     WalkForward {
         stitched_summary: WalkForwardStitchedSummary,
         zero_trade_segment_count: usize,
+        trade_count: usize,
+        winning_trade_count: usize,
+        losing_trade_count: usize,
+        win_rate: f64,
     },
     Backtest {
         summary: BacktestSummary,
@@ -273,6 +290,8 @@ pub struct OptimizePreset {
     pub backtest: BacktestConfig,
     pub walk_forward: Option<WalkForwardConfig>,
     #[serde(default)]
+    pub diagnostics_detail: DiagnosticsDetailMode,
+    #[serde(default)]
     pub holdout: Option<OptimizeHoldoutConfig>,
     pub parameter_space: Vec<OptimizeParamSpace>,
     pub best_input_overrides: BTreeMap<String, f64>,
@@ -288,6 +307,44 @@ pub struct OptimizeResult {
     pub top_candidates: Vec<OptimizeCandidateSummary>,
     #[serde(default)]
     pub holdout: Option<OptimizeHoldoutResult>,
+    #[serde(default)]
+    pub robustness: OptimizationRobustnessSummary,
+    #[serde(default)]
+    pub hints: Vec<ImprovementHint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HoldoutCandidateEvaluation {
+    pub trial_id: usize,
+    pub input_overrides: BTreeMap<String, f64>,
+    pub passed: bool,
+    pub summary: WalkForwardWindowSummary,
+    pub drift: HoldoutDriftSummary,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ParameterRobustnessSummary {
+    pub name: String,
+    pub best_value: Option<f64>,
+    pub top_ranked_min: Option<f64>,
+    pub top_ranked_max: Option<f64>,
+    pub holdout_passing_min: Option<f64>,
+    pub holdout_passing_max: Option<f64>,
+    pub distinct_sampled_value_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OptimizationRobustnessSummary {
+    pub top_candidate_count: usize,
+    pub holdout_evaluated_count: usize,
+    pub holdout_pass_count: usize,
+    pub holdout_fail_count: usize,
+    pub best_candidate_holdout_rank: Option<usize>,
+    pub holdout_return_min: Option<f64>,
+    pub holdout_return_max: Option<f64>,
+    pub holdout_return_mean: Option<f64>,
+    pub evaluations: Vec<HoldoutCandidateEvaluation>,
+    pub parameter_stability: Vec<ParameterRobustnessSummary>,
 }
 
 #[derive(Debug, Error)]
@@ -485,17 +542,53 @@ pub fn run_optimize_with_source_resume(
         .first()
         .cloned()
         .expect("validated optimize config always yields at least one trial");
-    let holdout = match holdout_plan {
-        Some(plan) => Some(evaluate_holdout(
-            source,
-            &runtime,
-            vm_limits,
-            &config,
-            &plan,
-            &best_candidate.input_overrides,
-        )?),
-        None => None,
+    let (holdout, robustness) = match holdout_plan {
+        Some(plan) => {
+            let evaluations = evaluate_top_candidate_holdouts(
+                source,
+                &runtime,
+                vm_limits,
+                &config,
+                &plan,
+                &top_candidates,
+            )?;
+            let best_holdout = if let Some(evaluation) = evaluations
+                .iter()
+                .find(|evaluation| evaluation.trial_id == best_candidate.trial_id)
+            {
+                let detailed_holdout = evaluate_holdout(
+                    source,
+                    &runtime,
+                    vm_limits,
+                    &config,
+                    &plan,
+                    &best_candidate.input_overrides,
+                )?;
+                Some(OptimizeHoldoutResult {
+                    bars: plan.bars,
+                    from: plan.from,
+                    to: plan.to,
+                    summary: evaluation.summary.clone(),
+                    diagnostics: detailed_holdout.diagnostics,
+                    drift: evaluation.drift.clone(),
+                })
+            } else {
+                None
+            };
+            (
+                best_holdout,
+                build_robustness_summary(
+                    &config,
+                    &all_candidates,
+                    &best_candidate,
+                    &top_candidates,
+                    evaluations,
+                ),
+            )
+        }
+        None => (None, OptimizationRobustnessSummary::default()),
     };
+    let hints = build_optimize_hints(&best_candidate, holdout.as_ref(), &robustness);
     Ok(OptimizeResult {
         candidate_count: config.trials,
         completed_trials: all_candidates.len(),
@@ -503,6 +596,8 @@ pub fn run_optimize_with_source_resume(
         best_candidate,
         top_candidates,
         holdout,
+        robustness,
+        hints,
     })
 }
 
@@ -990,7 +1085,186 @@ fn evaluate_holdout(
         to: plan.to,
         summary,
         diagnostics,
+        drift: HoldoutDriftSummary::default(),
     })
+}
+
+fn evaluate_top_candidate_holdouts(
+    source: &str,
+    runtime: &SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &OptimizeConfig,
+    plan: &HoldoutPlan,
+    top_candidates: &[OptimizeCandidateSummary],
+) -> Result<Vec<HoldoutCandidateEvaluation>, OptimizeError> {
+    let mut evaluations = Vec::new();
+    for candidate in top_candidates.iter().take(top_candidates.len().min(10)) {
+        let holdout = evaluate_holdout(
+            source,
+            runtime,
+            vm_limits,
+            config,
+            plan,
+            &candidate.input_overrides,
+        )?;
+        let drift = build_holdout_drift(&candidate.summary, &holdout.summary);
+        evaluations.push(HoldoutCandidateEvaluation {
+            trial_id: candidate.trial_id,
+            input_overrides: candidate.input_overrides.clone(),
+            passed: holdout.summary.trade_count > 0
+                && holdout.summary.total_return > 0.0
+                && holdout.summary.win_rate >= 0.5,
+            summary: holdout.summary,
+            drift,
+        });
+    }
+    Ok(evaluations)
+}
+
+fn build_holdout_drift(
+    candidate_summary: &OptimizeEvaluationSummary,
+    holdout_summary: &WalkForwardWindowSummary,
+) -> HoldoutDriftSummary {
+    match candidate_summary {
+        OptimizeEvaluationSummary::WalkForward {
+            stitched_summary,
+            trade_count,
+            win_rate,
+            ..
+        } => HoldoutDriftSummary {
+            total_return_delta: holdout_summary.total_return - stitched_summary.total_return,
+            execution_asset_return_delta: holdout_summary.execution_asset_return
+                - stitched_summary.average_execution_asset_return,
+            trade_count_delta: holdout_summary.trade_count as i64 - *trade_count as i64,
+            win_rate_delta: holdout_summary.win_rate - *win_rate,
+            max_drawdown_delta: holdout_summary.max_drawdown - stitched_summary.max_drawdown,
+        },
+        OptimizeEvaluationSummary::Backtest { summary, .. } => HoldoutDriftSummary {
+            total_return_delta: holdout_summary.total_return - summary.total_return,
+            execution_asset_return_delta: holdout_summary.execution_asset_return
+                - summary.total_return,
+            trade_count_delta: holdout_summary.trade_count as i64 - summary.trade_count as i64,
+            win_rate_delta: holdout_summary.win_rate - summary.win_rate,
+            max_drawdown_delta: holdout_summary.max_drawdown - summary.max_drawdown,
+        },
+    }
+}
+
+fn build_robustness_summary(
+    config: &OptimizeConfig,
+    all_candidates: &[OptimizeCandidateSummary],
+    best_candidate: &OptimizeCandidateSummary,
+    top_candidates: &[OptimizeCandidateSummary],
+    evaluations: Vec<HoldoutCandidateEvaluation>,
+) -> OptimizationRobustnessSummary {
+    let holdout_pass_count = evaluations
+        .iter()
+        .filter(|evaluation| evaluation.passed)
+        .count();
+    let holdout_returns = evaluations
+        .iter()
+        .map(|evaluation| evaluation.summary.total_return)
+        .collect::<Vec<_>>();
+    OptimizationRobustnessSummary {
+        top_candidate_count: top_candidates.len(),
+        holdout_evaluated_count: evaluations.len(),
+        holdout_pass_count,
+        holdout_fail_count: evaluations.len().saturating_sub(holdout_pass_count),
+        best_candidate_holdout_rank: evaluations
+            .iter()
+            .filter(|evaluation| evaluation.passed)
+            .position(|evaluation| evaluation.trial_id == best_candidate.trial_id)
+            .map(|index| index + 1),
+        holdout_return_min: holdout_returns.iter().copied().reduce(f64::min),
+        holdout_return_max: holdout_returns.iter().copied().reduce(f64::max),
+        holdout_return_mean: if holdout_returns.is_empty() {
+            None
+        } else {
+            Some(holdout_returns.iter().sum::<f64>() / holdout_returns.len() as f64)
+        },
+        parameter_stability: build_parameter_stability(
+            &config.params,
+            all_candidates,
+            best_candidate,
+            top_candidates,
+            &evaluations,
+        ),
+        evaluations,
+    }
+}
+
+fn build_parameter_stability(
+    params: &[OptimizeParamSpace],
+    all_candidates: &[OptimizeCandidateSummary],
+    best_candidate: &OptimizeCandidateSummary,
+    top_candidates: &[OptimizeCandidateSummary],
+    evaluations: &[HoldoutCandidateEvaluation],
+) -> Vec<ParameterRobustnessSummary> {
+    params
+        .iter()
+        .map(|param| {
+            let top_values = top_candidates
+                .iter()
+                .filter_map(|candidate| candidate.input_overrides.get(param.name()).copied())
+                .collect::<Vec<_>>();
+            let passing_values = evaluations
+                .iter()
+                .filter(|evaluation| evaluation.passed)
+                .filter_map(|evaluation| evaluation.input_overrides.get(param.name()).copied())
+                .collect::<Vec<_>>();
+            let distinct_sampled_value_count = all_candidates
+                .iter()
+                .filter_map(|candidate| candidate.input_overrides.get(param.name()).copied())
+                .map(ordered_f64_key)
+                .collect::<BTreeSet<_>>()
+                .len();
+            ParameterRobustnessSummary {
+                name: param.name().to_string(),
+                best_value: best_candidate.input_overrides.get(param.name()).copied(),
+                top_ranked_min: top_values.iter().copied().reduce(f64::min),
+                top_ranked_max: top_values.iter().copied().reduce(f64::max),
+                holdout_passing_min: passing_values.iter().copied().reduce(f64::min),
+                holdout_passing_max: passing_values.iter().copied().reduce(f64::max),
+                distinct_sampled_value_count,
+            }
+        })
+        .collect()
+}
+
+fn build_optimize_hints(
+    best_candidate: &OptimizeCandidateSummary,
+    holdout: Option<&OptimizeHoldoutResult>,
+    robustness: &OptimizationRobustnessSummary,
+) -> Vec<ImprovementHint> {
+    let mut hints = Vec::new();
+    if let Some(holdout) = holdout {
+        if holdout.summary.trade_count == 0 || holdout.summary.total_return <= 0.0 {
+            hints.push(ImprovementHint {
+                kind: ImprovementHintKind::HoldoutCollapse,
+                metric: Some("holdout_total_return".to_string()),
+                value: Some(holdout.summary.total_return),
+            });
+        }
+    }
+    if robustness.holdout_evaluated_count > 0 && robustness.holdout_pass_count <= 1 {
+        hints.push(ImprovementHint {
+            kind: ImprovementHintKind::EdgeConcentrated,
+            metric: Some("holdout_pass_count".to_string()),
+            value: Some(robustness.holdout_pass_count as f64),
+        });
+    }
+    let trade_count = match &best_candidate.summary {
+        OptimizeEvaluationSummary::WalkForward { trade_count, .. } => *trade_count,
+        OptimizeEvaluationSummary::Backtest { summary, .. } => summary.trade_count,
+    };
+    if trade_count < 5 {
+        hints.push(ImprovementHint {
+            kind: ImprovementHintKind::TooFewTrades,
+            metric: Some("trade_count".to_string()),
+            value: Some(trade_count as f64),
+        });
+    }
+    hints
 }
 
 fn evaluate_scheduled_batch<F>(
@@ -1083,6 +1357,10 @@ fn summarize_walk_forward_candidate(result: &WalkForwardResult) -> OptimizeEvalu
     OptimizeEvaluationSummary::WalkForward {
         stitched_summary: result.stitched_summary.clone(),
         zero_trade_segment_count,
+        trade_count: result.stitched_summary.trade_count,
+        winning_trade_count: result.stitched_summary.winning_trade_count,
+        losing_trade_count: result.stitched_summary.losing_trade_count,
+        win_rate: result.stitched_summary.win_rate,
     }
 }
 
@@ -1091,6 +1369,10 @@ fn score_candidate(objective: OptimizeObjective, summary: &OptimizeEvaluationSum
         OptimizeEvaluationSummary::WalkForward {
             stitched_summary,
             zero_trade_segment_count,
+            trade_count: _,
+            winning_trade_count: _,
+            losing_trade_count: _,
+            win_rate: _,
         } => score_walk_forward_candidate(objective, stitched_summary, *zero_trade_segment_count),
         OptimizeEvaluationSummary::Backtest {
             summary,
@@ -1445,6 +1727,10 @@ fn candidate_key(overrides: &BTreeMap<String, f64>) -> String {
         .map(|(name, value)| format!("{name}:{:016x}", value.to_bits()))
         .collect::<Vec<_>>()
         .join("|")
+}
+
+fn ordered_f64_key(value: f64) -> u64 {
+    value.to_bits()
 }
 
 fn closest_choice(values: &[f64], target: f64) -> f64 {

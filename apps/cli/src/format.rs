@@ -256,6 +256,36 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         "opportunity_cost_return_pct={:.2}",
         result.diagnostics.capture_summary.opportunity_cost_return * 100.0
     );
+    let _ = writeln!(
+        out,
+        "longest_drawdown_bars={}",
+        result.diagnostics.drawdown.longest_drawdown_bars
+    );
+    let _ = writeln!(
+        out,
+        "current_drawdown_bars={}",
+        result.diagnostics.drawdown.current_drawdown_bars
+    );
+    let _ = writeln!(
+        out,
+        "longest_stagnation_bars={}",
+        result.diagnostics.drawdown.longest_stagnation_bars
+    );
+    let _ = writeln!(
+        out,
+        "average_recovery_bars={:.2}",
+        result.diagnostics.drawdown.average_recovery_bars
+    );
+    let _ = writeln!(
+        out,
+        "degraded_bar_count={}",
+        result.diagnostics.source_alignment.degraded_bar_count
+    );
+    let _ = writeln!(
+        out,
+        "per_bar_trace_count={}",
+        result.diagnostics.per_bar_trace.len()
+    );
 
     if !result.diagnostics.export_summaries.is_empty() {
         out.push_str("Top Export States\n");
@@ -311,6 +341,33 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
                     .find(|metric| metric.horizon_bars == 1)
                     .map(|metric| format!("{:.2}", metric.return_pct * 100.0))
                     .unwrap_or_else(|| "na".to_string())
+            );
+        }
+    }
+
+    if !result.diagnostics.cohorts.by_holding_time.is_empty() {
+        out.push_str("Cohort Highlights\n");
+        for summary in result.diagnostics.cohorts.by_holding_time.iter().take(3) {
+            let _ = writeln!(
+                out,
+                "holding_bucket={:?} trade_count={} win_rate_pct={:.2} average_realized_pnl={:.2}",
+                summary.bucket,
+                summary.trade_count,
+                summary.win_rate * 100.0,
+                summary.average_realized_pnl
+            );
+        }
+    }
+
+    if !result.diagnostics.hints.is_empty() {
+        out.push_str("Hints\n");
+        for hint in &result.diagnostics.hints {
+            let _ = writeln!(
+                out,
+                "kind={:?} metric={} value={}",
+                hint.kind,
+                hint.metric.as_deref().unwrap_or("na"),
+                fmt_opt_f64(hint.value)
             );
         }
     }
@@ -402,6 +459,8 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
     let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
     let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
     let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
+    let _ = writeln!(out, "trade_count={}", summary.trade_count);
+    let _ = writeln!(out, "win_rate_pct={:.2}", summary.win_rate * 100.0);
     let _ = writeln!(
         out,
         "positive_segment_count={}",
@@ -450,6 +509,19 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
                 segment.out_of_sample_diagnostics.summary.liquidation_exit_count,
                 segment.out_of_sample_diagnostics.capture_summary.flat_bar_pct * 100.0,
             );
+            if !segment.out_of_sample_diagnostics.drift_flags.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "drift_flags={}",
+                    segment
+                        .out_of_sample_diagnostics
+                        .drift_flags
+                        .iter()
+                        .map(|flag| format!("{flag:?}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+            }
         }
     }
 
@@ -638,6 +710,64 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
             "opportunity_cost_return_pct={:.2}",
             holdout.diagnostics.capture_summary.opportunity_cost_return * 100.0
         );
+        out.push_str("Holdout Drift\n");
+        let _ = writeln!(
+            out,
+            "total_return_delta_pct={:.2}",
+            holdout.drift.total_return_delta * 100.0
+        );
+        let _ = writeln!(out, "trade_count_delta={}", holdout.drift.trade_count_delta);
+        let _ = writeln!(
+            out,
+            "win_rate_delta_pct={:.2}",
+            holdout.drift.win_rate_delta * 100.0
+        );
+        let _ = writeln!(
+            out,
+            "max_drawdown_delta={:.2}",
+            holdout.drift.max_drawdown_delta
+        );
+    }
+
+    if result.robustness.holdout_evaluated_count > 0 {
+        out.push_str("Robustness\n");
+        let _ = writeln!(
+            out,
+            "holdout_evaluated_count={}",
+            result.robustness.holdout_evaluated_count
+        );
+        let _ = writeln!(
+            out,
+            "holdout_pass_count={}",
+            result.robustness.holdout_pass_count
+        );
+        let _ = writeln!(
+            out,
+            "holdout_fail_count={}",
+            result.robustness.holdout_fail_count
+        );
+        let _ = writeln!(
+            out,
+            "best_candidate_holdout_rank={}",
+            result
+                .robustness
+                .best_candidate_holdout_rank
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "na".to_string())
+        );
+    }
+
+    if !result.hints.is_empty() {
+        out.push_str("Hints\n");
+        for hint in &result.hints {
+            let _ = writeln!(
+                out,
+                "kind={:?} metric={} value={}",
+                hint.kind,
+                hint.metric.as_deref().unwrap_or("na"),
+                fmt_opt_f64(hint.value)
+            );
+        }
     }
 
     out
@@ -653,6 +783,9 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
         OptimizeEvaluationSummary::WalkForward {
             stitched_summary,
             zero_trade_segment_count,
+            trade_count,
+            win_rate,
+            ..
         } => {
             let _ = writeln!(out, "runner_summary=walk_forward");
             let _ = writeln!(out, "ending_equity={:.2}", stitched_summary.ending_equity);
@@ -663,6 +796,8 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
             );
             let _ = writeln!(out, "max_drawdown={:.2}", stitched_summary.max_drawdown);
             let _ = writeln!(out, "segment_count={}", stitched_summary.segment_count);
+            let _ = writeln!(out, "trade_count={}", trade_count);
+            let _ = writeln!(out, "win_rate_pct={:.2}", win_rate * 100.0);
             let _ = writeln!(
                 out,
                 "negative_segment_count={}",
@@ -1127,6 +1262,11 @@ mod tests {
                     forward_max_favorable_pct: Some(0.12),
                     forward_max_adverse_pct: Some(-0.02),
                 }],
+                per_bar_trace: vec![],
+                cohorts: palmscript::CohortDiagnostics::default(),
+                drawdown: palmscript::DrawdownDiagnostics::default(),
+                source_alignment: palmscript::runtime::SourceAlignmentDiagnostics::default(),
+                hints: vec![],
             },
             open_position: None,
             perp: None,

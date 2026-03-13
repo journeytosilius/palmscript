@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use palmscript::{
     compile, compile_with_input_overrides, run_backtest_with_sources, run_with_sources,
-    BacktestConfig, Bar, SourceFeed, SourceRuntimeConfig, VmLimits,
+    BacktestConfig, Bar, DiagnosticsDetailMode, SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 
 const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
@@ -210,6 +210,7 @@ fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
                 initial_capital: 10_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
             },
@@ -245,6 +246,7 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
             initial_capital: 10_000.0,
             fee_bps: 0.0,
             slippage_bps: 0.0,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
         },

@@ -57,6 +57,35 @@ Requirements:
 - the script must declare at least one `source`
 - `--from` must be strictly less than `--to`
 
+## `palmscript run backtest`
+
+```bash
+palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
+  [--execution-source <alias>] \
+  [--initial-capital <N>] \
+  [--fee-bps <N>] \
+  [--slippage-bps <N>] \
+  [--diagnostics summary|full-trace] \
+  [--format json|text]
+```
+
+Additional diagnostics flag:
+
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+
+## `palmscript run walk-forward`
+
+```bash
+palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
+  --train-bars <N> --test-bars <N> [--step-bars <N>] \
+  [--diagnostics summary|full-trace] \
+  [--format json|text]
+```
+
+Additional diagnostics flag:
+
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+
 ## `palmscript run optimize`
 
 ```bash
@@ -77,6 +106,7 @@ palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--workers <N>] \
   [--top <N>] \
   [--preset-out <path>] \
+  [--diagnostics summary|full-trace] \
   [--format json|text]
 ```
 
@@ -99,6 +129,7 @@ Arguments and flags:
 - `--workers <N>`: bounded parallel worker count
 - `--top <N>`: number of top candidates to retain
 - `--preset-out <path>`: write the best preset and top candidates to disk
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
 - `--format json|text`: output rendering format; default `json`
 
 Default safety behavior:
@@ -107,6 +138,7 @@ Default safety behavior:
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
+- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
 
 ## `palmscript dump-bytecode`
 

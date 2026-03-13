@@ -77,6 +77,8 @@ pub struct BacktestRunArgs {
     pub margin_mode: Option<BacktestMarginMode>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
+    #[arg(long, value_enum, default_value_t = DiagnosticsDetailArg::Summary)]
+    pub diagnostics: DiagnosticsDetailArg,
     #[arg(long, default_value_t = 10_000)]
     pub max_instructions_per_bar: usize,
     #[arg(long, default_value_t = 1_024)]
@@ -112,6 +114,8 @@ pub struct WalkForwardRunArgs {
     pub step_bars: Option<usize>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
+    #[arg(long, value_enum, default_value_t = DiagnosticsDetailArg::Summary)]
+    pub diagnostics: DiagnosticsDetailArg,
     #[arg(long, default_value_t = 10_000)]
     pub max_instructions_per_bar: usize,
     #[arg(long, default_value_t = 1_024)]
@@ -210,6 +214,8 @@ pub struct OptimizeRunArgs {
     pub preset_out: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
+    #[arg(long, value_enum, default_value_t = DiagnosticsDetailArg::Summary)]
+    pub diagnostics: DiagnosticsDetailArg,
     #[arg(long, default_value_t = 10_000)]
     pub max_instructions_per_bar: usize,
     #[arg(long, default_value_t = 1_024)]
@@ -260,6 +266,13 @@ pub enum OptimizeRunnerArg {
     #[default]
     WalkForward,
     Backtest,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum DiagnosticsDetailArg {
+    #[default]
+    Summary,
+    FullTrace,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]

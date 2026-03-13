@@ -2,8 +2,8 @@ mod support;
 
 use palmscript::{
     compile, run_walk_forward_sweep_with_source, run_walk_forward_with_sources, BacktestConfig,
-    BacktestError, InputSweepDefinition, Interval, VmLimits, WalkForwardConfig,
-    WalkForwardSweepConfig, WalkForwardSweepObjective,
+    BacktestError, DiagnosticsDetailMode, InputSweepDefinition, Interval, VmLimits,
+    WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepObjective,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
@@ -38,9 +38,11 @@ plot(spot.close)";
                 initial_capital: 1_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
             },
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             train_bars: 2,
             test_bars: 2,
             step_bars: 2,
@@ -97,9 +99,11 @@ exit short = true";
                 initial_capital: 1_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
             },
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             train_bars: 0,
             test_bars: 2,
             step_bars: 2,
@@ -140,9 +144,11 @@ exit short = true";
                     initial_capital: 1_000.0,
                     fee_bps: 0.0,
                     slippage_bps: 0.0,
+                    diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                     perp: None,
                     perp_context: None,
                 },
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 train_bars: 2,
                 test_bars: 2,
                 step_bars: 2,

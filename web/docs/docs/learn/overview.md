@@ -22,6 +22,22 @@ For long CLI tuning jobs:
 - use `palmscript run optimize ...` for direct tuning from the CLI
 - save survivors with `--preset-out best.json` so they can be rerun with `run backtest` or `run walk-forward`
 - keep the default untouched holdout enabled unless you are intentionally disabling that protection
+- switch `--diagnostics` to `full-trace` when you want per-bar decision traces instead of only summary diagnostics
+
+## Agent-Oriented Runtime Diagnostics
+
+PalmScript’s runtime is designed to return rich deterministic diagnostics, not only final profit numbers.
+
+Current backtest-oriented outputs include:
+
+- typed order and trade diagnostics
+- bounded opportunity events
+- cohort summaries and drawdown-path summaries
+- source-alignment summaries for missing or synthetic feed updates
+- deterministic improvement hints
+- optional per-bar decision traces with `--diagnostics full-trace`
+
+That makes the CLI and JSON output suitable for automated strategy iteration by agents as well as manual inspection by humans.
 
 ## What To Read Next
 

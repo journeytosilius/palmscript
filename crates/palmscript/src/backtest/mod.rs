@@ -34,8 +34,18 @@ pub struct BacktestConfig {
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,
+    #[serde(default)]
+    pub diagnostics_detail: DiagnosticsDetailMode,
     pub perp: Option<PerpBacktestConfig>,
     pub perp_context: Option<PerpBacktestContext>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticsDetailMode {
+    #[default]
+    SummaryOnly,
+    FullTrace,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,6 +222,51 @@ pub struct FeatureSnapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionReason {
+    SignalQueued,
+    SignalReplacedPendingOrder,
+    NoSignal,
+    ConflictingSignals,
+    CooldownActive,
+    SameSidePosition,
+    NoPosition,
+    RoleInvalidated,
+    AwaitingTrigger,
+    AwaitingFill,
+    PostOnlyWouldCross,
+    TifExpired,
+    InsufficientCollateral,
+    MissingOrderField,
+    VenueRuleRejected,
+    ForcedMaxBarsExit,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SignalDecisionTrace {
+    pub name: String,
+    pub role: Option<SignalRole>,
+    pub reason: DecisionReason,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderDecisionTrace {
+    pub order_id: Option<usize>,
+    pub role: Option<SignalRole>,
+    pub reason: DecisionReason,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PerBarDecisionTrace {
+    pub bar_index: usize,
+    pub time: f64,
+    pub position_snapshot: Option<PositionSnapshot>,
+    pub feature_snapshot: Option<FeatureSnapshot>,
+    pub signal_decisions: Vec<SignalDecisionTrace>,
+    pub order_decisions: Vec<OrderDecisionTrace>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportValueType {
     Numeric,
     Bool,
@@ -378,6 +433,94 @@ pub struct SideDiagnosticSummary {
     pub average_mfe_pct: f64,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExitClassificationDiagnosticSummary {
+    pub classification: TradeExitClassification,
+    pub trade_count: usize,
+    pub win_rate: f64,
+    pub average_realized_pnl: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WeekdayDiagnosticSummary {
+    pub weekday_utc: u8,
+    pub trade_count: usize,
+    pub win_rate: f64,
+    pub total_realized_pnl: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HourDiagnosticSummary {
+    pub hour_utc: u8,
+    pub trade_count: usize,
+    pub win_rate: f64,
+    pub total_realized_pnl: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoldingTimeBucket {
+    Bars0To1,
+    Bars2To5,
+    Bars6To15,
+    Bars16To31,
+    Bars32Plus,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HoldingTimeBucketSummary {
+    pub bucket: HoldingTimeBucket,
+    pub trade_count: usize,
+    pub win_rate: f64,
+    pub average_realized_pnl: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BoolExportActiveTradeSummary {
+    pub name: String,
+    pub active_trade_count: usize,
+    pub inactive_trade_count: usize,
+    pub active_win_rate: f64,
+    pub inactive_win_rate: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CohortDiagnostics {
+    pub by_side: Vec<SideDiagnosticSummary>,
+    pub by_exit_classification: Vec<ExitClassificationDiagnosticSummary>,
+    pub by_weekday_utc: Vec<WeekdayDiagnosticSummary>,
+    pub by_hour_utc: Vec<HourDiagnosticSummary>,
+    pub by_holding_time: Vec<HoldingTimeBucketSummary>,
+    pub by_active_export: Vec<BoolExportActiveTradeSummary>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DrawdownDiagnostics {
+    pub longest_drawdown_bars: usize,
+    pub current_drawdown_bars: usize,
+    pub longest_stagnation_bars: usize,
+    pub average_recovery_bars: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImprovementHintKind {
+    TooFewTrades,
+    HoldoutCollapse,
+    EdgeConcentrated,
+    ShortSideUnderperforms,
+    CooldownBlocksSignals,
+    HighDrawdownDuration,
+    SignalQualityWeak,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ImprovementHint {
+    pub kind: ImprovementHintKind,
+    pub metric: Option<String>,
+    pub value: Option<f64>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BacktestDiagnosticSummary {
     pub order_fill_rate: f64,
@@ -402,6 +545,16 @@ pub struct BacktestDiagnostics {
     pub capture_summary: BacktestCaptureSummary,
     pub export_summaries: Vec<ExportDiagnosticSummary>,
     pub opportunity_events: Vec<OpportunityEvent>,
+    #[serde(default)]
+    pub per_bar_trace: Vec<PerBarDecisionTrace>,
+    #[serde(default)]
+    pub cohorts: CohortDiagnostics,
+    #[serde(default)]
+    pub drawdown: DrawdownDiagnostics,
+    #[serde(default)]
+    pub source_alignment: crate::runtime::SourceAlignmentDiagnostics,
+    #[serde(default)]
+    pub hints: Vec<ImprovementHint>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -418,11 +571,12 @@ pub struct BacktestResult {
 }
 
 pub use optimize::{
-    run_optimize_with_source, run_optimize_with_source_resume, OptimizeCandidateSummary,
-    OptimizeConfig, OptimizeError, OptimizeEvaluationSummary, OptimizeHoldoutConfig,
-    OptimizeHoldoutResult, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
-    OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState, OptimizeResult,
-    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, OptimizeScheduledTrial,
+    run_optimize_with_source, run_optimize_with_source_resume, HoldoutCandidateEvaluation,
+    HoldoutDriftSummary, OptimizationRobustnessSummary, OptimizeCandidateSummary, OptimizeConfig,
+    OptimizeError, OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeHoldoutResult,
+    OptimizeObjective, OptimizeParamSpace, OptimizePreset, OptimizeProgressEvent,
+    OptimizeProgressListener, OptimizeProgressState, OptimizeResult, OptimizeResumeState,
+    OptimizeRunner, OptimizeScheduledBatch, OptimizeScheduledTrial, ParameterRobustnessSummary,
 };
 pub use walk_forward::{
     run_walk_forward_with_sources, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,

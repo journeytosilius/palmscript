@@ -844,6 +844,54 @@ fn run_backtest_supports_text_output() {
 }
 
 #[test]
+fn run_backtest_full_trace_text_reports_trace_count_and_hints() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "12.0", "12.5", "8.0", "9.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "8.0", "8.5", "7.5", "8.0", "13.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "backtest.ps",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = false\nplot(spot.close)",
+    );
+
+    let mut cmd = palmscript_cmd();
+    cmd.env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067440000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--format",
+            "text",
+            "--diagnostics",
+            "full-trace",
+        ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("per_bar_trace_count="))
+        .stdout(predicate::str::contains("Hints"));
+}
+
+#[test]
 fn run_backtest_supports_bybit_usdt_perps_execution_source() {
     let mut server = Server::new();
     mock_bybit_kline(

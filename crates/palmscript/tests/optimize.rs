@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 
 use palmscript::{
     compile_with_input_overrides, run_optimize_with_source, run_optimize_with_source_resume,
-    BacktestConfig, Interval, OptimizeCandidateSummary, OptimizeConfig, OptimizeError,
-    OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace,
-    OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState, OptimizeResumeState,
-    OptimizeRunner, OptimizeScheduledBatch, VmLimits, WalkForwardConfig,
+    BacktestConfig, DiagnosticsDetailMode, Interval, OptimizeCandidateSummary, OptimizeConfig,
+    OptimizeError, OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeObjective,
+    OptimizeParamSpace, OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState,
+    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, VmLimits, WalkForwardConfig,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
@@ -40,6 +40,7 @@ fn optimize_backtest_config() -> BacktestConfig {
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
     }
@@ -50,6 +51,7 @@ fn backtest_optimize_config() -> OptimizeConfig {
         runner: OptimizeRunner::Backtest,
         backtest: optimize_backtest_config(),
         walk_forward: None,
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         holdout: None,
         params: vec![OptimizeParamSpace::Choice {
             name: "threshold".to_string(),
@@ -126,10 +128,12 @@ fn optimize_walk_forward_ranks_candidates() {
             backtest: optimize_backtest_config(),
             walk_forward: Some(WalkForwardConfig {
                 backtest: optimize_backtest_config(),
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 train_bars: 2,
                 test_bars: 2,
                 step_bars: 2,
             }),
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: None,
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
@@ -162,10 +166,12 @@ fn optimize_is_seed_stable_across_worker_counts() {
         backtest: optimize_backtest_config(),
         walk_forward: Some(WalkForwardConfig {
             backtest: optimize_backtest_config(),
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             train_bars: 2,
             test_bars: 2,
             step_bars: 2,
         }),
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         holdout: None,
         params: vec![
             OptimizeParamSpace::Choice {
@@ -240,6 +246,7 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
             runner: OptimizeRunner::Backtest,
             backtest: optimize_backtest_config(),
             walk_forward: None,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: None,
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
@@ -280,6 +287,7 @@ exit short = true";
             runner: OptimizeRunner::Backtest,
             backtest: optimize_backtest_config(),
             walk_forward: None,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: None,
             params: vec![
                 OptimizeParamSpace::IntegerRange {
@@ -333,6 +341,7 @@ fn optimize_rejects_missing_walk_forward_config() {
             runner: OptimizeRunner::WalkForward,
             backtest: optimize_backtest_config(),
             walk_forward: None,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: None,
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
@@ -362,10 +371,12 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
             backtest: optimize_backtest_config(),
             walk_forward: Some(WalkForwardConfig {
                 backtest: optimize_backtest_config(),
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 train_bars: 2,
                 test_bars: 2,
                 step_bars: 2,
             }),
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: Some(OptimizeHoldoutConfig { bars: 2 }),
             params: vec![OptimizeParamSpace::Choice {
                 name: "threshold".to_string(),
@@ -386,6 +397,8 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
     assert_eq!(holdout.bars, 2);
     assert_eq!(holdout.from, JAN_1_2024_UTC_MS + 6 * MINUTE_MS);
     assert!(holdout.to > holdout.from);
+    assert!(result.robustness.holdout_evaluated_count > 0);
+    assert!(!result.robustness.parameter_stability.is_empty());
     let OptimizeEvaluationSummary::WalkForward {
         stitched_summary, ..
     } = &result.best_candidate.summary
@@ -397,6 +410,7 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
         stitched_summary.ending_equity
     );
     assert!(holdout.from < holdout.to);
+    assert!(holdout.drift.trade_count_delta <= 0);
 }
 
 #[test]

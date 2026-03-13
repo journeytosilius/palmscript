@@ -125,3 +125,13 @@ Market mode supports:
 - `--max-history-capacity`
 
 Use these when testing large or pathological scripts and you want tighter deterministic execution bounds.
+
+## Latest Diagnostics Additions
+
+PalmScript now exposes richer machine-readable backtest diagnostics in every public locale build:
+
+- `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
+- summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
+- full-trace mode adds one typed per-bar decision trace per execution bar
+- optimize output now includes top-candidate holdout checks plus parameter stability summaries
+

@@ -34,3 +34,13 @@ Para jobs longos de tuning pela CLI:
 
 - `Aprenda` explica como usar PalmScript de forma eficaz.
 - `Referencia` define o que PalmScript significa.
+
+## Latest Diagnostics Additions
+
+PalmScript now exposes richer machine-readable backtest diagnostics in every public locale build:
+
+- `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
+- summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
+- full-trace mode adds one typed per-bar decision trace per execution bar
+- optimize output now includes top-candidate holdout checks plus parameter stability summaries
+

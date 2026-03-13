@@ -212,6 +212,36 @@ Over a full run, the runtime accumulates:
 
 `alerts` currently exist in the runtime output structures but are not produced by a first-class PalmScript language construct.
 
+## Backtest And Optimize Diagnostics
+
+Backtest-oriented commands also return typed diagnostics payloads alongside the raw outputs.
+
+Always-on summary diagnostics include:
+
+- order diagnostics
+- trade diagnostics
+- opportunity events
+- export summaries
+- cohort summaries
+- drawdown duration and stagnation metrics
+- source alignment diagnostics
+- deterministic improvement hints
+
+When `--diagnostics full-trace` is enabled, PalmScript also records one `per_bar_trace` record for each execution bar. Each trace includes:
+
+- the execution `bar_index` and `time`
+- the current position snapshot
+- the current exported feature snapshot
+- typed signal decisions
+- typed order decisions
+
+Walk-forward and optimize outputs reuse the same diagnostics model and add:
+
+- per-segment drift flags
+- final holdout drift summaries
+- optimizer robustness summaries across the top ranked candidates
+- parameter stability summaries
+
 ## Output Time And Bar Index
 
 Each output sample is tagged with:

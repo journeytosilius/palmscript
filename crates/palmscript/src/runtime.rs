@@ -67,6 +67,35 @@ pub struct SourceRuntimeConfig {
     pub feeds: Vec<SourceFeed>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SourceFeedAlignmentSummary {
+    pub source_id: u16,
+    pub source_alias: String,
+    pub interval: Interval,
+    pub actual_update_count: usize,
+    pub synthetic_update_count: usize,
+    pub supplemental_gap_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SourceAlignmentDiagnostics {
+    pub feeds: Vec<SourceFeedAlignmentSummary>,
+    pub degraded_bar_count: usize,
+}
+
+impl Default for SourceFeedAlignmentSummary {
+    fn default() -> Self {
+        Self {
+            source_id: 0,
+            source_alias: String::new(),
+            interval: Interval::Min1,
+            actual_update_count: 0,
+            synthetic_update_count: 0,
+            supplemental_gap_count: 0,
+        }
+    }
+}
+
 pub fn slice_runtime_window(
     runtime: &SourceRuntimeConfig,
     from_ms: i64,
@@ -110,6 +139,8 @@ impl Default for VmLimits {
 }
 
 struct SourceBaseCursor {
+    source_id: u16,
+    source_alias: String,
     bars: Vec<Bar>,
     next_index: usize,
     base_slot_map: SlotMap,
@@ -117,6 +148,8 @@ struct SourceBaseCursor {
 }
 
 struct SourceFeedCursor {
+    source_id: u16,
+    source_alias: String,
     interval: Interval,
     bars: Vec<Bar>,
     next_index: usize,
@@ -154,6 +187,7 @@ pub struct RuntimeStepper {
     base_interval: Interval,
     base_cursors: Vec<SourceBaseCursor>,
     supplemental_cursors: Vec<SourceFeedCursor>,
+    source_alignment: SourceAlignmentDiagnostics,
 }
 
 impl Engine {
@@ -319,6 +353,7 @@ impl Engine {
         base_interval: Interval,
         base_cursors: &mut [SourceBaseCursor],
         supplemental_cursors: &mut [SourceFeedCursor],
+        source_alignment: &mut SourceAlignmentDiagnostics,
     ) -> Result<Bar, RuntimeError> {
         self.advanced_mask = 0;
         for (slot, local) in self.compiled.program.locals.iter().enumerate() {
@@ -350,13 +385,21 @@ impl Engine {
                 }
                 _ => FeedAction::Synthetic,
             };
+            let summary = source_alignment_summary_mut(
+                source_alignment,
+                cursor.source_id,
+                &cursor.source_alias,
+                base_interval,
+            );
 
             match action {
                 FeedAction::Actual(bar) => {
+                    summary.actual_update_count += 1;
                     self.commit_bar(&cursor.base_slot_map, bar, BASE_UPDATE_MASK)?;
                     self.commit_bar(&cursor.equal_interval_slot_map, bar, base_interval.mask())?;
                 }
                 FeedAction::Synthetic => {
+                    summary.synthetic_update_count += 1;
                     self.commit_values(
                         &cursor.base_slot_map,
                         synthetic_values(),
@@ -378,7 +421,7 @@ impl Engine {
             },
         )?;
         for index in 0..supplemental_cursors.len() {
-            self.advance_source_feed(index, supplemental_cursors, base_close)?;
+            self.advance_source_feed(index, supplemental_cursors, base_close, source_alignment)?;
         }
         Ok(synthetic_bar)
     }
@@ -473,6 +516,7 @@ impl Engine {
         index: usize,
         cursors: &mut [SourceFeedCursor],
         base_close_time: i64,
+        source_alignment: &mut SourceAlignmentDiagnostics,
     ) -> Result<(), RuntimeError> {
         loop {
             let Some((interval, slot_map, action)) =
@@ -480,9 +524,20 @@ impl Engine {
             else {
                 break;
             };
+            let summary = source_alignment_summary_mut(
+                source_alignment,
+                cursors[index].source_id,
+                &cursors[index].source_alias,
+                interval,
+            );
             match action {
-                FeedAction::Actual(bar) => self.commit_bar(&slot_map, bar, interval.mask())?,
+                FeedAction::Actual(bar) => {
+                    summary.actual_update_count += 1;
+                    self.commit_bar(&slot_map, bar, interval.mask())?
+                }
                 FeedAction::Synthetic => {
+                    summary.synthetic_update_count += 1;
+                    summary.supplemental_gap_count += 1;
                     self.commit_values(&slot_map, synthetic_values(), interval.mask())?;
                 }
             }
@@ -529,6 +584,7 @@ impl RuntimeStepper {
             base_interval,
             base_cursors,
             supplemental_cursors,
+            source_alignment: SourceAlignmentDiagnostics::default(),
         })
     }
 
@@ -544,6 +600,7 @@ impl RuntimeStepper {
             self.base_interval,
             &mut self.base_cursors,
             &mut self.supplemental_cursors,
+            &mut self.source_alignment,
         )?;
         let mut overridden_slots = std::collections::HashSet::with_capacity(overrides.len());
         for (slot, _) in overrides {
@@ -583,6 +640,13 @@ impl RuntimeStepper {
                 .set_local_override(*slot as usize, value.clone())?;
         }
         let output = self.engine.execute_prepared_step(bar)?;
+        if output
+            .exports
+            .iter()
+            .any(|sample| matches!(sample.value, OutputValue::NA))
+        {
+            self.source_alignment.degraded_bar_count += 1;
+        }
         self.next_index += 1;
         Ok(Some(RuntimeStep {
             open_time,
@@ -597,6 +661,10 @@ impl RuntimeStepper {
 
     pub fn finish(self) -> Outputs {
         self.engine.finish()
+    }
+
+    pub fn source_alignment_diagnostics(&self) -> SourceAlignmentDiagnostics {
+        self.source_alignment.clone()
     }
 }
 
@@ -689,6 +757,8 @@ fn build_source_feed_cursors(
                 source_id: source.id,
             })?;
         base_cursors.push(SourceBaseCursor {
+            source_id: source.id,
+            source_alias: source.alias.clone(),
             bars,
             next_index: 0,
             base_slot_map: base_slot_maps.remove(&source.id).unwrap_or([None; 6]),
@@ -709,6 +779,14 @@ fn build_source_feed_cursors(
             .map(|bar| bar_open_time_ms(*bar, interval))
             .transpose()?;
         supplemental_cursors.push(SourceFeedCursor {
+            source_id,
+            source_alias: compiled
+                .program
+                .declared_sources
+                .iter()
+                .find(|source| source.id == source_id)
+                .map(|source| source.alias.clone())
+                .unwrap_or_else(|| format!("src{source_id}")),
             interval,
             bars,
             next_index: 0,
@@ -734,6 +812,31 @@ fn source_timeline(
         }
     }
     Ok(opens.into_iter().collect())
+}
+
+fn source_alignment_summary_mut<'a>(
+    diagnostics: &'a mut SourceAlignmentDiagnostics,
+    source_id: u16,
+    source_alias: &str,
+    interval: Interval,
+) -> &'a mut SourceFeedAlignmentSummary {
+    if let Some(index) = diagnostics
+        .feeds
+        .iter()
+        .position(|summary| summary.source_id == source_id && summary.interval == interval)
+    {
+        return &mut diagnostics.feeds[index];
+    }
+    diagnostics.feeds.push(SourceFeedAlignmentSummary {
+        source_id,
+        source_alias: source_alias.to_string(),
+        interval,
+        ..SourceFeedAlignmentSummary::default()
+    });
+    diagnostics
+        .feeds
+        .last_mut()
+        .expect("source alignment summary should exist")
 }
 
 fn validate_feed(interval: Interval, bars: &[Bar]) -> Result<(), RuntimeError> {

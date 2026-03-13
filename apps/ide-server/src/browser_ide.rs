@@ -544,6 +544,7 @@ async fn run_backtest(
                     initial_capital: dataset.initial_capital,
                     fee_bps: dataset.fee_bps,
                     slippage_bps: dataset.slippage_bps,
+                    diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                     perp: None,
                     perp_context: None,
                 },

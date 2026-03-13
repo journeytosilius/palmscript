@@ -6,19 +6,19 @@ use palmscript::{
     bytecode::InputOptimizationDeclKind, compile, compile_with_input_overrides,
     fetch_perp_backtest_context, fetch_source_runtime_config, run_backtest_with_sources,
     run_optimize_with_source, run_walk_forward_sweep_with_source, run_walk_forward_with_sources,
-    run_with_sources, BacktestConfig, CompiledProgram, ExchangeEndpoints, InputSweepDefinition,
-    OptimizeConfig, OptimizeError, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace,
-    OptimizePreset, OptimizeResult, OptimizeRunner, PerpBacktestConfig, PerpMarginMode,
-    RuntimeError, SourceTemplate, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
-    WalkForwardSweepError, WalkForwardSweepObjective,
+    run_with_sources, BacktestConfig, CompiledProgram, DiagnosticsDetailMode, ExchangeEndpoints,
+    InputSweepDefinition, OptimizeConfig, OptimizeError, OptimizeHoldoutConfig, OptimizeObjective,
+    OptimizeParamSpace, OptimizePreset, OptimizeResult, OptimizeRunner, PerpBacktestConfig,
+    PerpMarginMode, RuntimeError, SourceTemplate, VmLimits, WalkForwardConfig,
+    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
 };
 use sha2::{Digest, Sha256};
 
 use crate::args::{
-    BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DocsArgs,
-    DumpBytecodeArgs, MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg,
-    OutputFormat, RunCommand, WalkForwardRunArgs, WalkForwardSweepObjectiveArg,
-    WalkForwardSweepRunArgs,
+    BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command,
+    DiagnosticsDetailArg, DocsArgs, DumpBytecodeArgs, MarketRunArgs, OptimizeObjectiveArg,
+    OptimizeRunArgs, OptimizeRunnerArg, OutputFormat, RunCommand, WalkForwardRunArgs,
+    WalkForwardSweepObjectiveArg, WalkForwardSweepRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
 use crate::docs;
@@ -108,6 +108,7 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             initial_capital: args.initial_capital,
             fee_bps: args.fee_bps,
             slippage_bps: args.slippage_bps,
+            diagnostics_detail: map_diagnostics_detail(args.diagnostics),
             perp,
             perp_context,
         },
@@ -150,9 +151,11 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
                 initial_capital: args.initial_capital,
                 fee_bps: args.fee_bps,
                 slippage_bps: args.slippage_bps,
+                diagnostics_detail: map_diagnostics_detail(args.diagnostics),
                 perp,
                 perp_context,
             },
+            diagnostics_detail: map_diagnostics_detail(args.diagnostics),
             train_bars: args.train_bars,
             test_bars: args.test_bars,
             step_bars: args.step_bars.unwrap_or(args.test_bars),
@@ -203,9 +206,11 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
                     initial_capital: args.initial_capital,
                     fee_bps: args.fee_bps,
                     slippage_bps: args.slippage_bps,
+                    diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                     perp,
                     perp_context,
                 },
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 train_bars: args.train_bars,
                 test_bars: args.test_bars,
                 step_bars: args.step_bars.unwrap_or(args.test_bars),
@@ -256,12 +261,14 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
         initial_capital: args.initial_capital,
         fee_bps: args.fee_bps,
         slippage_bps: args.slippage_bps,
+        diagnostics_detail: map_diagnostics_detail(args.diagnostics),
         perp,
         perp_context,
     };
     let walk_forward = match map_optimize_runner(args.runner) {
         OptimizeRunner::WalkForward => Some(WalkForwardConfig {
             backtest: backtest.clone(),
+            diagnostics_detail: map_diagnostics_detail(args.diagnostics),
             train_bars: args
                 .train_bars
                 .ok_or_else(|| "optimize walk-forward runner requires --train-bars".to_string())?,
@@ -291,6 +298,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             runner: map_optimize_runner(args.runner),
             backtest: backtest.clone(),
             walk_forward: walk_forward.clone(),
+            diagnostics_detail: map_diagnostics_detail(args.diagnostics),
             holdout: resolve_optimize_holdout(&args, preset.as_ref())?,
             params: params.clone(),
             objective: map_optimize_objective(args.objective),
@@ -769,6 +777,13 @@ pub(crate) fn map_optimize_objective(objective: OptimizeObjectiveArg) -> Optimiz
     }
 }
 
+pub(crate) fn map_diagnostics_detail(detail: DiagnosticsDetailArg) -> DiagnosticsDetailMode {
+    match detail {
+        DiagnosticsDetailArg::Summary => DiagnosticsDetailMode::SummaryOnly,
+        DiagnosticsDetailArg::FullTrace => DiagnosticsDetailMode::FullTrace,
+    }
+}
+
 fn format_walk_forward_sweep_error(path: &Path, error: WalkForwardSweepError) -> String {
     match error {
         WalkForwardSweepError::Compile(err) => format_compile_error(path, &err),
@@ -808,6 +823,7 @@ pub(crate) fn write_optimize_preset(
         objective: result.config.objective,
         backtest: result.config.backtest.clone(),
         walk_forward: result.config.walk_forward.clone(),
+        diagnostics_detail: result.config.diagnostics_detail,
         holdout: result.config.holdout.clone(),
         parameter_space: result.config.params.clone(),
         best_input_overrides: result.best_candidate.input_overrides.clone(),

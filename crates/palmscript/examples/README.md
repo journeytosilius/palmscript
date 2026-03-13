@@ -47,6 +47,8 @@ Representative files:
 
 For runnable public examples and workflow guidance, use the linked docs pages above.
 
+When you inspect these strategies from the CLI, `run backtest`, `run walk-forward`, and `run optimize` now support `--diagnostics summary|full-trace`. Use `summary` for the normal compact diagnostics payload and `full-trace` when you want one typed per-bar decision trace record per execution bar.
+
 Common commands:
 
 ```bash

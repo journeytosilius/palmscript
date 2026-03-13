@@ -13,6 +13,7 @@ Typical flow:
 3. inspect the compiled form with `palmscript dump-bytecode` when you want to understand how the script is compiled
 4. tune strategies with `palmscript run optimize` and save the best preset with `--preset-out`
 5. rerun the winner with `run backtest` or `run walk-forward` before you trust it
+6. switch `--diagnostics` between `summary` and `full-trace` depending on whether you need compact output or per-bar decision traces
 
 ## Validate Without Running
 
@@ -79,7 +80,21 @@ palmscript run optimize strategy.ps \
   --preset-out best.json
 ```
 
+The backtest, walk-forward, and optimize commands all accept:
+
+- `--diagnostics summary`
+- `--diagnostics full-trace`
+
+Use `summary` for normal iterative tuning. Use `full-trace` when you want one typed per-bar decision trace per execution bar so an agent can inspect why signals were queued, blocked, ignored, expired, or forced out.
+
 Walk-forward optimize now reserves a final untouched holdout window by default. If you pass `--test-bars 63`, PalmScript also reserves the last `63` execution bars as an unseen holdout unless you override that with `--holdout-bars <N>` or disable it with `--no-holdout`.
+
+The optimize result now also reports:
+
+- holdout drift versus the stitched optimization summary
+- holdout checks for the top ranked candidates, not only the winner
+- parameter stability ranges across the ranked and holdout-passing candidates
+- deterministic machine-readable improvement hints
 
 Optimizer parameter-space precedence is:
 

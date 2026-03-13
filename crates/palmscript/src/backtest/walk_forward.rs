@@ -2,11 +2,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::backtest::bridge::PreparedExport;
 use crate::backtest::diagnostics::{
-    build_diagnostics_summary, snapshot_from_step, DiagnosticsAccumulator,
+    build_backtest_hints, build_cohort_diagnostics, build_diagnostics_summary,
+    build_drawdown_diagnostics, snapshot_from_step, DiagnosticsAccumulator,
 };
 use crate::backtest::{
     average, execution_bars, run_backtest_with_sources, BacktestCaptureSummary, BacktestConfig,
-    BacktestDiagnosticSummary, BacktestError, ExportDiagnosticSummary,
+    BacktestDiagnosticSummary, BacktestError, CohortDiagnostics, DiagnosticsDetailMode,
+    DrawdownDiagnostics, ExportDiagnosticSummary, ImprovementHint,
 };
 use crate::compiler::CompiledProgram;
 use crate::output::{OutputSample, StepOutput};
@@ -15,6 +17,8 @@ use crate::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WalkForwardConfig {
     pub backtest: BacktestConfig,
+    #[serde(default)]
+    pub diagnostics_detail: DiagnosticsDetailMode,
     pub train_bars: usize,
     pub test_bars: usize,
     pub step_bars: usize,
@@ -54,6 +58,23 @@ pub struct WalkForwardSegmentDiagnostics {
     pub capture_summary: BacktestCaptureSummary,
     pub export_summaries: Vec<ExportDiagnosticSummary>,
     pub opportunity_event_count: usize,
+    #[serde(default)]
+    pub cohorts: CohortDiagnostics,
+    #[serde(default)]
+    pub drawdown: DrawdownDiagnostics,
+    #[serde(default)]
+    pub drift_flags: Vec<SegmentDriftFlag>,
+    #[serde(default)]
+    pub hints: Vec<ImprovementHint>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentDriftFlag {
+    NegativeOutOfSampleReturn,
+    ZeroTradeSegment,
+    HighDrawdown,
+    WinRateCollapse,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -71,6 +92,11 @@ pub struct WalkForwardStitchedSummary {
     pub ending_equity: f64,
     pub total_return: f64,
     pub max_drawdown: f64,
+    pub average_execution_asset_return: f64,
+    pub trade_count: usize,
+    pub winning_trade_count: usize,
+    pub losing_trade_count: usize,
+    pub win_rate: f64,
     pub positive_segment_count: usize,
     pub negative_segment_count: usize,
     pub average_segment_return: f64,
@@ -129,8 +155,9 @@ pub fn run_walk_forward_with_sources(
         let test_from = train_to;
         let test_to = exclusive_end_time(&full_execution_bars, segment.end_index);
         let runtime_slice = slice_runtime_window(&runtime, train_from, test_to);
-        let result =
-            run_backtest_with_sources(compiled, runtime_slice, vm_limits, config.backtest.clone())?;
+        let mut backtest = config.backtest.clone();
+        backtest.diagnostics_detail = config.diagnostics_detail;
+        let result = run_backtest_with_sources(compiled, runtime_slice, vm_limits, backtest)?;
 
         let in_sample = summarize_window(
             &result.equity_curve,
@@ -185,6 +212,7 @@ pub fn run_walk_forward_with_sources(
         &segments,
         &stitched_equity_curve,
     );
+    apply_segment_drift_flags(&mut segments, &stitched_summary);
 
     Ok(WalkForwardResult {
         config,
@@ -394,12 +422,37 @@ fn summarize_stitched_curve(
         .iter()
         .filter(|segment| segment.out_of_sample.total_return < -crate::backtest::EPSILON)
         .count();
+    let trade_count = segments
+        .iter()
+        .map(|segment| segment.out_of_sample.trade_count)
+        .sum();
+    let winning_trade_count = segments
+        .iter()
+        .map(|segment| segment.out_of_sample.winning_trade_count)
+        .sum();
+    let losing_trade_count = segments
+        .iter()
+        .map(|segment| segment.out_of_sample.losing_trade_count)
+        .sum();
     WalkForwardStitchedSummary {
         segment_count: segments.len(),
         starting_equity,
         ending_equity,
         total_return,
         max_drawdown,
+        average_execution_asset_return: average(
+            segments
+                .iter()
+                .map(|segment| segment.out_of_sample.execution_asset_return),
+        ),
+        trade_count,
+        winning_trade_count,
+        losing_trade_count,
+        win_rate: if trade_count == 0 {
+            0.0
+        } else {
+            winning_trade_count as f64 / trade_count as f64
+        },
         positive_segment_count,
         negative_segment_count,
         average_segment_return: average(
@@ -496,12 +549,47 @@ pub(crate) fn summarize_segment_diagnostics(
         .iter()
         .filter(|event| in_bar_range(event.bar_index, start_index, end_index))
         .count();
+    let cohorts = build_cohort_diagnostics(&exited_trade_diagnostics, &export_summaries);
+    let drawdown = build_drawdown_diagnostics(&result.equity_curve[start_index..end_index]);
+    let segment_summary = summarize_window(
+        &result.equity_curve,
+        &result.trades,
+        start_index,
+        end_index,
+        result
+            .equity_curve
+            .get(start_index.saturating_sub(1))
+            .map(|point| point.equity)
+            .unwrap_or(result.summary.starting_equity),
+    );
+    let hints = build_backtest_hints(
+        &crate::backtest::BacktestSummary {
+            starting_equity: segment_summary.starting_equity,
+            ending_equity: segment_summary.ending_equity,
+            realized_pnl: 0.0,
+            unrealized_pnl: 0.0,
+            total_return: segment_summary.total_return,
+            trade_count: segment_summary.trade_count,
+            winning_trade_count: segment_summary.winning_trade_count,
+            losing_trade_count: segment_summary.losing_trade_count,
+            win_rate: segment_summary.win_rate,
+            max_drawdown: segment_summary.max_drawdown,
+            max_gross_exposure: 0.0,
+        },
+        &summary,
+        &cohorts,
+        &drawdown,
+    );
 
     WalkForwardSegmentDiagnostics {
         summary,
         capture_summary,
         export_summaries,
         opportunity_event_count,
+        cohorts,
+        drawdown,
+        drift_flags: Vec::new(),
+        hints,
     }
 }
 
@@ -530,5 +618,40 @@ fn ratio(numerator: f64, denominator: f64) -> f64 {
         0.0
     } else {
         numerator / denominator
+    }
+}
+
+fn apply_segment_drift_flags(
+    segments: &mut [WalkForwardSegmentResult],
+    stitched_summary: &WalkForwardStitchedSummary,
+) {
+    for segment in segments {
+        if segment.out_of_sample.trade_count == 0 {
+            segment
+                .out_of_sample_diagnostics
+                .drift_flags
+                .push(SegmentDriftFlag::ZeroTradeSegment);
+        }
+        if segment.out_of_sample.total_return < -crate::backtest::EPSILON {
+            segment
+                .out_of_sample_diagnostics
+                .drift_flags
+                .push(SegmentDriftFlag::NegativeOutOfSampleReturn);
+        }
+        if segment.out_of_sample.max_drawdown > stitched_summary.max_drawdown.max(1.0) {
+            segment
+                .out_of_sample_diagnostics
+                .drift_flags
+                .push(SegmentDriftFlag::HighDrawdown);
+        }
+        if stitched_summary.trade_count > 0
+            && segment.out_of_sample.trade_count > 0
+            && segment.out_of_sample.win_rate + 0.15 < stitched_summary.win_rate
+        {
+            segment
+                .out_of_sample_diagnostics
+                .drift_flags
+                .push(SegmentDriftFlag::WinRateCollapse);
+        }
     }
 }

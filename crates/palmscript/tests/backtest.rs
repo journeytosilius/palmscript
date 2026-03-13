@@ -2,8 +2,8 @@ use palmscript::exchange::binance::{
     UsdmRiskSnapshot as BinanceUsdmRiskSnapshot, UsdmRiskSource as BinanceUsdmRiskSource,
 };
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval,
-    MarkPriceBasis, OrderEndReason, OrderKind, OrderStatus, PerpBacktestConfig,
+    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, DiagnosticsDetailMode,
+    Interval, MarkPriceBasis, OrderEndReason, OrderKind, OrderStatus, PerpBacktestConfig,
     PerpBacktestContext, PerpMarginMode, RiskTier, SignalRole, SizeMode, SourceFeed,
     SourceRuntimeConfig, TradeExitClassification, VenueRiskSnapshot, VmLimits,
 };
@@ -28,9 +28,16 @@ fn config(alias: &str) -> BacktestConfig {
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
     }
+}
+
+fn trace_config(alias: &str) -> BacktestConfig {
+    let mut config = config(alias);
+    config.diagnostics_detail = DiagnosticsDetailMode::FullTrace;
+    config
 }
 
 fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
@@ -39,6 +46,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: Some(PerpBacktestConfig {
             leverage,
             margin_mode: PerpMarginMode::Isolated,
@@ -301,6 +309,102 @@ plot(spot.close)",
             .count(),
         2
     );
+}
+
+#[test]
+fn summary_mode_keeps_per_bar_trace_empty() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = spot.close < spot.close[1]
+exit short = false
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    9.0,
+                    9.0,
+                ),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+    assert!(result.diagnostics.per_bar_trace.is_empty());
+}
+
+#[test]
+fn full_trace_records_cooldown_and_forced_exit_reasons() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+cooldown long = 2
+max_bars_in_trade long = 1
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = false
+exit short = false
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    13.0,
+                    13.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+                    14.0,
+                    14.0,
+                ),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        trace_config("spot"),
+    )
+    .expect("backtest should succeed");
+
+    assert!(!result.diagnostics.per_bar_trace.is_empty());
+    assert!(result
+        .diagnostics
+        .per_bar_trace
+        .iter()
+        .flat_map(|trace| trace.signal_decisions.iter())
+        .any(|decision| decision.reason == palmscript::DecisionReason::CooldownActive));
+    assert!(result
+        .diagnostics
+        .per_bar_trace
+        .iter()
+        .flat_map(|trace| trace.order_decisions.iter())
+        .any(|decision| decision.reason == palmscript::DecisionReason::ForcedMaxBarsExit));
 }
 
 #[test]

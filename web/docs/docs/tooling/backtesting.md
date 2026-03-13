@@ -36,6 +36,20 @@ palmscript run backtest strategy.ps \
   --slippage-bps 2
 ```
 
+Diagnostics detail can now be configured explicitly:
+
+```bash
+palmscript run backtest strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --diagnostics full-trace
+```
+
+Modes:
+
+- `--diagnostics summary` keeps the default compact diagnostics payload
+- `--diagnostics full-trace` adds one typed per-bar decision trace record for each execution bar
+
 When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`.
 
 Backtest results depend on the script, venue, time window, fees, and slippage.
@@ -122,6 +136,7 @@ V1 optimizer notes:
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
+- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 
@@ -157,6 +172,16 @@ PalmScript cannot mathematically prevent overfitting, but the CLI now applies a 
 
 This does not replace paper trading or live forward validation, but it does make the default tuning workflow less likely to confuse in-sample fitting with genuinely unseen performance.
 
+## Diagnostics Output
+
+Backtest, walk-forward, and optimize results now expose richer machine-readable diagnostics on top of the existing order/trade summaries:
+
+- cohort summaries by side, exit classification, weekday/hour UTC, holding-time bucket, and active exported bool state
+- drawdown duration and stagnation diagnostics
+- source alignment diagnostics that show degraded bars and synthetic supplemental updates
+- deterministic improvement hints such as `too_few_trades`, `holdout_collapse`, and `signal_quality_weak`
+- optional per-bar decision traces when `--diagnostics full-trace` is enabled
+
 ## Declarative Risk Controls
 
 PalmScript can express two common backtest guardrails directly in the script:
@@ -180,8 +205,8 @@ Use `run_backtest_with_sources` from the library crate:
 
 ```rust
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, Interval, SourceFeed, SourceRuntimeConfig,
-    VmLimits,
+    compile, run_backtest_with_sources, BacktestConfig, DiagnosticsDetailMode, Interval,
+    SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 
 let source = r#"
@@ -210,6 +235,7 @@ let result = run_backtest_with_sources(
         initial_capital: 10_000.0,
         fee_bps: 5.0,
         slippage_bps: 2.0,
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
     },
