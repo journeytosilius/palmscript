@@ -43,10 +43,10 @@ exit long = crossunder(fast, slow) or crossunder(rsi_4h, neutral_rsi) or breakou
 entry short = trend_short and (crossunder(rsi_4h, short_rsi_threshold) or crossunder(macd_hist, 0) or breakout_short)
 exit short = crossover(fast, slow) or crossover(rsi_4h, neutral_rsi) or breakout_long
 
-order entry long = market()
-order exit long = market()
-order entry short = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit short = market(venue = spot)
 
 plot(fast - slow)
 plot(macd_line - macd_signal)

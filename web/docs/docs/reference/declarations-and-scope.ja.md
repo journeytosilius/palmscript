@@ -141,11 +141,11 @@ regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.cl
 trigger breakout = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
-order entry1 long = limit(spot.close[1], tif.gtc, false)
-protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
-protect_after_target1 long = stop_market(position.entry_price, trigger_ref.last)
-target1 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
-target2 long = take_profit_market(position.entry_price + 8, trigger_ref.last)
+order entry1 long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+protect long = stop_market(trigger_price = position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)
+protect_after_target1 long = stop_market(trigger_price = position.entry_price, trigger_ref = trigger_ref.last, venue = exec)
+target1 long = take_profit_market(trigger_price = position.entry_price + 4, trigger_ref = trigger_ref.last, venue = exec)
+target2 long = take_profit_market(trigger_price = position.entry_price + 8, trigger_ref = trigger_ref.last, venue = exec)
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)

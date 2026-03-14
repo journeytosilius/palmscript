@@ -1411,7 +1411,9 @@ impl<'a> Analyzer<'a> {
             StmtKind::Signal { role, expr } => {
                 self.analyze_signal_stmt(stmt, *role, expr);
             }
-            StmtKind::OrderTemplate { .. } => {}
+            StmtKind::OrderTemplate { spec, .. } => {
+                self.analyze_order_template_stmt(stmt, spec);
+            }
             StmtKind::Order { role, spec } => {
                 self.analyze_order_stmt(stmt, *role, spec);
             }
@@ -1557,9 +1559,22 @@ impl<'a> Analyzer<'a> {
             return;
         }
 
+        let from_template = matches!(&spec.kind, OrderSpecKind::TemplateRef(_));
         let Some(spec) = self.resolve_order_template_spec(spec, &mut Vec::new()) else {
             return;
         };
+        if from_template && spec.execution.is_none() {
+            return;
+        }
+        if !from_template
+            && !self.require_explicit_order_execution(
+                &spec,
+                stmt.span,
+                "order declarations must declare explicit `venue = <execution_alias>` routing",
+            )
+        {
+            return;
+        }
 
         let mut resolved = ResolvedOrderFieldSlots::default();
         let size_decl = self.analysis.order_size_decls.get(&role).copied();
@@ -1805,6 +1820,17 @@ impl<'a> Analyzer<'a> {
         self.analysis.orders.push(order);
     }
 
+    fn analyze_order_template_stmt(&mut self, stmt: &Stmt, spec: &OrderSpec) {
+        let Some(spec) = self.resolve_order_template_spec(spec, &mut Vec::new()) else {
+            return;
+        };
+        let _ = self.require_explicit_order_execution(
+            &spec,
+            stmt.span,
+            "order templates must declare explicit `venue = <execution_alias>` routing",
+        );
+    }
+
     fn resolve_order_template_spec(
         &mut self,
         spec: &OrderSpec,
@@ -1842,6 +1868,20 @@ impl<'a> Analyzer<'a> {
         let resolved = self.resolve_order_template_spec(&template.spec, active_templates);
         active_templates.pop();
         resolved
+    }
+
+    fn require_explicit_order_execution(
+        &mut self,
+        spec: &OrderSpec,
+        span: Span,
+        message: &'static str,
+    ) -> bool {
+        if spec.execution.is_some() {
+            return true;
+        }
+        self.diagnostics
+            .push(Diagnostic::new(DiagnosticKind::Type, message, span));
+        false
     }
 
     fn analyze_order_size_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, expr: &Expr) {

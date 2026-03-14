@@ -76,29 +76,31 @@ entry short = false
 exit long = below(spot.close, fast) and below(fast, slow)
 exit short = true
 
-order entry1 long = market()
-order entry2 long = market()
-order exit long = market()
+order entry1 long = market(venue = spot)
+order entry2 long = market(venue = spot)
+order exit long = market(venue = spot)
 size entry1 long = entry1_size
 size entry2 long = entry2_size
-order entry short = market()
-order exit short = stop_market(fast, trigger_ref.last)
-protect long = stop_market(chandelier_long, trigger_ref.last)
-protect_after_target1 long = stop_market(above(ratchet_long, position.entry_price) ? ratchet_long : position.entry_price, trigger_ref.last)
+order entry short = market(venue = spot)
+order exit short = stop_market(trigger_price = fast, trigger_ref = trigger_ref.last, venue = spot)
+protect long = stop_market(trigger_price = chandelier_long, trigger_ref = trigger_ref.last, venue = spot)
+protect_after_target1 long = stop_market(trigger_price = above(ratchet_long, position.entry_price) ? ratchet_long : position.entry_price, trigger_ref = trigger_ref.last, venue = spot)
 target1 long = take_profit_market(
-    above(add(position.entry_price, target_atr_mult * atr_4h), position.entry_price * (1 + target_return))
+    trigger_price = above(add(position.entry_price, target_atr_mult * atr_4h), position.entry_price * (1 + target_return))
         ? add(position.entry_price, target_atr_mult * atr_4h)
         : position.entry_price * (1 + target_return),
-    trigger_ref.last
+    trigger_ref = trigger_ref.last,
+    venue = spot
 )
 target2 long = take_profit_market(
-    above(
+    trigger_price = above(
         add(position.entry_price, target2_atr_mult * atr_4h),
         position.entry_price * (1 + target_return * target2_return_mult)
     )
         ? add(position.entry_price, target2_atr_mult * atr_4h)
         : position.entry_price * (1 + target_return * target2_return_mult),
-    trigger_ref.last
+    trigger_ref = trigger_ref.last,
+    venue = spot
 )
 size target1 long = target1_size
 

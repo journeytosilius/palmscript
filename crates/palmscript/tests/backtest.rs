@@ -186,7 +186,7 @@ fn approx_eq(left: f64, right: f64) {
 #[test]
 fn rejects_invalid_backtest_config() {
     let compiled = compile(
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = true\norder entry long = market()\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = true\norder entry long = market(venue = spot)\nplot(spot.close)",
     )
     .expect("script should compile");
     let runtime = SourceRuntimeConfig {
@@ -220,7 +220,7 @@ fn rejects_invalid_backtest_config() {
 #[test]
 fn rejects_unknown_execution_source_alias() {
     let compiled = compile(
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = true\norder entry long = market()\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = true\norder entry long = market(venue = spot)\nplot(spot.close)",
     )
     .expect("script should compile");
     let runtime = SourceRuntimeConfig {
@@ -287,8 +287,8 @@ fn long_trade_applies_next_bar_open_and_marks_equity() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
-order entry long = market()
-order exit long = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -347,9 +347,9 @@ entry short = false
 exit long = false
 exit short = false
 order entry long = market(venue = gate_exec)
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry short = market(venue = gate_exec)
+order exit long = market(venue = gate_exec)
+order exit short = market(venue = gate_exec)
 size entry long = 0.4
 plot(left.close)",
     )
@@ -426,9 +426,9 @@ entry short = false
 exit long = false
 exit short = false
 order entry long = market(venue = gate_exec)
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry short = market(venue = gate_exec)
+order exit long = market(venue = gate_exec)
+order exit short = market(venue = gate_exec)
 protect long = stop_market(trigger_price = position.entry_price - 10, trigger_ref = trigger_ref.last, venue = gate_exec)
 target long = take_profit_market(trigger_price = position.entry_price + 1, trigger_ref = trigger_ref.last, venue = gate_exec)
 plot(left.close)",
@@ -526,10 +526,10 @@ entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
 entry short = false
 exit short = false
-order entry long = market()
-order exit long = market()
-order entry short = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -571,10 +571,10 @@ entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
 entry short = false
 exit short = false
-order entry long = market()
-order exit long = market()
-order entry short = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -643,10 +643,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = false
 exit short = false
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -693,10 +693,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = spot.close < spot.close[1]
 exit short = false
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -728,14 +728,15 @@ fn portfolio_mode_opens_positions_on_multiple_execution_aliases() {
 source left = binance.spot(\"BTCUSDT\")
 source right = gate.spot(\"BTC_USDT\")
 entry long = left.close > left.close[1]
-order entry long = market()
+entry short = right.close > right.close[1]
+order entry long = market(venue = left)
+order entry short = market(venue = right)
 size entry long = 0.4
-entry short = false
+size entry short = 0.4
 exit long = false
 exit short = false
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order exit long = market(venue = left)
+order exit short = market(venue = right)
 plot(left.close)",
     )
     .expect("script should compile");
@@ -795,14 +796,15 @@ source left = binance.spot(\"BTCUSDT\")
 source right = gate.spot(\"BTC_USDT\")
 max_positions = 1
 entry long = left.close > left.close[1]
-order entry long = market()
+entry short = right.close > right.close[1]
+order entry long = market(venue = left)
+order entry short = market(venue = right)
 size entry long = 0.4
-entry short = false
+size entry short = 0.4
 exit long = false
 exit short = false
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order exit long = market(venue = left)
+order exit short = market(venue = right)
 plot(left.close)",
     )
     .expect("script should compile");
@@ -856,10 +858,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = false
 exit short = false
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -923,10 +925,10 @@ entry long = spot.close > spot.close[1]
 exit long = false
 entry short = false
 exit short = false
-order entry long = market()
-order exit long = market()
-order entry short = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit short = market(venue = spot)
 export timed_out = last_long_exit.kind == exit_kind.signal
 plot(spot.close)",
     )
@@ -981,8 +983,8 @@ source spot = binance.spot(\"BTCUSDT\")
 export trend_state = spot.close > spot.close[1]
 entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
-order entry long = market()
-order exit long = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1082,8 +1084,8 @@ fn fees_and_slippage_adjust_fill_prices_and_fees() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
-order entry long = market()
-order exit long = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1129,8 +1131,8 @@ fn short_trade_marks_to_market_and_realizes_on_exit() {
 source spot = binance.spot(\"BTCUSDT\")
 entry short = spot.close < spot.close[1]
 exit short = spot.close > spot.close[1]
-order entry short = market()
-order exit short = market()
+order entry short = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1176,8 +1178,8 @@ fn reversal_closes_and_reopens_on_same_execution_bar() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
 entry short = spot.close < spot.close[1]
-order entry long = market()
-order entry short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1221,7 +1223,7 @@ fn same_side_reentry_is_ignored() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
-order entry long = market()
+order entry long = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1267,10 +1269,10 @@ fn same_side_reentry_can_scale_in_with_entry_size() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0} or spot.time == {}
-order entry long = market()
+order entry long = market(venue = spot)
 size entry long = 0.5
 exit long = false
-order exit long = market()
+order exit long = market(venue = spot)
 plot(spot.close)",
         t0 + support::MINUTE_MS
     ))
@@ -1323,8 +1325,8 @@ fn conflicting_entries_are_rejected() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = true
 entry short = true
-order entry long = market()
-order entry short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1351,7 +1353,7 @@ fn multi_source_signal_fills_on_next_execution_bar() {
 source exec = binance.spot(\"BTCUSDT\")
 source signal = bybit.usdt_perps(\"BTCUSDT\")
 entry long = signal.close > signal.close[1]
-order entry long = market()
+order entry long = market(venue = exec)
 plot(exec.close)",
     )
     .expect("script should compile");
@@ -1412,7 +1414,7 @@ fn open_position_is_reported_without_synthetic_close() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
-order entry long = market()
+order entry long = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1472,8 +1474,8 @@ fn explicit_market_orders_preserve_market_fill_behavior() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
-order entry long = market()
-order exit long = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1497,7 +1499,7 @@ fn limit_entry_fills_at_better_of_open_and_limit() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {signal_time}
-order entry long = limit(spot.close[1], tif.gtc, false)
+order entry long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = spot)
 plot(spot.close)",
     ))
     .expect("script should compile");
@@ -1538,7 +1540,7 @@ fn stop_market_entry_fills_at_worse_of_open_and_trigger() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
-order entry long = stop_market(spot.close + 1, trigger_ref.last)
+order entry long = stop_market(trigger_price = spot.close + 1, trigger_ref = trigger_ref.last, venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1577,7 +1579,7 @@ fn stop_limit_waits_until_next_bar_after_trigger() {
             "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {signal_time}
-order entry long = stop_limit(spot.close + 1, spot.close, tif.gtc, false, trigger_ref.last, spot.time + 600000)
+order entry long = stop_limit(trigger_price = spot.close + 1, limit_price = spot.close, tif = tif.gtc, post_only = false, trigger_ref = trigger_ref.last, expire_time_ms = spot.time + 600000, venue = spot)
 plot(spot.close)",
         ),
     )
@@ -1630,7 +1632,7 @@ fn isolated_perp_mode_liquidates_on_mark_price_touch_and_surfaces_exit_state() {
         "interval 1m
 source perp = binance.usdm(\"BTCUSDT\")
 entry long = perp.close > perp.close[1]
-order entry long = market()
+order entry long = market(venue = perp)
 plot(perp.close)
 export liquidated = position_event.long_liquidation_fill
 export last_kind = last_long_exit.kind == exit_kind.liquidation",
@@ -1732,7 +1734,7 @@ fn isolated_perp_does_not_liquidate_on_entry_bar_range() {
         "interval 1m
 source perp = binance.usdm(\"BTCUSDT\")
 entry long = perp.close > perp.close[1]
-order entry long = market()
+order entry long = market(venue = perp)
 plot(perp.close)",
     )
     .expect("script should compile");
@@ -1792,7 +1794,7 @@ fn isolated_perp_liquidation_caps_loss_to_isolated_margin() {
         "interval 1m
 source perp = binance.usdm(\"BTCUSDT\")
 entry long = perp.close > perp.close[1]
-order entry long = market()
+order entry long = market(venue = perp)
 plot(perp.close)",
     )
     .expect("script should compile");
@@ -1894,7 +1896,7 @@ fn ioc_limit_cancels_when_not_filled_on_first_bar() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
-order entry long = limit(spot.close[1] - 2, tif.ioc, false)
+order entry long = limit(price = spot.close[1] - 2, tif = tif.ioc, post_only = false, venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1934,7 +1936,7 @@ fn gtd_stop_limit_expires_before_late_touch() {
             "interval 1m
 source spot = binance.usdm(\"BTCUSDT\")
 entry long = spot.time == {signal_time}
-order entry long = stop_limit(spot.close + 1, spot.close, tif.gtd, false, trigger_ref.last, spot.time + 120000)
+order entry long = stop_limit(trigger_price = spot.close + 1, limit_price = spot.close, tif = tif.gtd, post_only = false, trigger_ref = trigger_ref.last, expire_time_ms = spot.time + 120000, venue = spot)
 plot(spot.close)",
         ),
     )
@@ -1980,7 +1982,7 @@ fn same_role_orders_replace_active_resting_orders() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
-order entry long = limit(spot.close[1], tif.gtc, false)
+order entry long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -2029,7 +2031,7 @@ fn post_only_limit_cancels_when_order_would_cross() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
-order entry long = limit(spot.close + 2, tif.gtc, true)
+order entry long = limit(price = spot.close + 2, tif = tif.gtc, post_only = true, venue = spot)
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -2066,19 +2068,19 @@ fn venue_profiles_reject_unsupported_order_configurations() {
     let cases = [
         (
             "binance spot",
-            "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.mark)\nplot(spot.close)",
+            "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(trigger_price = spot.close + 1, trigger_ref = trigger_ref.mark, venue = spot)\nplot(spot.close)",
         ),
         (
             "binance usdm",
-            "interval 1m\nsource spot = binance.usdm(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.index)\nplot(spot.close)",
+            "interval 1m\nsource spot = binance.usdm(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(trigger_price = spot.close + 1, trigger_ref = trigger_ref.index, venue = spot)\nplot(spot.close)",
         ),
         (
             "bybit spot",
-            "interval 1m\nsource spot = bybit.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.mark)\nplot(spot.close)",
+            "interval 1m\nsource spot = bybit.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(trigger_price = spot.close + 1, trigger_ref = trigger_ref.mark, venue = spot)\nplot(spot.close)",
         ),
         (
             "gate perps",
-            "interval 1m\nsource spot = gate.usdt_perps(\"BTC_USDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(spot.close + 1, trigger_ref.index)\nplot(spot.close)",
+            "interval 1m\nsource spot = gate.usdt_perps(\"BTC_USDT\")\nentry long = spot.close > spot.close[1]\norder entry long = stop_market(trigger_price = spot.close + 1, trigger_ref = trigger_ref.index, venue = spot)\nplot(spot.close)",
         ),
     ];
     let runtime = SourceRuntimeConfig {
@@ -2116,9 +2118,9 @@ fn attached_exits_use_position_state_and_protect_wins_same_bar_ambiguity() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
-order entry long = market()
-protect long = stop_market(position.entry_price - 1, trigger_ref.last)
-target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+order entry long = market(venue = spot)
+protect long = stop_market(trigger_price = position.entry_price - 1, trigger_ref = trigger_ref.last, venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = spot)
 plot(spot.close)"
     ))
     .expect("script should compile");
@@ -2191,10 +2193,10 @@ fn signal_exit_cancels_attached_exits_when_position_closes() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
 exit long = spot.time == {}
-order entry long = market()
-order exit long = market()
-protect long = stop_market(position.entry_price - 5, trigger_ref.last)
-target long = take_profit_market(position.entry_price + 5, trigger_ref.last)
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+protect long = stop_market(trigger_price = position.entry_price - 5, trigger_ref = trigger_ref.last, venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 5, trigger_ref = trigger_ref.last, venue = spot)
 plot(spot.close)",
         t0 + 2 * support::MINUTE_MS
     ))
@@ -2240,9 +2242,9 @@ fn partial_target_exit_closes_a_slice_and_leaves_runner_for_protect() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
-order entry long = market()
-protect long = stop_market(position.entry_price - 1, trigger_ref.last)
-target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+order entry long = market(venue = spot)
+protect long = stop_market(trigger_price = position.entry_price - 1, trigger_ref = trigger_ref.last, venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = spot)
 size target long = 0.5
 plot(spot.close)"
     ))
@@ -2314,14 +2316,14 @@ fn staged_entries_and_targets_progress_sequentially() {
 source spot = binance.spot(\"BTCUSDT\")
 entry1 long = spot.time == {t0}
 entry2 long = spot.time == {}
-order entry1 long = market()
-order entry2 long = market()
+order entry1 long = market(venue = spot)
+order entry2 long = market(venue = spot)
 size entry1 long = 0.5
 size entry2 long = 0.5
-protect long = stop_market(position.entry_price - 5, trigger_ref.last)
-protect_after_target1 long = stop_market(position.entry_price + 1, trigger_ref.last)
-target1 long = take_profit_market(position.entry_price + 2, trigger_ref.last)
-target2 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+protect long = stop_market(trigger_price = position.entry_price - 5, trigger_ref = trigger_ref.last, venue = spot)
+protect_after_target1 long = stop_market(trigger_price = position.entry_price + 1, trigger_ref = trigger_ref.last, venue = spot)
+target1 long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = spot)
+target2 long = take_profit_market(trigger_price = position.entry_price + 4, trigger_ref = trigger_ref.last, venue = spot)
 size target1 long = 0.5
 plot(spot.close)",
         t0 + support::MINUTE_MS
@@ -2418,9 +2420,9 @@ fn risk_sized_long_entry_uses_stop_distance() {
 source spot = binance.spot(\"BTCUSDT\")
 let stop_price = 8
 entry long = spot.time == {t0}
-order entry long = market()
+order entry long = market(venue = spot)
 size entry long = risk_pct(0.1, stop_price)
-protect long = stop_market(stop_price, trigger_ref.last)
+protect long = stop_market(trigger_price = stop_price, trigger_ref = trigger_ref.last, venue = spot)
 plot(spot.close)"
     ))
     .expect("script should compile");
@@ -2485,9 +2487,9 @@ fn risk_sized_entry_marks_capital_limited_when_cash_caps_quantity() {
 source spot = binance.spot(\"BTCUSDT\")
 let stop_price = 9.5
 entry long = spot.time == {t0}
-order entry long = market()
+order entry long = market(venue = spot)
 size entry long = risk_pct(0.1, stop_price)
-protect long = stop_market(stop_price, trigger_ref.last)
+protect long = stop_market(trigger_price = stop_price, trigger_ref = trigger_ref.last, venue = spot)
 plot(spot.close)"
     ))
     .expect("script should compile");
@@ -2538,7 +2540,7 @@ fn position_event_anchors_fire_on_fill_bar_and_drive_since_helpers() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
-order entry long = market()
+order entry long = market(venue = spot)
 export entry_fill = position_event.long_entry_fill
 export trail = highest_since(position_event.long_entry_fill, spot.high)
 plot(spot.close)"
@@ -2621,8 +2623,8 @@ fn exit_outcome_events_and_last_exit_snapshot_are_visible_on_fill_bar() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
-order entry long = market()
-target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+order entry long = market(venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = spot)
 export exit_fill = position_event.long_exit_fill
 export target_fill = position_event.long_target_fill
 export signal_fill = position_event.long_signal_exit_fill
@@ -2708,9 +2710,9 @@ entry long = spot.time == {t0} or (
     last_long_exit.kind == exit_kind.target
     and barssince(position_event.long_target_fill) == 1
 )
-order entry long = market()
-protect long = stop_market(position.entry_price - 5, trigger_ref.last)
-target long = take_profit_market(position.entry_price + 1, trigger_ref.last)
+order entry long = market(venue = spot)
+protect long = stop_market(trigger_price = position.entry_price - 5, trigger_ref = trigger_ref.last, venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 1, trigger_ref = trigger_ref.last, venue = spot)
 plot(spot.close)"
     ))
     .expect("script should compile");
@@ -2764,11 +2766,11 @@ fn last_exit_global_alias_tracks_most_recent_closed_side() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
-order entry long = market()
-target long = take_profit_market(position.entry_price + 1, trigger_ref.last)
+order entry long = market(venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 1, trigger_ref = trigger_ref.last, venue = spot)
 entry short = last_long_exit.kind == exit_kind.target and barssince(position_event.long_target_fill) == 1
-order entry short = market()
-target short = take_profit_market(position.entry_price - 1, trigger_ref.last)
+order entry short = market(venue = spot)
+target short = take_profit_market(trigger_price = position.entry_price - 1, trigger_ref = trigger_ref.last, venue = spot)
 export last_exit_is_short = last_exit.side == position_side.short
 plot(spot.close)"
     ))

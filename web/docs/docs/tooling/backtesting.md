@@ -62,6 +62,8 @@ execution aliases. `execution` declarations stay separate from `source`
 declarations, so cross-source strategies can still route orders onto one
 venue.
 
+Every executable inline order and every `order_template` must declare `venue = <execution_alias>` explicitly, even when the script declares only one execution target.
+
 Execution-routed order example:
 
 ```palmscript
@@ -591,10 +593,10 @@ Preferred v1 surface:
 
 Explicit execution templates for trading scripts:
 
-- `order entry long = market()`
-- `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
-- `order entry short = limit(spot.close[1], tif.gtc, false)`
-- `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
+- `order entry long = market(venue = exec)`
+- `order exit long = stop_market(trigger_price = lowest(spot.low, 5)[1], trigger_ref = trigger_ref.last, venue = exec)`
+- `order entry short = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)`
+- `order exit short = take_profit_limit(trigger_price = trigger, limit_price = price, tif = tif.gtc, post_only = false, trigger_ref = trigger_ref.mark, expire_time_ms = expire_ms, venue = exec)`
 - `size entry1 long = 0.5`
 - `size entry1 long = risk_pct(0.01, stop_price)`
 - `size entry2 long = 0.5`
@@ -605,12 +607,12 @@ Explicit execution templates for trading scripts:
 
 Attached position-aware exits:
 
-- `protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
-- `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
+- `protect long = stop_market(trigger_price = position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)`
+- `target long = take_profit_market(trigger_price = position.entry_price + 4, trigger_ref = trigger_ref.last, venue = exec)`
 - `size target1 long = 0.5`
 - `position.*` is valid only inside `protect` and `target`
 
-PalmScript no longer synthesizes implicit `market()` orders for trading
+PalmScript no longer synthesizes implicit orders for trading
 scripts. Declare `order entry ...` and `order exit ...` explicitly for every
 signal role you want `check`, `run market`, `run backtest`, `run walk-forward`,
 `run walk-forward-sweep`, `run optimize`, or `run paper` to accept.
@@ -623,7 +625,7 @@ Actual-fill anchor helpers:
   `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
   `short_reversal_exit_fill`, `long_liquidation_fill`, and `short_liquidation_fill`
 - anchored helpers such as `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, and `valuewhen_since` can use those events directly
-- example: `protect long = stop_market(highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
+- example: `protect long = stop_market(trigger_price = highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)`
 - outside backtests, `position_event.*` stays deterministic by evaluating to `false` on every step
 
 Latest closed-trade state:
@@ -681,12 +683,12 @@ The backtester stays intentionally simple and deterministic:
 
 Supported order constructors:
 
-- `market()`
-- `limit(price, tif, post_only)`
-- `stop_market(trigger_price, trigger_ref)`
-- `stop_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms)`
-- `take_profit_market(trigger_price, trigger_ref)`
-- `take_profit_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms)`
+- `market(venue = exec)`
+- `limit(price, tif, post_only, venue)`
+- `stop_market(trigger_price, trigger_ref, venue)`
+- `stop_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms, venue)`
+- `take_profit_market(trigger_price, trigger_ref, venue)`
+- `take_profit_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms, venue)`
 
 Enum namespaces:
 
@@ -695,7 +697,7 @@ Enum namespaces:
 
 Deterministic fill rules:
 
-- `market()`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees are charged per fill using `fee_bps`
+- `market(venue = exec)`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees are charged per fill using `fee_bps`
 - `limit(...)`: fills on the first eligible bar whose range crosses the limit; the fill price is the better of `open` and `limit`
 - `stop_market(...)`: triggers on the first eligible bar whose range crosses the stop; the fill price is the worse of `open` and `trigger_price`
 - `take_profit_market(...)`: triggers on the first eligible bar whose range crosses the trigger; the fill price is the better of `open` and `trigger_price`

@@ -15,7 +15,7 @@ export trend = fast > slow
 entry long = crossover(fast, slow)
 exit long = crossunder(fast, slow)
 
-order_template market_order = market()
+order_template market_order = market(venue = spot)
 order entry long = market_order
 order exit long = market_order
 ```
@@ -30,7 +30,7 @@ order exit long = market_order
 - `export` publica una serie de salida con nombre
 - `entry long = ...` emite una senal de entrada larga
 - `exit long = ...` emite una senal de salida larga
-- `order_template market_order = market()` declara una orden reutilizable
+- `order_template market_order = market(venue = spot)` declara una orden reutilizable
 - `order entry long = market_order` y `order exit long = market_order` reutilizan esa configuracion explicita
 
 ## Pruebala En El IDE Del Navegador
@@ -53,7 +53,7 @@ let weekly_basis = ema(spot.1w.close, 8)
 export bullish = spot.close > weekly_basis
 entry long = bullish and crossover(spot.close, weekly_basis)
 exit long = crossunder(spot.close, weekly_basis)
-order_template market_order = market()
+order_template market_order = market(venue = spot)
 order entry long = market_order
 order exit long = market_order
 ```

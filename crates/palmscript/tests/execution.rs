@@ -65,10 +65,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = false
 exit short = false
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)"
 }
 

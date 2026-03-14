@@ -507,7 +507,7 @@ fn compile_accepts_new_exchange_backed_source_templates() {
 #[test]
 fn rejects_position_namespace_outside_attached_exits() {
     let source = with_interval(
-        "entry long = position.entry_price > 0\nexecution src = binance.spot(\"BTCUSDT\")\norder entry long = market()\nplot(src.close)",
+        "entry long = position.entry_price > 0\nexecution src = binance.spot(\"BTCUSDT\")\norder entry long = market(venue = src)\nplot(src.close)",
     );
     assert_compile_diagnostics(
         "position_namespace_outside_attached_exits",
@@ -922,8 +922,8 @@ fn rejects_risk_pct_for_target_size_declarations() {
     let source = with_interval(
         "entry long = close > close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
-target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+order entry long = market(venue = src)
+target long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = src)
 size target long = risk_pct(0.01, close)
 plot(close)",
     );
@@ -942,7 +942,7 @@ fn rejects_invalid_risk_pct_arity() {
     let source = with_interval(
         "entry long = close > close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
+order entry long = market(venue = src)
 size entry long = risk_pct(0.01)
 plot(close)",
     );
@@ -983,8 +983,8 @@ fn rejects_duplicate_order_declarations_for_same_role() {
         &with_interval(
             "entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
-order entry long = limit(src.close[1], tif.gtc, false)
+order entry long = market(venue = src)
+order entry long = limit(price = src.close[1], tif = tif.gtc, post_only = false, venue = src)
 plot(src.close)",
         ),
         &[expected(
@@ -1001,9 +1001,9 @@ fn rejects_duplicate_staged_order_declarations_for_same_role() {
         &with_interval(
             "entry1 long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry1 long = market()
-target2 long = take_profit_market(src.close + 1, trigger_ref.last)
-target2 long = take_profit_market(src.close + 2, trigger_ref.last)
+order entry1 long = market(venue = src)
+target2 long = take_profit_market(trigger_price = src.close + 1, trigger_ref = trigger_ref.last, venue = src)
+target2 long = take_profit_market(trigger_price = src.close + 2, trigger_ref = trigger_ref.last, venue = src)
 plot(src.close)",
         ),
         &[expected(
@@ -1020,7 +1020,7 @@ fn rejects_invalid_order_constructor_argument_types() {
         &with_interval(
             "entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = limit(src.close[1], ma_type.ema, false)
+order entry long = limit(price = src.close[1], tif = ma_type.ema, post_only = false, venue = src)
 plot(src.close)",
         ),
         &[expected(
@@ -1037,7 +1037,7 @@ fn rejects_unknown_order_enum_variants() {
         &with_interval(
             "entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = stop_market(src.close + 1, trigger_ref.foo)
+order entry long = stop_market(trigger_price = src.close + 1, trigger_ref = trigger_ref.foo, venue = src)
 plot(src.close)",
         ),
         &[

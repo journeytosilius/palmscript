@@ -21,10 +21,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = spot.close < spot.close[1]
 exit short = true
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
 plot(spot.close)";
     let compiled = compile(source).expect("script compiles");
     let runtime = source_runtime_config(
@@ -94,10 +94,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = spot.close < spot.close[1]
 exit short = true
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()";
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)";
     let compiled = compile(source).expect("script compiles");
     let runtime = source_runtime_config(
         Interval::Min1,
@@ -143,10 +143,10 @@ entry long = spot.close > spot.close[1] + threshold
 entry short = false
 exit long = spot.close < spot.close[1]
 exit short = true
-order entry long = market()
-order entry short = market()
-order exit long = market()
-order exit short = market()",
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)",
     );
     let runtime = source_runtime_config(
         Interval::Min1,

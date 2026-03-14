@@ -228,8 +228,8 @@ fn parses_order_declarations_with_enum_literals() {
         "entry long = src.close > src.close[1]
 exit long = src.close < src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = limit(src.close[1], tif.gtc, false)
-order exit long = stop_market(src.close[1], trigger_ref.last)
+order entry long = limit(price = src.close[1], tif = tif.gtc, post_only = false, venue = src)
+order exit long = stop_market(trigger_price = src.close[1], trigger_ref = trigger_ref.last, venue = src)
 plot(src.close)",
     ))
     .expect("order declarations should compile");
@@ -347,11 +347,12 @@ source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
 protect long = stop_market(
-    position.side == position_side.long ? position.entry_price - 1 : position.entry_price - 2,
-    trigger_ref.last
+    trigger_price = position.side == position_side.long ? position.entry_price - 1 : position.entry_price - 2,
+    trigger_ref = trigger_ref.last,
+    venue = src
 )
-order entry long = market()
-target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+order entry long = market(venue = src)
+target long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = src)
 plot(src.close)",
     )
     .expect("attached exits should compile");
@@ -364,8 +365,8 @@ fn parses_partial_target_size_declarations() {
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
-target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+order entry long = market(venue = src)
+target long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = src)
 size target long = 0.5
 plot(src.close)",
     )
@@ -379,7 +380,7 @@ fn parses_partial_entry_size_declarations() {
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
+order entry long = market(venue = src)
 size entry long = 0.5
 plot(src.close)",
     )
@@ -394,9 +395,9 @@ source src = binance.spot(\"BTCUSDT\")
 let stop_price = src.close - 2
 entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
+order entry long = market(venue = src)
 size entry long = risk_pct(0.01, stop_price)
-protect long = stop_market(stop_price, trigger_ref.last)
+protect long = stop_market(trigger_price = stop_price, trigger_ref = trigger_ref.last, venue = src)
 plot(src.close)",
     )
     .expect("risk-based entry size declarations should compile");
@@ -410,14 +411,14 @@ source src = binance.spot(\"BTCUSDT\")
 entry1 long = src.close > src.close[1]
 entry2 long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry1 long = market()
-order entry2 long = market()
+order entry1 long = market(venue = src)
+order entry2 long = market(venue = src)
 size entry1 long = 0.5
 size entry2 long = 0.5
-protect long = stop_market(position.entry_price - 2, trigger_ref.last)
-protect_after_target1 long = stop_market(position.entry_price, trigger_ref.last)
-target1 long = take_profit_market(position.entry_price + 2, trigger_ref.last)
-target2 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+protect long = stop_market(trigger_price = position.entry_price - 2, trigger_ref = trigger_ref.last, venue = src)
+protect_after_target1 long = stop_market(trigger_price = position.entry_price, trigger_ref = trigger_ref.last, venue = src)
+target1 long = take_profit_market(trigger_price = position.entry_price + 2, trigger_ref = trigger_ref.last, venue = src)
+target2 long = take_profit_market(trigger_price = position.entry_price + 4, trigger_ref = trigger_ref.last, venue = src)
 size target1 long = 0.5
 export target_stage = last_exit.stage
 plot(src.close)",
@@ -432,10 +433,11 @@ fn parses_position_event_anchors_with_since_helpers() {
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
+order entry long = market(venue = src)
 protect long = stop_market(
-    highest_since(position_event.long_entry_fill, src.high) - 2 * atr(src.high, src.low, src.close, 14),
-    trigger_ref.last
+    trigger_price = highest_since(position_event.long_entry_fill, src.high) - 2 * atr(src.high, src.low, src.close, 14),
+    trigger_ref = trigger_ref.last,
+    venue = src
 )
 export armed = position_event.long_entry_fill
 plot(src.close)",
@@ -450,7 +452,7 @@ fn parses_last_exit_namespaces_and_exit_kind_literals() {
 source src = binance.spot(\"BTCUSDT\")
 entry long = last_long_exit.kind == exit_kind.target or last_exit.kind == exit_kind.liquidation or last_exit.side == position_side.long
 execution src = binance.spot(\"BTCUSDT\")
-order entry long = market()
+order entry long = market(venue = src)
 export last_short_price = last_short_exit.price
 plot(src.close)",
     )
@@ -670,7 +672,7 @@ fn parses_trigger_statements() {
 #[test]
 fn parses_const_input_and_signal_statements() {
     compile(&with_interval(
-        "input length = 14\nconst limit = 50\nentry long = close > ema(close, length)\nexit long = close < ema(close, length)\nentry short = close < ema(close, length)\nexit short = close > ema(close, length)\nexecution src = binance.spot(\"BTCUSDT\")\norder entry long = market()\norder exit long = market()\norder entry short = market()\norder exit short = market()\nplot(limit)",
+        "input length = 14\nconst limit = 50\nentry long = close > ema(close, length)\nexit long = close < ema(close, length)\nentry short = close < ema(close, length)\nexit short = close > ema(close, length)\nexecution src = binance.spot(\"BTCUSDT\")\norder entry long = market(venue = src)\norder exit long = market(venue = src)\norder entry short = market(venue = src)\norder exit short = market(venue = src)\nplot(limit)",
     ))
     .expect("const/input/signal statements should compile");
 }

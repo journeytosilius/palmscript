@@ -20,11 +20,11 @@ let protect_base = above(trailing_stop, initial_long_stop) ? trailing_stop : ini
 entry long = above(fast, slow) and above(spot.close, breakout_high)
 exit long = below(spot.close, fast)
 
-order entry long = market()
-order exit long = market()
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
 size entry long = risk_pct(risk_budget_pct, initial_long_stop)
-protect long = stop_market(protect_base, trigger_ref.last)
-target long = take_profit_market(position.entry_price + 3 * atr_4h, trigger_ref.last)
+protect long = stop_market(trigger_price = protect_base, trigger_ref = trigger_ref.last, venue = spot)
+target long = take_profit_market(trigger_price = position.entry_price + 3 * atr_4h, trigger_ref = trigger_ref.last, venue = spot)
 size target long = 0.5
 
 export trend_long_state = above(fast, slow)

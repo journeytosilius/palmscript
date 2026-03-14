@@ -175,10 +175,11 @@ senal discrecional `exit`:
 ```palmscript
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
-protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
+protect long = stop_market(trigger_price = position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)
 target long = take_profit_market(
-    highest_since(position_event.long_entry_fill, spot.high) + 4,
-    trigger_ref.last
+    trigger_price = highest_since(position_event.long_entry_fill, spot.high) + 4,
+    trigger_ref = trigger_ref.last,
+    venue = exec
 )
 size target long = 0.5
 ```

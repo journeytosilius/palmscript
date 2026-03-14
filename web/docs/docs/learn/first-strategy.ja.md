@@ -15,7 +15,7 @@ export trend = fast > slow
 entry long = crossover(fast, slow)
 exit long = crossunder(fast, slow)
 
-order_template market_order = market()
+order_template market_order = market(venue = spot)
 order entry long = market_order
 order exit long = market_order
 ```
@@ -30,7 +30,7 @@ order exit long = market_order
 - `export` は名前付き出力シリーズを公開します
 - `entry long = ...` はロングエントリーシグナルを出します
 - `exit long = ...` はロングイグジットシグナルを出します
-- `order_template market_order = market()` は再利用可能な注文定義を宣言します
+- `order_template market_order = market(venue = spot)` は再利用可能な注文定義を宣言します
 - `order entry long = market_order` と `order exit long = market_order` はその明示的な設定を再利用します
 
 ## ブラウザ IDE で試す
@@ -52,7 +52,7 @@ let weekly_basis = ema(spot.1w.close, 8)
 export bullish = spot.close > weekly_basis
 entry long = bullish and crossover(spot.close, weekly_basis)
 exit long = crossunder(spot.close, weekly_basis)
-order_template market_order = market()
+order_template market_order = market(venue = spot)
 order entry long = market_order
 order exit long = market_order
 ```

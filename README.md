@@ -60,10 +60,13 @@ sh infra/scripts/build_docs_site.sh
 
 Any script that declares trading signal roles now requires at least one
 top-level `execution` declaration and matching explicit `order ...`
-declarations for every declared `entry` / `exit` signal role. If the script
-declares exactly one `execution` alias, the CLI selects it automatically. If
-the script declares multiple execution aliases, pass `--execution-source
-<alias>` to choose one or repeat that flag to activate portfolio mode.
+declarations for every declared `entry` / `exit` signal role. Every executable
+inline order and every `order_template` must declare `venue = <execution_alias>`
+explicitly, even when the script declares only one execution target. If the
+script declares exactly one `execution` alias, the CLI still selects it
+automatically for commands that need an execution source. If the script
+declares multiple execution aliases, pass `--execution-source <alias>` to
+choose one or repeat that flag to activate portfolio mode.
 
 PalmScript no longer synthesizes implicit `market()` orders for trading scripts
 in `check`, `run market`, `run backtest`, `run walk-forward`,
@@ -81,7 +84,7 @@ order exit long = market_order
 
 `run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 
-Backtests can also run in portfolio mode when you repeat `--execution-source`. In that mode PalmScript evaluates the same compiled strategy logic for each selected execution alias under one shared equity ledger, and top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.
+Backtests can also run in portfolio mode when you repeat `--execution-source`. In that mode PalmScript evaluates one shared-equity ledger across the selected execution aliases, and only explicitly routed orders whose `venue = <execution_alias>` matches the active alias participate on that leg. Top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.
 
 Backtest-oriented CLI commands now also expose a richer diagnostics surface. `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`. Summary mode keeps compact machine-readable cohort, drawdown, source-alignment, holdout-drift, robustness, and hint data. Full-trace mode adds one typed per-bar decision trace per execution bar so agents can inspect why a signal or order was queued, blocked, expired, or forced out.
 

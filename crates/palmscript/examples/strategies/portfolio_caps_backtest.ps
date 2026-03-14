@@ -8,7 +8,7 @@ execution right = gate.spot("BTC_USDT")
 portfolio_group "majors" = [left, right]
 max_positions = 2
 max_long_positions = 2
-max_short_positions = 0
+max_short_positions = 1
 max_gross_exposure_pct = 0.8
 max_net_exposure_pct = 0.8
 
@@ -24,15 +24,16 @@ let spread = left_fast - right_fast
 let momentum = left_fast > left_slow and right_fast > right_slow
 
 entry long = momentum and left.close > left.close[1]
-entry short = false
+entry short = momentum and right.close > right.close[1]
 exit long = spread < spread[1]
-exit short = false
+exit short = spread > spread[1]
 
-order entry long = market()
-order exit long = market()
-order entry short = market()
-order exit short = market()
+order entry long = market(venue = left)
+order exit long = market(venue = left)
+order entry short = market(venue = right)
+order exit short = market(venue = right)
 size entry long = entry_size
+size entry short = entry_size
 
 export spread_value = spread
 export momentum_state = momentum

@@ -16,7 +16,7 @@ export trend = fast > slow
 entry long = crossover(fast, slow)
 exit long = crossunder(fast, slow)
 
-order_template market_order = market()
+order_template market_order = market(venue = spot)
 order entry long = market_order
 order exit long = market_order
 ```
@@ -31,7 +31,7 @@ order exit long = market_order
 - `export` veroffentlicht eine benannte Ausgabeserie
 - `entry long = ...` emittiert ein Long-Einstiegssignal
 - `exit long = ...` emittiert ein Long-Ausstiegssignal
-- `order_template market_order = market()` deklariert eine wiederverwendbare Order-Spezifikation
+- `order_template market_order = market(venue = spot)` deklariert eine wiederverwendbare Order-Spezifikation
 - `order entry long = market_order` und `order exit long = market_order` verwenden diese explizite Konfiguration wieder
 
 ## In Der Browser-IDE Ausprobieren
@@ -54,7 +54,7 @@ let weekly_basis = ema(spot.1w.close, 8)
 export bullish = spot.close > weekly_basis
 entry long = bullish and crossover(spot.close, weekly_basis)
 exit long = crossunder(spot.close, weekly_basis)
-order_template market_order = market()
+order_template market_order = market(venue = spot)
 order entry long = market_order
 order exit long = market_order
 ```
