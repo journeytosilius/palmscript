@@ -89,6 +89,12 @@ pub struct BacktestRunArgs {
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
     pub fee_bps: f64,
+    #[arg(long)]
+    pub maker_fee_bps: Option<f64>,
+    #[arg(long)]
+    pub taker_fee_bps: Option<f64>,
+    #[arg(long = "fee-schedule")]
+    pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
@@ -120,6 +126,12 @@ pub struct WalkForwardRunArgs {
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
     pub fee_bps: f64,
+    #[arg(long)]
+    pub maker_fee_bps: Option<f64>,
+    #[arg(long)]
+    pub taker_fee_bps: Option<f64>,
+    #[arg(long = "fee-schedule")]
+    pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
@@ -157,6 +169,12 @@ pub struct WalkForwardSweepRunArgs {
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
     pub fee_bps: f64,
+    #[arg(long)]
+    pub maker_fee_bps: Option<f64>,
+    #[arg(long)]
+    pub taker_fee_bps: Option<f64>,
+    #[arg(long = "fee-schedule")]
+    pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
@@ -198,6 +216,12 @@ pub struct OptimizeRunArgs {
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
     pub fee_bps: f64,
+    #[arg(long)]
+    pub maker_fee_bps: Option<f64>,
+    #[arg(long)]
+    pub taker_fee_bps: Option<f64>,
+    #[arg(long = "fee-schedule")]
+    pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
@@ -251,6 +275,12 @@ pub struct PaperRunArgs {
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
     pub fee_bps: f64,
+    #[arg(long)]
+    pub maker_fee_bps: Option<f64>,
+    #[arg(long)]
+    pub taker_fee_bps: Option<f64>,
+    #[arg(long = "fee-schedule")]
+    pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]

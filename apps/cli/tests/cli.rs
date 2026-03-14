@@ -274,6 +274,47 @@ fn run_paper_uses_single_declared_execution_by_default() {
 }
 
 #[test]
+fn run_paper_records_maker_taker_fee_configuration() {
+    let dir = tempdir().expect("tempdir");
+    let state_dir = dir.path().join("execution-state");
+    let script = write_file(
+        dir.path(),
+        "paper_fees.ps",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = spot)\norder entry short = market(venue = spot)\norder exit long = market(venue = spot)\norder exit short = market(venue = spot)\nplot(spot.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_EXECUTION_STATE_DIR", &state_dir)
+        .args([
+            "run",
+            "paper",
+            script.to_str().unwrap(),
+            "--execution-source",
+            "spot",
+            "--maker-fee-bps",
+            "2",
+            "--taker-fee-bps",
+            "5",
+            "--fee-schedule",
+            "spot:1.5:4.5",
+        ])
+        .output()
+        .expect("paper submit should run");
+    assert!(output.status.success());
+    let manifest: Value =
+        serde_json::from_slice(&output.stdout).expect("paper submit should emit manifest json");
+    assert_eq!(manifest["config"]["maker_fee_bps"], serde_json::json!(2.0));
+    assert_eq!(manifest["config"]["taker_fee_bps"], serde_json::json!(5.0));
+    assert_eq!(
+        manifest["config"]["execution_fee_schedules"]["spot"],
+        serde_json::json!({
+            "maker_bps": 1.5,
+            "taker_bps": 4.5
+        })
+    );
+}
+
+#[test]
 fn run_rejects_removed_csv_subcommand() {
     let mut cmd = palmscript_cmd();
     cmd.args(["run", "csv"]);

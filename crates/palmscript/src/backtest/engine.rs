@@ -110,6 +110,18 @@ struct StepDecisionTrace {
     order_decisions: Vec<OrderDecisionTrace>,
 }
 
+#[derive(Clone, Copy)]
+struct FeeRates {
+    maker: f64,
+    taker: f64,
+}
+
+#[derive(Clone, Copy)]
+enum FillLiquidity {
+    Maker,
+    Taker,
+}
+
 struct PortfolioAliasState {
     alias: String,
     stepper: RuntimeStepper,
@@ -117,6 +129,7 @@ struct PortfolioAliasState {
     aligned_mark_bars: Vec<Bar>,
     execution_cursor: usize,
     accounting: AccountingMode,
+    fee_rates: FeeRates,
     position: Option<PositionState>,
     open_trade: Option<OpenTrade>,
     active_orders: [Option<ActiveOrder>; ROLE_COUNT],
@@ -141,6 +154,44 @@ fn step_is_active(open_time_ms: i64, activation_time_ms: Option<i64>) -> bool {
     }
 }
 
+fn fee_rates_for_alias(config: &BacktestConfig, alias: &str) -> FeeRates {
+    let schedule = config.fee_schedule_for_alias(alias);
+    FeeRates {
+        maker: schedule.maker_bps / crate::backtest::BPS_SCALE,
+        taker: schedule.taker_bps / crate::backtest::BPS_SCALE,
+    }
+}
+
+fn fee_rate_for_liquidity(rates: FeeRates, liquidity: FillLiquidity) -> f64 {
+    match liquidity {
+        FillLiquidity::Maker => rates.maker,
+        FillLiquidity::Taker => rates.taker,
+    }
+}
+
+fn fill_liquidity_for_order(order: &ActiveOrder, first_eval: bool, bar_open: f64) -> FillLiquidity {
+    let action = fill_action_for_role(order.request.role);
+    match order.request.kind {
+        OrderKind::Market | OrderKind::StopMarket | OrderKind::TakeProfitMarket => {
+            FillLiquidity::Taker
+        }
+        OrderKind::Limit | OrderKind::StopLimit | OrderKind::TakeProfitLimit => {
+            if matches!(order.state, WorkingState::RestingLimit { .. }) {
+                return FillLiquidity::Maker;
+            }
+            if first_eval
+                && order.request.price.is_some_and(|limit_price| {
+                    crate::backtest::orders::would_cross_on_open(action, bar_open, limit_price)
+                })
+            {
+                FillLiquidity::Taker
+            } else {
+                FillLiquidity::Maker
+            }
+        }
+    }
+}
+
 pub(crate) fn simulate_backtest(
     mut stepper: RuntimeStepper,
     execution_bars: Vec<Bar>,
@@ -148,7 +199,7 @@ pub(crate) fn simulate_backtest(
     prepared: PreparedBacktest,
 ) -> Result<BacktestResult, BacktestError> {
     let execution_alias = config.execution_source_alias.as_str();
-    let fee_rate = config.fee_bps / crate::backtest::BPS_SCALE;
+    let fee_rates = fee_rates_for_alias(config, execution_alias);
     let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
     let accounting = accounting_mode(config);
     let aligned_mark_bars = aligned_mark_bars(config, &execution_bars)?;
@@ -206,7 +257,7 @@ pub(crate) fn simulate_backtest(
                 bar.time,
                 bar.open,
                 &accounting,
-                fee_rate,
+                fee_rates.taker,
                 &mut cash,
                 &mut position,
                 &mut open_trade,
@@ -276,6 +327,7 @@ pub(crate) fn simulate_backtest(
                     continue;
                 };
 
+                let first_eval = !active.first_eval_done;
                 let evaluation =
                     evaluate_active_order(&active, bar.time, bar.open, bar.high, bar.low);
                 active.first_eval_done = true;
@@ -353,6 +405,10 @@ pub(crate) fn simulate_backtest(
                     }
                     crate::backtest::orders::Evaluation::Fill(execution) => {
                         let action = fill_action_for_role(role);
+                        let fee_rate = fee_rate_for_liquidity(
+                            fee_rates,
+                            fill_liquidity_for_order(&active, first_eval, bar.open),
+                        );
                         let execution_price = if matches!(active.request.kind, OrderKind::Market) {
                             adjusted_price(execution.raw_price, action, slippage_rate)
                         } else {
@@ -680,7 +736,7 @@ pub(crate) fn simulate_backtest(
                             execution_cursor,
                             bar.time,
                             liquidation_price,
-                            fee_rate,
+                            fee_rates.taker,
                             &mut cash,
                             &mut position,
                             &mut open_trade,
@@ -1020,11 +1076,11 @@ pub(crate) fn simulate_portfolio_backtest(
     config: &BacktestConfig,
     prepared: PreparedBacktest,
 ) -> Result<BacktestResult, BacktestError> {
-    let fee_rate = config.fee_bps / crate::backtest::BPS_SCALE;
     let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
     let mut alias_states = Vec::with_capacity(executions.len());
     for ((alias, _, template, execution_bars), stepper) in executions.into_iter().zip(steppers) {
         let accounting = accounting_mode_for_alias(config, &alias, template);
+        let fee_rates = fee_rates_for_alias(config, &alias);
         alias_states.push(PortfolioAliasState {
             aligned_mark_bars: aligned_mark_bars_for_alias(
                 config,
@@ -1037,6 +1093,7 @@ pub(crate) fn simulate_portfolio_backtest(
             execution_bars,
             execution_cursor: 0,
             accounting,
+            fee_rates,
             position: None,
             open_trade: None,
             active_orders: std::array::from_fn(|_| None),
@@ -1112,7 +1169,7 @@ pub(crate) fn simulate_portfolio_backtest(
                     bar.time,
                     bar.open,
                     &state.accounting,
-                    fee_rate,
+                    state.fee_rates.taker,
                     &mut cash,
                     &mut state.position,
                     &mut state.open_trade,
@@ -1191,6 +1248,7 @@ pub(crate) fn simulate_portfolio_backtest(
                         continue;
                     };
 
+                    let first_eval = !active.first_eval_done;
                     let evaluation =
                         evaluate_active_order(&active, bar.time, bar.open, bar.high, bar.low);
                     active.first_eval_done = true;
@@ -1270,6 +1328,10 @@ pub(crate) fn simulate_portfolio_backtest(
                         }
                         crate::backtest::orders::Evaluation::Fill(execution) => {
                             let action = fill_action_for_role(role);
+                            let fee_rate = fee_rate_for_liquidity(
+                                state.fee_rates,
+                                fill_liquidity_for_order(&active, first_eval, bar.open),
+                            );
                             let execution_price =
                                 if matches!(active.request.kind, OrderKind::Market) {
                                     adjusted_price(execution.raw_price, action, slippage_rate)
@@ -1660,7 +1722,7 @@ pub(crate) fn simulate_portfolio_backtest(
                                 state.execution_cursor,
                                 bar.time,
                                 liquidation_price,
-                                fee_rate,
+                                state.fee_rates.taker,
                                 &mut cash,
                                 &mut state.position,
                                 &mut state.open_trade,

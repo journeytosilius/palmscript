@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::backtest::{
-    BacktestDiagnosticSummary, BacktestResult, BacktestSummary, DiagnosticsDetailMode,
+    BacktestDiagnosticSummary, BacktestResult, BacktestSummary, DiagnosticsDetailMode, FeeSchedule,
     PerpMarginMode, PositionSnapshot,
 };
 use crate::exchange::ExchangeEndpoints;
@@ -68,7 +68,14 @@ pub enum ExecutionSessionHealth {
 pub struct PaperSessionConfig {
     pub execution_source_aliases: Vec<String>,
     pub initial_capital: f64,
+    #[serde(default)]
     pub fee_bps: f64,
+    #[serde(default)]
+    pub maker_fee_bps: Option<f64>,
+    #[serde(default)]
+    pub taker_fee_bps: Option<f64>,
+    #[serde(default)]
+    pub execution_fee_schedules: std::collections::BTreeMap<String, FeeSchedule>,
     pub slippage_bps: f64,
     pub diagnostics_detail: DiagnosticsDetailMode,
     pub leverage: Option<f64>,

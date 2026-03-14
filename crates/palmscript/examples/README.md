@@ -100,3 +100,5 @@ Common commands:
 ./palmscript run backtest crates/palmscript/examples/strategies/multi_strategy_backtest.ps --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
 ./palmscript run backtest crates/palmscript/examples/strategies/venue_orders_backtest.ps --from 1704067200000 --to 1704931200000 --format text
 ```
+
+Backtest and paper commands also accept `--maker-fee-bps`, `--taker-fee-bps`, and repeated `--fee-schedule <alias:maker:taker>` overrides when you need per-venue fee simulation instead of one uniform `--fee-bps` model.

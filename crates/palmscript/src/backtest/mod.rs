@@ -38,7 +38,14 @@ pub struct BacktestConfig {
     #[serde(default)]
     pub activation_time_ms: Option<i64>,
     pub initial_capital: f64,
+    #[serde(default)]
     pub fee_bps: f64,
+    #[serde(default)]
+    pub maker_fee_bps: Option<f64>,
+    #[serde(default)]
+    pub taker_fee_bps: Option<f64>,
+    #[serde(default)]
+    pub execution_fee_schedules: BTreeMap<String, FeeSchedule>,
     pub slippage_bps: f64,
     #[serde(default)]
     pub diagnostics_detail: DiagnosticsDetailMode,
@@ -46,6 +53,33 @@ pub struct BacktestConfig {
     pub perp_context: Option<PerpBacktestContext>,
     #[serde(default)]
     pub portfolio_perp_contexts: BTreeMap<String, PerpBacktestContext>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FeeSchedule {
+    pub maker_bps: f64,
+    pub taker_bps: f64,
+}
+
+impl FeeSchedule {
+    pub const fn uniform(bps: f64) -> Self {
+        Self {
+            maker_bps: bps,
+            taker_bps: bps,
+        }
+    }
+}
+
+impl BacktestConfig {
+    pub fn fee_schedule_for_alias(&self, alias: &str) -> FeeSchedule {
+        self.execution_fee_schedules
+            .get(alias)
+            .copied()
+            .unwrap_or(FeeSchedule {
+                maker_bps: self.maker_fee_bps.unwrap_or(self.fee_bps),
+                taker_bps: self.taker_fee_bps.unwrap_or(self.fee_bps),
+            })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -660,6 +694,18 @@ pub enum BacktestError {
     InvalidInitialCapital { value: f64 },
     #[error("backtest fee_bps must be finite and >= 0, found {value}")]
     InvalidFeeBps { value: f64 },
+    #[error("backtest maker_fee_bps must be finite and >= 0, found {value}")]
+    InvalidMakerFeeBps { value: f64 },
+    #[error("backtest taker_fee_bps must be finite and >= 0, found {value}")]
+    InvalidTakerFeeBps { value: f64 },
+    #[error(
+        "backtest fee schedule for execution `{alias}` must have finite maker/taker rates >= 0, found maker={maker_bps}, taker={taker_bps}"
+    )]
+    InvalidExecutionFeeSchedule {
+        alias: String,
+        maker_bps: f64,
+        taker_bps: f64,
+    },
     #[error("backtest slippage_bps must be finite and >= 0, found {value}")]
     InvalidSlippageBps { value: f64 },
     #[error("backtest leverage must be finite and >= 1.0, found {value}")]
@@ -810,6 +856,35 @@ fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
         return Err(BacktestError::InvalidFeeBps {
             value: config.fee_bps,
         });
+    }
+    if config
+        .maker_fee_bps
+        .is_some_and(|value| !value.is_finite() || value < 0.0)
+    {
+        return Err(BacktestError::InvalidMakerFeeBps {
+            value: config.maker_fee_bps.unwrap_or(config.fee_bps),
+        });
+    }
+    if config
+        .taker_fee_bps
+        .is_some_and(|value| !value.is_finite() || value < 0.0)
+    {
+        return Err(BacktestError::InvalidTakerFeeBps {
+            value: config.taker_fee_bps.unwrap_or(config.fee_bps),
+        });
+    }
+    for (alias, schedule) in &config.execution_fee_schedules {
+        if !schedule.maker_bps.is_finite()
+            || schedule.maker_bps < 0.0
+            || !schedule.taker_bps.is_finite()
+            || schedule.taker_bps < 0.0
+        {
+            return Err(BacktestError::InvalidExecutionFeeSchedule {
+                alias: alias.clone(),
+                maker_bps: schedule.maker_bps,
+                taker_bps: schedule.taker_bps,
+            });
+        }
     }
     if !config.slippage_bps.is_finite() || config.slippage_bps < 0.0 {
         return Err(BacktestError::InvalidSlippageBps {

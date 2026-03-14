@@ -581,7 +581,7 @@ fn trigger_hit(
     }
 }
 
-fn would_cross_on_open(action: FillAction, open: f64, limit_price: f64) -> bool {
+pub(crate) fn would_cross_on_open(action: FillAction, open: f64, limit_price: f64) -> bool {
     match action {
         FillAction::Buy => open <= limit_price,
         FillAction::Sell => open >= limit_price,

@@ -42,6 +42,8 @@ palmscript run backtest strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
   --fee-bps 10 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --slippage-bps 2
 ```
 
@@ -62,6 +64,8 @@ Modes:
 Trading scripts require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
 
 Every executable inline order and every `order_template` must declare `venue = <execution_alias>` explicitly, even when the script declares only one execution target.
+
+Fee modeling now supports global maker/taker splits plus per-execution-alias overrides. `--fee-bps` remains a uniform fallback, `--maker-fee-bps` and `--taker-fee-bps` split the default schedule, and `--fee-schedule <alias:maker:taker>` overrides one selected execution alias for portfolio or cross-exchange simulations.
 
 Execution-routed order example:
 
@@ -84,6 +88,8 @@ palmscript run backtest portfolio_caps_backtest.ps \
   --execution-source left \
   --execution-source right \
   --fee-bps 10 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --slippage-bps 2
 ```
 
@@ -330,6 +336,9 @@ let result = run_backtest_with_sources(
         portfolio_execution_aliases: Vec::new(),
         initial_capital: 10_000.0,
         fee_bps: 5.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 2.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
@@ -369,6 +378,9 @@ let result = run_walk_forward_with_sources(
             portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 5.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 2.0,
             diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
@@ -416,6 +428,9 @@ let result = run_walk_forward_sweep_with_source(
                 portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 5.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 2.0,
                 diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
@@ -476,6 +491,9 @@ let result = run_optimize_with_source(
             portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 5.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 2.0,
             diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
@@ -488,6 +506,9 @@ let result = run_optimize_with_source(
                 portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 5.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 2.0,
                 diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
@@ -696,11 +717,11 @@ Enum namespaces:
 
 Deterministic fill rules:
 
-- `market(venue = exec)`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees are charged per fill using `fee_bps`
-- `limit(...)`: fills on the first eligible bar whose range crosses the limit; the fill price is the better of `open` and `limit`
-- `stop_market(...)`: triggers on the first eligible bar whose range crosses the stop; the fill price is the worse of `open` and `trigger_price`
-- `take_profit_market(...)`: triggers on the first eligible bar whose range crosses the trigger; the fill price is the better of `open` and `trigger_price`
-- `stop_limit(...)` and `take_profit_limit(...)`: trigger on crossing; if the opening price already satisfies the resulting limit, they fill immediately, otherwise they become resting limit orders starting from the next bar
+- `market(venue = exec)`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees use the taker rate from the resolved fee schedule
+- `limit(...)`: fills on the first eligible bar whose range crosses the limit; the fill price is the better of `open` and `limit`, and resting fills use the maker rate
+- `stop_market(...)`: triggers on the first eligible bar whose range crosses the stop; the fill price is the worse of `open` and `trigger_price`, and fills use the taker rate
+- `take_profit_market(...)`: triggers on the first eligible bar whose range crosses the trigger; the fill price is the better of `open` and `trigger_price`, and fills use the taker rate
+- `stop_limit(...)` and `take_profit_limit(...)`: trigger on crossing; if the opening price already satisfies the resulting limit, they fill immediately and use the taker rate, otherwise they become resting limit orders starting from the next bar and use the maker rate
 - `tif.ioc` and `tif.fok`: evaluate only on the first eligible bar and cancel if they do not fully fill
 - `tif.gtd`: expires deterministically before evaluating any execution bar at or beyond `expire_time_ms`
 

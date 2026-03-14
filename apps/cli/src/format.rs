@@ -494,6 +494,19 @@ pub fn render_paper_manifest_text(manifest: &PaperSessionManifest) -> String {
         manifest.config.initial_capital
     );
     let _ = writeln!(out, "fee_bps={:.2}", manifest.config.fee_bps);
+    if let Some(maker_fee_bps) = manifest.config.maker_fee_bps {
+        let _ = writeln!(out, "maker_fee_bps={maker_fee_bps:.2}");
+    }
+    if let Some(taker_fee_bps) = manifest.config.taker_fee_bps {
+        let _ = writeln!(out, "taker_fee_bps={taker_fee_bps:.2}");
+    }
+    for (alias, schedule) in &manifest.config.execution_fee_schedules {
+        let _ = writeln!(
+            out,
+            "fee_schedule.{alias}={:.2}/{:.2}",
+            schedule.maker_bps, schedule.taker_bps
+        );
+    }
     let _ = writeln!(out, "slippage_bps={:.2}", manifest.config.slippage_bps);
     let _ = writeln!(out, "stop_requested={}", manifest.stop_requested);
     if let Some(warmup_from_ms) = manifest.warmup_from_ms {

@@ -85,6 +85,9 @@ fn config(alias: &str) -> BacktestConfig {
         activation_time_ms: None,
         initial_capital: 1_000.0,
         fee_bps: 0.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
@@ -149,6 +152,9 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
         activation_time_ms: None,
         initial_capital: 1_000.0,
         fee_bps: 0.0,
+        maker_fee_bps: None,
+        taker_fee_bps: None,
+        execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: Some(PerpBacktestConfig {
@@ -209,6 +215,33 @@ fn rejects_invalid_backtest_config() {
     let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
         .expect_err("expected invalid fee");
     assert!(matches!(err, BacktestError::InvalidFeeBps { .. }));
+
+    let mut invalid = config("spot");
+    invalid.maker_fee_bps = Some(-1.0);
+    let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
+        .expect_err("expected invalid maker fee");
+    assert!(matches!(err, BacktestError::InvalidMakerFeeBps { .. }));
+
+    let mut invalid = config("spot");
+    invalid.taker_fee_bps = Some(-1.0);
+    let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
+        .expect_err("expected invalid taker fee");
+    assert!(matches!(err, BacktestError::InvalidTakerFeeBps { .. }));
+
+    let mut invalid = config("spot");
+    invalid.execution_fee_schedules.insert(
+        "spot".to_string(),
+        palmscript::FeeSchedule {
+            maker_bps: 0.0,
+            taker_bps: -1.0,
+        },
+    );
+    let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
+        .expect_err("expected invalid execution fee schedule");
+    assert!(matches!(
+        err,
+        BacktestError::InvalidExecutionFeeSchedule { .. }
+    ));
 
     let mut invalid = config("spot");
     invalid.slippage_bps = -1.0;
@@ -1122,6 +1155,100 @@ plot(spot.close)",
     approx_eq(result.fills[1].fee, result.fills[1].notional * 0.01);
     assert!(result.summary.realized_pnl > 150.0);
     assert!(result.summary.realized_pnl < 160.0);
+}
+
+#[test]
+fn market_orders_use_taker_fee_schedule() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 9.0, 9.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 10.0, 10.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    10.0,
+                    8.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+            ],
+        }],
+    };
+    let mut cfg = config("spot");
+    cfg.maker_fee_bps = Some(0.0);
+    cfg.taker_fee_bps = Some(100.0);
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), cfg)
+        .expect("backtest should succeed");
+
+    approx_eq(result.fills[0].fee, result.fills[0].notional * 0.01);
+    approx_eq(result.fills[1].fee, result.fills[1].notional * 0.01);
+}
+
+#[test]
+fn resting_limit_orders_use_maker_fee_schedule() {
+    let entry_time = support::JAN_1_2024_UTC_MS;
+    let exit_time = support::JAN_1_2024_UTC_MS + support::MINUTE_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.time == {entry_time}
+exit long = spot.time == {exit_time}
+order entry long = limit(price = 9.5, tif = tif.gtc, post_only = true, venue = spot)
+order exit long = market(venue = spot)
+plot(spot.close)",
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                Bar {
+                    open: 10.0,
+                    high: 10.0,
+                    low: 9.5,
+                    close: 10.0,
+                    volume: 1.0,
+                    time: (support::JAN_1_2024_UTC_MS + support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 8.0,
+                    high: 8.0,
+                    low: 8.0,
+                    close: 8.0,
+                    volume: 1.0,
+                    time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+    let mut cfg = config("spot");
+    cfg.maker_fee_bps = Some(0.0);
+    cfg.taker_fee_bps = Some(100.0);
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), cfg)
+        .expect("backtest should succeed");
+
+    approx_eq(result.fills[0].price, 9.5);
+    approx_eq(result.fills[0].fee, 0.0);
+    approx_eq(result.fills[1].fee, result.fills[1].notional * 0.01);
 }
 
 #[test]

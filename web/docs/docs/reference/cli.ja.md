@@ -70,6 +70,8 @@ palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
   [--fee-bps <N>] \
+  [--maker-fee-bps <N>] [--taker-fee-bps <N>] \
+  [--fee-schedule <alias:maker:taker>]... \
   [--slippage-bps <N>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
@@ -164,6 +166,8 @@ palmscript run paper <script.ps> \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
   [--fee-bps <N>] \
+  [--maker-fee-bps <N>] [--taker-fee-bps <N>] \
+  [--fee-schedule <alias:maker:taker>]... \
   [--slippage-bps <N>] \
   [--leverage <N>] \
   [--margin-mode isolated] \
@@ -177,7 +181,10 @@ Arguments and flags:
 - `--execution-source <alias>`: execution alias selection; repeat it to activate shared-equity portfolio paper mode
 - `run paper` requires at least one declared `execution` target in the script
 - `--initial-capital <N>`: paper account starting equity; default `10000`
-- `--fee-bps <N>`: fee model in basis points; default `5`
+- `--fee-bps <N>`: uniform fee fallback in basis points; default `5`
+- `--maker-fee-bps <N>`: optional global maker fee override; defaults to `--fee-bps`
+- `--taker-fee-bps <N>`: optional global taker fee override; defaults to `--fee-bps`
+- `--fee-schedule <alias:maker:taker>`: optional execution-alias-specific maker/taker fee override; repeat per alias
 - `--slippage-bps <N>`: slippage model in basis points; default `2`
 - `--leverage <N>`: optional isolated leverage for perp execution aliases
 - `--margin-mode isolated`: perp margin mode; only `isolated` is currently supported
