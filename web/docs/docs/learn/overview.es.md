@@ -23,6 +23,7 @@ Para trabajos largos de tuning por CLI:
 - usa `palmscript run optimize ...` para optimizar directamente desde la CLI
 - guarda los candidatos utiles con `--preset-out best.json` para reejecutarlos con `run backtest` o `run walk-forward`
 - manten activado el holdout final intacto por defecto salvo que quieras desactivar esa proteccion de forma intencional
+- agrega restricciones explicitas como `--min-sharpe`, `--min-holdout-pass-rate` y `--max-overfitting-risk` cuando quieras que el optimizador busque solo en la region factible
 
 ## Que Leer Despues
 
@@ -43,7 +44,7 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
 - summary mode keeps cohort, drawdown-path, baseline-comparison, source-alignment, holdout-drift, robustness, overfitting-risk, validation-constraint, and hint data, and top-level backtests also add bounded date-perturbation reruns
 - full-trace mode adds one typed per-bar decision trace per execution bar
-- optimize output now includes top-candidate holdout checks plus validation-constraint, holdout-pass-rate, parameter stability, baseline-comparison, and overfitting-risk summaries
+- optimize output now includes top-candidate holdout checks plus validation-constraint, feasible vs infeasible survivor counts, constraint-failure breakdowns, holdout-pass-rate, parameter stability, baseline-comparison, and overfitting-risk summaries
 
 ## Ejecucion Paper Local
 

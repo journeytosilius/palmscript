@@ -259,6 +259,9 @@ Walk-forward and optimize outputs reuse the same diagnostics model and add:
 - optimizer robustness summaries across the top ranked candidates
 - optimize holdout pass rate plus best-candidate and holdout constraint summaries
 - parameter stability, baseline-comparison, overfitting-risk, and Sharpe summaries
+- optimize validated / feasible / infeasible candidate counts
+- an optional best-infeasible-candidate fallback summary when no validated candidate satisfies every enabled constraint
+- typed constraint-failure breakdowns for the validated survivor set
 
 ## Output Time And Bar Index
 

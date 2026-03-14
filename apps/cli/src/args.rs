@@ -143,6 +143,8 @@ pub struct WalkForwardRunArgs {
     #[arg(long)]
     pub min_trades: Option<usize>,
     #[arg(long)]
+    pub min_sharpe: Option<f64>,
+    #[arg(long)]
     pub max_zero_trade_segments: Option<usize>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
@@ -237,6 +239,8 @@ pub struct OptimizeRunArgs {
     #[arg(long)]
     pub min_trades: Option<usize>,
     #[arg(long)]
+    pub min_sharpe: Option<f64>,
+    #[arg(long)]
     pub min_holdout_trades: Option<usize>,
     #[arg(long, default_value_t = false)]
     pub require_positive_holdout: bool,
@@ -244,6 +248,12 @@ pub struct OptimizeRunArgs {
     pub max_zero_trade_segments: Option<usize>,
     #[arg(long)]
     pub min_holdout_pass_rate: Option<f64>,
+    #[arg(long)]
+    pub min_date_perturbation_positive_ratio: Option<f64>,
+    #[arg(long)]
+    pub min_date_perturbation_outperform_ratio: Option<f64>,
+    #[arg(long, value_enum)]
+    pub max_overfitting_risk: Option<OverfittingRiskArg>,
     #[arg(long = "param")]
     pub params: Vec<String>,
     #[arg(long, value_enum, default_value_t = OptimizeRunnerArg::WalkForward)]
@@ -421,6 +431,13 @@ pub enum DiagnosticsDetailArg {
     #[default]
     Summary,
     FullTrace,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum OverfittingRiskArg {
+    Low,
+    Moderate,
+    High,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]

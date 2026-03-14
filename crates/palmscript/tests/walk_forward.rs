@@ -273,10 +273,14 @@ order exit short = market(venue = spot)";
             step_bars: 2,
             constraints: ValidationConstraintConfig {
                 min_trade_count: Some(1),
+                min_sharpe_ratio: None,
                 min_holdout_trade_count: None,
                 require_positive_holdout: false,
                 max_zero_trade_segments: Some(0),
                 min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
         },
     )

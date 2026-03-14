@@ -125,6 +125,7 @@ palmscript run walk-forward strategy.ps \
   --test-bars 63 \
   --step-bars 63 \
   --min-trades 30 \
+  --min-sharpe 1.0 \
   --max-zero-trade-segments 1
 ```
 
@@ -133,7 +134,7 @@ V1 notes:
 - walk-forward uses the same deterministic order/fill engine as ordinary backtests
 - each segment uses the leading `train-bars` as in-sample context and reports the trailing `test-bars` as out-of-sample
 - `step-bars` controls how far each segment advances
-- `--min-trades` and `--max-zero-trade-segments` let you reject stitched results that are too sparse or too inactive
+- `--min-trades`, `--min-sharpe`, and `--max-zero-trade-segments` let you reject stitched results that are too sparse, too weak on risk-adjusted return, or too inactive
 - v1 does not optimize parameters automatically; it evaluates the fixed script and inputs you passed in
 
 Run a bounded walk-forward sweep:
@@ -173,10 +174,14 @@ palmscript run optimize strategy.ps \
   --test-bars 63 \
   --step-bars 63 \
   --min-trades 30 \
+  --min-sharpe 1.0 \
   --min-holdout-trades 10 \
   --require-positive-holdout \
   --max-zero-trade-segments 1 \
   --min-holdout-pass-rate 0.5 \
+  --min-date-perturbation-positive-ratio 0.67 \
+  --min-date-perturbation-outperform-ratio 0.67 \
+  --max-overfitting-risk moderate \
   --objective robust-return \
   --trials 50 \
   --top 5 \
@@ -191,13 +196,15 @@ V1 optimizer notes:
 - scripts can declare search metadata directly with `optimize(int, ...)`, `optimize(float, ...)`, or `optimize(choice, ...)` on numeric `input`s
 - walk-forward is the default runner; `--runner backtest` is optional
 - by default, walk-forward optimize reserves a final untouched holdout window equal to `test-bars`; use `--holdout-bars <N>` to change it or `--no-holdout` to disable it explicitly
-- `--min-trades`, `--min-holdout-trades`, `--require-positive-holdout`, `--max-zero-trade-segments`, and `--min-holdout-pass-rate` let you reject fragile candidates before they can rank as survivors
+- `--min-trades`, `--min-sharpe`, `--min-holdout-trades`, `--require-positive-holdout`, `--max-zero-trade-segments`, `--min-holdout-pass-rate`, `--min-date-perturbation-positive-ratio`, `--min-date-perturbation-outperform-ratio`, and `--max-overfitting-risk` let you reject fragile candidates before they can rank as survivors
 - the search is seeded and deterministic for the same script, seed, and search space
 - `--workers` only controls bounded parallel evaluation
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
-- the final optimize result now also reports validation-constraint summaries, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, baseline comparisons, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
+- the optimizer now revalidates the ranked survivor set with holdout, date-perturbation, and overfitting diagnostics before the winner is chosen
+- if at least one validated candidate is feasible, only feasible candidates can win; if none are feasible, PalmScript returns the best infeasible fallback plus its violations
+- the final optimize result now also reports validation-constraint summaries, validated/feasible/infeasible candidate counts, constraint-failure breakdowns, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, baseline comparisons, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 

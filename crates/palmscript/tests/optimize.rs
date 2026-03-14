@@ -7,8 +7,8 @@ use palmscript::{
     BacktestConfig, DiagnosticsDetailMode, Interval, OptimizeCandidateSummary, OptimizeConfig,
     OptimizeError, OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeObjective,
     OptimizeParamSpace, OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState,
-    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, ValidationConstraintConfig,
-    VmLimits, WalkForwardConfig,
+    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, OverfittingRiskLevel,
+    ValidationConstraintConfig, ValidationConstraintKind, VmLimits, WalkForwardConfig,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
@@ -571,10 +571,14 @@ order exit short = market(venue = spot)",
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig {
                 min_trade_count: Some(1),
+                min_sharpe_ratio: None,
                 min_holdout_trade_count: None,
                 require_positive_holdout: false,
                 max_zero_trade_segments: None,
                 min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
         },
     )
@@ -624,10 +628,14 @@ fn optimize_reports_holdout_constraint_failures() {
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig {
                 min_trade_count: None,
+                min_sharpe_ratio: None,
                 min_holdout_trade_count: Some(2),
                 require_positive_holdout: true,
                 max_zero_trade_segments: None,
                 min_holdout_pass_rate: Some(1.0),
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
         },
     )
@@ -652,10 +660,14 @@ fn optimize_rejects_holdout_constraints_without_holdout_window() {
         OptimizeConfig {
             constraints: ValidationConstraintConfig {
                 min_trade_count: None,
+                min_sharpe_ratio: None,
                 min_holdout_trade_count: Some(1),
                 require_positive_holdout: false,
                 max_zero_trade_segments: None,
                 min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
             ..backtest_optimize_config()
         },
@@ -679,10 +691,14 @@ fn optimize_rejects_invalid_min_holdout_pass_rate() {
             holdout: Some(OptimizeHoldoutConfig { bars: 2 }),
             constraints: ValidationConstraintConfig {
                 min_trade_count: None,
+                min_sharpe_ratio: None,
                 min_holdout_trade_count: None,
                 require_positive_holdout: false,
                 max_zero_trade_segments: None,
                 min_holdout_pass_rate: Some(1.5),
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
             ..backtest_optimize_config()
         },
@@ -693,4 +709,125 @@ fn optimize_rejects_invalid_min_holdout_pass_rate() {
         err,
         OptimizeError::InvalidMinHoldoutPassRate { value } if value == 1.5
     ));
+}
+
+#[test]
+fn optimize_rejects_invalid_min_sharpe_ratio() {
+    let err = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_sharpe_ratio: Some(f64::NAN),
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
+            },
+            ..backtest_optimize_config()
+        },
+    )
+    .expect_err("invalid min sharpe ratio should fail");
+
+    assert!(matches!(err, OptimizeError::InvalidMinSharpeRatio { .. }));
+}
+
+#[test]
+fn optimize_rejects_invalid_min_date_perturbation_positive_ratio() {
+    let err = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_sharpe_ratio: None,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: Some(1.5),
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
+            },
+            ..backtest_optimize_config()
+        },
+    )
+    .expect_err("invalid min date perturbation positive ratio should fail");
+
+    assert!(matches!(
+        err,
+        OptimizeError::InvalidMinDatePerturbationPositiveRatio { value } if value == 1.5
+    ));
+}
+
+#[test]
+fn optimize_rejects_invalid_min_date_perturbation_outperform_ratio() {
+    let err = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_sharpe_ratio: None,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: Some(f64::NAN),
+                max_overfitting_risk: None,
+            },
+            ..backtest_optimize_config()
+        },
+    )
+    .expect_err("invalid min date perturbation outperform ratio should fail");
+
+    assert!(matches!(
+        err,
+        OptimizeError::InvalidMinDatePerturbationOutperformRatio { .. }
+    ));
+}
+
+#[test]
+fn optimize_can_require_known_non_high_overfitting_risk() {
+    let result = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_sharpe_ratio: None,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: Some(OverfittingRiskLevel::Moderate),
+            },
+            ..backtest_optimize_config()
+        },
+    )
+    .expect("optimize should succeed");
+
+    assert_eq!(
+        result.validated_candidate_count,
+        result.top_candidates.len()
+    );
+    assert_eq!(result.feasible_candidate_count, 0);
+    assert!(!result.best_candidate.constraints.passed);
+    assert!(result
+        .best_candidate
+        .constraints
+        .violations
+        .iter()
+        .any(|violation| violation.kind == ValidationConstraintKind::MaxOverfittingRisk));
 }

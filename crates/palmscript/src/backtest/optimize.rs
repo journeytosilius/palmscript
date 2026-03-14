@@ -11,12 +11,14 @@ use thiserror::Error;
 
 use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
-    bridge, run_backtest_with_sources_internal, run_walk_forward_with_sources,
-    BacktestCaptureSummary, BacktestConfig, BacktestError, BacktestSummary, DiagnosticsDetailMode,
-    ImprovementHint, ImprovementHintKind, OverfittingRiskSummary, ValidationConstraintConfig,
-    ValidationConstraintKind, ValidationConstraintSummary, ValidationConstraintViolation,
-    WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
-    WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    bridge, run_backtest_with_sources, run_backtest_with_sources_internal,
+    run_walk_forward_with_sources, BacktestCaptureSummary, BacktestConfig, BacktestError,
+    BacktestSummary, ConstraintFailureBreakdown, DatePerturbationDiagnostics,
+    DiagnosticsDetailMode, ImprovementHint, ImprovementHintKind, OverfittingRiskLevel,
+    OverfittingRiskSummary, ValidationConstraintConfig, ValidationConstraintKind,
+    ValidationConstraintSummary, ValidationConstraintViolation, WalkForwardConfig,
+    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary,
+    WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -314,7 +316,12 @@ pub struct OptimizeResult {
     pub config: OptimizeConfig,
     pub candidate_count: usize,
     pub completed_trials: usize,
+    pub validated_candidate_count: usize,
+    pub feasible_candidate_count: usize,
+    pub infeasible_candidate_count: usize,
     pub best_candidate: OptimizeCandidateSummary,
+    #[serde(default)]
+    pub best_infeasible_candidate: Option<OptimizeCandidateSummary>,
     pub top_candidates: Vec<OptimizeCandidateSummary>,
     #[serde(default)]
     pub holdout: Option<OptimizeHoldoutResult>,
@@ -322,6 +329,8 @@ pub struct OptimizeResult {
     pub robustness: OptimizationRobustnessSummary,
     #[serde(default)]
     pub constraints: ValidationConstraintSummary,
+    #[serde(default)]
+    pub constraint_failure_breakdown: Vec<ConstraintFailureBreakdown>,
     #[serde(default)]
     pub hints: Vec<ImprovementHint>,
     #[serde(default)]
@@ -335,6 +344,10 @@ pub struct HoldoutCandidateEvaluation {
     pub passed: bool,
     pub summary: WalkForwardWindowSummary,
     pub drift: HoldoutDriftSummary,
+    #[serde(default)]
+    pub date_perturbation: Option<DatePerturbationDiagnostics>,
+    #[serde(default)]
+    pub overfitting_risk: Option<OverfittingRiskSummary>,
     #[serde(default)]
     pub constraints: ValidationConstraintSummary,
 }
@@ -385,10 +398,16 @@ pub enum OptimizeError {
     InvalidHoldoutBars { value: usize },
     #[error("optimize `min_trade_count` must be > 0 when set, found {value}")]
     InvalidMinTradeCount { value: usize },
+    #[error("optimize `min_sharpe_ratio` must be finite when set, found {value}")]
+    InvalidMinSharpeRatio { value: f64 },
     #[error("optimize `min_holdout_trade_count` must be > 0 when set, found {value}")]
     InvalidMinHoldoutTradeCount { value: usize },
     #[error("optimize `min_holdout_pass_rate` must be finite and in [0, 1], found {value}")]
     InvalidMinHoldoutPassRate { value: f64 },
+    #[error("optimize `min_date_perturbation_positive_ratio` must be finite and in [0, 1], found {value}")]
+    InvalidMinDatePerturbationPositiveRatio { value: f64 },
+    #[error("optimize `min_date_perturbation_outperform_ratio` must be finite and in [0, 1], found {value}")]
+    InvalidMinDatePerturbationOutperformRatio { value: f64 },
     #[error("optimize constraint `{name}` requires holdout validation to be enabled")]
     HoldoutConstraintRequiresHoldout { name: String },
     #[error("optimize trial count {count} exceeds max supported {limit}")]
@@ -564,75 +583,48 @@ pub fn run_optimize_with_source_resume(
     }
 
     top_candidates.sort_by(compare_candidates);
+    let ValidatedCandidateSelection {
+        best_holdout: holdout,
+        robustness,
+        best_overfitting_risk: overfitting_risk,
+        best_infeasible_candidate,
+        constraint_failure_breakdown,
+    } = validate_ranked_candidates(
+        source,
+        &runtime,
+        vm_limits,
+        &config,
+        &all_candidates,
+        &mut top_candidates,
+        holdout_plan.as_ref(),
+    )?;
     let best_candidate = top_candidates
         .first()
         .cloned()
         .expect("validated optimize config always yields at least one trial");
-    let (holdout, robustness) = match holdout_plan {
-        Some(plan) => {
-            let evaluations = evaluate_top_candidate_holdouts(
-                source,
-                &runtime,
-                vm_limits,
-                &config,
-                &plan,
-                &top_candidates,
-            )?;
-            let best_holdout = if let Some(evaluation) = evaluations
-                .iter()
-                .find(|evaluation| evaluation.trial_id == best_candidate.trial_id)
-            {
-                let detailed_holdout = evaluate_holdout(
-                    source,
-                    &runtime,
-                    vm_limits,
-                    &config,
-                    &plan,
-                    &best_candidate.input_overrides,
-                )?;
-                Some(OptimizeHoldoutResult {
-                    bars: plan.bars,
-                    from: plan.from,
-                    to: plan.to,
-                    summary: evaluation.summary.clone(),
-                    diagnostics: detailed_holdout.diagnostics,
-                    drift: evaluation.drift.clone(),
-                    constraints: evaluation.constraints.clone(),
-                })
-            } else {
-                None
-            };
-            (
-                best_holdout,
-                build_robustness_summary(
-                    &config,
-                    &all_candidates,
-                    &best_candidate,
-                    &top_candidates,
-                    evaluations,
-                ),
-            )
-        }
-        None => (None, OptimizationRobustnessSummary::default()),
-    };
-    let constraints = build_optimize_constraint_summary(
-        &config.constraints,
-        &best_candidate,
-        holdout.as_ref(),
-        &robustness,
-    );
+    let feasible_candidate_count = top_candidates
+        .iter()
+        .filter(|candidate| candidate.constraints.passed)
+        .count();
+    let infeasible_candidate_count = top_candidates
+        .len()
+        .saturating_sub(feasible_candidate_count);
+    let constraints = best_candidate.constraints.clone();
     let hints = build_optimize_hints(&best_candidate, holdout.as_ref(), &robustness);
-    let overfitting_risk =
-        build_optimize_overfitting_risk(&config, &best_candidate, holdout.as_ref(), &robustness);
     Ok(OptimizeResult {
         candidate_count: config.trials,
         completed_trials: all_candidates.len(),
+        validated_candidate_count: top_candidates.len(),
+        feasible_candidate_count,
+        infeasible_candidate_count,
         config,
         best_candidate,
+        best_infeasible_candidate,
         top_candidates,
         holdout,
         robustness,
         constraints,
+        constraint_failure_breakdown,
         hints,
         overfitting_risk,
     })
@@ -651,6 +643,20 @@ struct ReplayGenerationState {
     rng: StdRng,
     seen_candidate_keys: BTreeSet<String>,
     generated_trial_count: usize,
+}
+
+#[derive(Clone)]
+struct ValidatedCandidateArtifacts {
+    holdout: Option<OptimizeHoldoutResult>,
+    overfitting_risk: OverfittingRiskSummary,
+}
+
+struct ValidatedCandidateSelection {
+    best_holdout: Option<OptimizeHoldoutResult>,
+    robustness: OptimizationRobustnessSummary,
+    best_overfitting_risk: OverfittingRiskSummary,
+    best_infeasible_candidate: Option<OptimizeCandidateSummary>,
+    constraint_failure_breakdown: Vec<ConstraintFailureBreakdown>,
 }
 
 fn sorted_candidates(
@@ -975,12 +981,27 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
     if config.constraints.min_trade_count == Some(0) {
         return Err(OptimizeError::InvalidMinTradeCount { value: 0 });
     }
+    if let Some(value) = config.constraints.min_sharpe_ratio {
+        if !value.is_finite() {
+            return Err(OptimizeError::InvalidMinSharpeRatio { value });
+        }
+    }
     if config.constraints.min_holdout_trade_count == Some(0) {
         return Err(OptimizeError::InvalidMinHoldoutTradeCount { value: 0 });
     }
     if let Some(rate) = config.constraints.min_holdout_pass_rate {
         if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
             return Err(OptimizeError::InvalidMinHoldoutPassRate { value: rate });
+        }
+    }
+    if let Some(rate) = config.constraints.min_date_perturbation_positive_ratio {
+        if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
+            return Err(OptimizeError::InvalidMinDatePerturbationPositiveRatio { value: rate });
+        }
+    }
+    if let Some(rate) = config.constraints.min_date_perturbation_outperform_ratio {
+        if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
+            return Err(OptimizeError::InvalidMinDatePerturbationOutperformRatio { value: rate });
         }
     }
     if config.holdout.is_none()
@@ -1058,6 +1079,16 @@ fn build_candidate_constraint_summary(
             });
         }
     }
+    if let Some(required) = constraints.min_sharpe_ratio {
+        match candidate_sharpe_ratio(summary) {
+            Some(actual) if actual + crate::backtest::EPSILON >= required => {}
+            actual => violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinSharpeRatio,
+                actual,
+                required: Some(required),
+            }),
+        }
+    }
     if let (Some(required), Some(actual)) = (
         constraints.max_zero_trade_segments,
         candidate_zero_trade_segment_count(summary),
@@ -1103,18 +1134,20 @@ fn build_holdout_constraint_summary(
     }
 }
 
-fn build_optimize_constraint_summary(
+fn build_detailed_candidate_constraint_summary(
     constraints: &ValidationConstraintConfig,
-    best_candidate: &OptimizeCandidateSummary,
+    candidate: &OptimizeCandidateSummary,
     holdout: Option<&OptimizeHoldoutResult>,
-    robustness: &OptimizationRobustnessSummary,
+    date_perturbation: Option<&DatePerturbationDiagnostics>,
+    overfitting_risk: &OverfittingRiskSummary,
+    holdout_pass_rate: Option<f64>,
 ) -> ValidationConstraintSummary {
-    let mut violations = best_candidate.constraints.violations.clone();
+    let mut violations = candidate.constraints.violations.clone();
     if let Some(holdout) = holdout {
         violations.extend(holdout.constraints.violations.iter().cloned());
     }
     if let Some(required_rate) = constraints.min_holdout_pass_rate {
-        let actual_rate = robustness.holdout_pass_rate.unwrap_or(0.0);
+        let actual_rate = holdout_pass_rate.unwrap_or(0.0);
         if actual_rate + crate::backtest::EPSILON < required_rate {
             violations.push(ValidationConstraintViolation {
                 kind: ValidationConstraintKind::MinHoldoutPassRate,
@@ -1123,10 +1156,71 @@ fn build_optimize_constraint_summary(
             });
         }
     }
+    if let Some(required_ratio) = constraints.min_date_perturbation_positive_ratio {
+        let actual_ratio = date_perturbation.and_then(date_perturbation_positive_ratio);
+        match actual_ratio {
+            Some(actual) if actual + crate::backtest::EPSILON >= required_ratio => {}
+            actual => violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinDatePerturbationPositiveRatio,
+                actual,
+                required: Some(required_ratio),
+            }),
+        }
+    }
+    if let Some(required_ratio) = constraints.min_date_perturbation_outperform_ratio {
+        let actual_ratio = date_perturbation.and_then(date_perturbation_outperform_ratio);
+        match actual_ratio {
+            Some(actual) if actual + crate::backtest::EPSILON >= required_ratio => {}
+            actual => violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinDatePerturbationOutperformRatio,
+                actual,
+                required: Some(required_ratio),
+            }),
+        }
+    }
+    if let Some(max_allowed) = constraints.max_overfitting_risk {
+        if !overfitting_risk_within_limit(overfitting_risk.level, max_allowed) {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MaxOverfittingRisk,
+                actual: Some(overfitting_risk_level_value(overfitting_risk.level)),
+                required: Some(overfitting_risk_level_value(max_allowed)),
+            });
+        }
+    }
     ValidationConstraintSummary {
         passed: violations.is_empty(),
         violations,
     }
+}
+
+fn date_perturbation_positive_ratio(diagnostics: &DatePerturbationDiagnostics) -> Option<f64> {
+    (!diagnostics.scenarios.is_empty())
+        .then_some(diagnostics.positive_scenario_count as f64 / diagnostics.scenarios.len() as f64)
+}
+
+fn date_perturbation_outperform_ratio(diagnostics: &DatePerturbationDiagnostics) -> Option<f64> {
+    (!diagnostics.scenarios.is_empty()).then_some(
+        diagnostics.outperformed_execution_asset_count as f64 / diagnostics.scenarios.len() as f64,
+    )
+}
+
+fn overfitting_risk_level_value(level: OverfittingRiskLevel) -> f64 {
+    match level {
+        OverfittingRiskLevel::Unknown => 3.0,
+        OverfittingRiskLevel::Low => 0.0,
+        OverfittingRiskLevel::Moderate => 1.0,
+        OverfittingRiskLevel::High => 2.0,
+    }
+}
+
+fn overfitting_risk_within_limit(
+    actual: OverfittingRiskLevel,
+    max_allowed: OverfittingRiskLevel,
+) -> bool {
+    if matches!(actual, OverfittingRiskLevel::Unknown) {
+        return matches!(max_allowed, OverfittingRiskLevel::Unknown);
+    }
+    overfitting_risk_level_value(actual) <= overfitting_risk_level_value(max_allowed)
 }
 
 fn candidate_trade_count(summary: &OptimizeEvaluationSummary) -> usize {
@@ -1143,6 +1237,15 @@ fn candidate_zero_trade_segment_count(summary: &OptimizeEvaluationSummary) -> Op
             ..
         } => Some(*zero_trade_segment_count),
         OptimizeEvaluationSummary::Backtest { .. } => None,
+    }
+}
+
+fn candidate_sharpe_ratio(summary: &OptimizeEvaluationSummary) -> Option<f64> {
+    match summary {
+        OptimizeEvaluationSummary::WalkForward {
+            stitched_summary, ..
+        } => stitched_summary.sharpe_ratio,
+        OptimizeEvaluationSummary::Backtest { summary, .. } => summary.sharpe_ratio,
     }
 }
 
@@ -1268,7 +1371,7 @@ fn evaluate_top_candidate_holdouts(
     top_candidates: &[OptimizeCandidateSummary],
 ) -> Result<Vec<HoldoutCandidateEvaluation>, OptimizeError> {
     let mut evaluations = Vec::new();
-    for candidate in top_candidates.iter().take(top_candidates.len().min(10)) {
+    for candidate in top_candidates {
         let holdout = evaluate_holdout(
             source,
             runtime,
@@ -1288,6 +1391,8 @@ fn evaluate_top_candidate_holdouts(
                 && holdout.summary.win_rate >= 0.5,
             summary: holdout.summary,
             drift,
+            date_perturbation: None,
+            overfitting_risk: None,
             constraints,
         });
     }
@@ -1370,6 +1475,176 @@ fn build_robustness_summary(
         ),
         evaluations,
     }
+}
+
+fn validate_ranked_candidates(
+    source: &str,
+    runtime: &SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &OptimizeConfig,
+    all_candidates: &[OptimizeCandidateSummary],
+    top_candidates: &mut [OptimizeCandidateSummary],
+    holdout_plan: Option<&HoldoutPlan>,
+) -> Result<ValidatedCandidateSelection, OptimizeError> {
+    let date_validation_required = config
+        .constraints
+        .min_date_perturbation_positive_ratio
+        .is_some()
+        || config
+            .constraints
+            .min_date_perturbation_outperform_ratio
+            .is_some();
+    let base_evaluations = if let Some(plan) = holdout_plan {
+        evaluate_top_candidate_holdouts(source, runtime, vm_limits, config, plan, top_candidates)?
+    } else {
+        Vec::new()
+    };
+    let holdout_pass_rate = if base_evaluations.is_empty() {
+        None
+    } else {
+        Some(
+            base_evaluations
+                .iter()
+                .filter(|evaluation| evaluation.passed)
+                .count() as f64
+                / base_evaluations.len() as f64,
+        )
+    };
+
+    let mut evaluation_by_trial = base_evaluations
+        .iter()
+        .cloned()
+        .map(|evaluation| (evaluation.trial_id, evaluation))
+        .collect::<BTreeMap<_, _>>();
+    let ranked_snapshot = top_candidates.to_vec();
+    let mut artifacts = BTreeMap::new();
+    for candidate in top_candidates.iter_mut() {
+        let holdout = if let Some(plan) = holdout_plan {
+            Some(evaluate_holdout(
+                source,
+                runtime,
+                vm_limits,
+                config,
+                plan,
+                &candidate.input_overrides,
+            )?)
+        } else {
+            None
+        };
+        let date_perturbation = if date_validation_required {
+            Some(run_candidate_backtest_validation(
+                source,
+                runtime.clone(),
+                vm_limits,
+                config,
+                &candidate.input_overrides,
+            )?)
+        } else {
+            None
+        };
+        let candidate_robustness = if holdout_plan.is_some() {
+            build_robustness_summary(
+                config,
+                all_candidates,
+                candidate,
+                &ranked_snapshot,
+                base_evaluations.clone(),
+            )
+        } else {
+            OptimizationRobustnessSummary::default()
+        };
+        let holdout_ref = holdout.as_ref();
+        let overfitting_risk =
+            build_optimize_overfitting_risk(config, candidate, holdout_ref, &candidate_robustness);
+        let constraints = build_detailed_candidate_constraint_summary(
+            &config.constraints,
+            candidate,
+            holdout_ref,
+            date_perturbation.as_ref(),
+            &overfitting_risk,
+            holdout_pass_rate,
+        );
+        candidate.constraints = constraints.clone();
+        if let Some(evaluation) = evaluation_by_trial.get_mut(&candidate.trial_id) {
+            evaluation.date_perturbation = date_perturbation.clone();
+            evaluation.overfitting_risk = Some(overfitting_risk.clone());
+            evaluation.constraints = constraints.clone();
+        }
+        artifacts.insert(
+            candidate.trial_id,
+            ValidatedCandidateArtifacts {
+                holdout,
+                overfitting_risk,
+            },
+        );
+    }
+
+    top_candidates.sort_by(compare_candidates);
+    let best_candidate = top_candidates
+        .first()
+        .cloned()
+        .expect("top candidates are non-empty after validation");
+    let best_infeasible_candidate = top_candidates
+        .iter()
+        .find(|candidate| !candidate.constraints.passed)
+        .cloned();
+    let final_evaluations = top_candidates
+        .iter()
+        .filter_map(|candidate| evaluation_by_trial.remove(&candidate.trial_id))
+        .collect::<Vec<_>>();
+    let robustness = if holdout_plan.is_some() {
+        build_robustness_summary(
+            config,
+            all_candidates,
+            &best_candidate,
+            top_candidates,
+            final_evaluations,
+        )
+    } else {
+        OptimizationRobustnessSummary::default()
+    };
+    let best_holdout = artifacts
+        .get(&best_candidate.trial_id)
+        .and_then(|artifact| artifact.holdout.clone());
+    let best_overfitting_risk = artifacts
+        .get(&best_candidate.trial_id)
+        .map(|artifact| artifact.overfitting_risk.clone())
+        .unwrap_or_default();
+    let constraint_failure_breakdown = build_constraint_failure_breakdown(top_candidates);
+    Ok(ValidatedCandidateSelection {
+        best_holdout,
+        robustness,
+        best_overfitting_risk,
+        best_infeasible_candidate,
+        constraint_failure_breakdown,
+    })
+}
+
+fn run_candidate_backtest_validation(
+    source: &str,
+    runtime: SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &OptimizeConfig,
+    overrides: &BTreeMap<String, f64>,
+) -> Result<DatePerturbationDiagnostics, OptimizeError> {
+    let compiled = compile_with_input_overrides(source, overrides)?;
+    let result = run_backtest_with_sources(&compiled, runtime, vm_limits, config.backtest.clone())?;
+    Ok(result.diagnostics.date_perturbation)
+}
+
+fn build_constraint_failure_breakdown(
+    candidates: &[OptimizeCandidateSummary],
+) -> Vec<ConstraintFailureBreakdown> {
+    let mut counts = BTreeMap::<ValidationConstraintKind, usize>::new();
+    for candidate in candidates {
+        for violation in &candidate.constraints.violations {
+            *counts.entry(violation.kind).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(kind, count)| ConstraintFailureBreakdown { kind, count })
+        .collect()
 }
 
 fn build_parameter_stability(
@@ -1942,6 +2217,7 @@ fn closest_choice(values: &[f64], target: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backtest::DatePerturbationScenarioSummary;
 
     fn backtest_candidate(
         trial_id: usize,
@@ -1990,5 +2266,74 @@ mod tests {
 
         assert_eq!(candidates[0].trial_id, 2);
         assert_eq!(candidates[1].trial_id, 1);
+    }
+
+    #[test]
+    fn detailed_constraints_include_date_perturbation_ratios() {
+        let candidate = backtest_candidate(1, 1.0, 1_100.0, true);
+        let diagnostics = DatePerturbationDiagnostics {
+            offset_bars: 10,
+            scenarios: vec![
+                DatePerturbationScenarioSummary {
+                    kind: crate::backtest::DatePerturbationKind::LateStart,
+                    from: 0,
+                    to: 1,
+                    total_return: 0.02,
+                    execution_asset_return: 0.0,
+                    excess_return_vs_execution_asset: 0.02,
+                    trade_count: 1,
+                    max_drawdown: 1.0,
+                },
+                DatePerturbationScenarioSummary {
+                    kind: crate::backtest::DatePerturbationKind::EarlyEnd,
+                    from: 0,
+                    to: 1,
+                    total_return: -0.01,
+                    execution_asset_return: 0.0,
+                    excess_return_vs_execution_asset: -0.01,
+                    trade_count: 1,
+                    max_drawdown: 1.0,
+                },
+                DatePerturbationScenarioSummary {
+                    kind: crate::backtest::DatePerturbationKind::TrimmedBoth,
+                    from: 0,
+                    to: 1,
+                    total_return: 0.03,
+                    execution_asset_return: 0.01,
+                    excess_return_vs_execution_asset: 0.02,
+                    trade_count: 1,
+                    max_drawdown: 1.0,
+                },
+            ],
+            positive_scenario_count: 2,
+            outperformed_execution_asset_count: 2,
+            ..DatePerturbationDiagnostics::default()
+        };
+        let constraints = build_detailed_candidate_constraint_summary(
+            &ValidationConstraintConfig {
+                min_trade_count: None,
+                min_sharpe_ratio: None,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: Some(0.9),
+                min_date_perturbation_outperform_ratio: Some(0.6),
+                max_overfitting_risk: None,
+            },
+            &candidate,
+            None,
+            Some(&diagnostics),
+            &OverfittingRiskSummary::default(),
+            None,
+        );
+
+        assert!(!constraints.passed);
+        assert!(constraints.violations.iter().any(|violation| {
+            violation.kind == ValidationConstraintKind::MinDatePerturbationPositiveRatio
+        }));
+        assert!(!constraints.violations.iter().any(|violation| {
+            violation.kind == ValidationConstraintKind::MinDatePerturbationOutperformRatio
+        }));
     }
 }

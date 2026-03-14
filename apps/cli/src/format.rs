@@ -987,6 +987,21 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
     let _ = writeln!(out, "objective={:?}", result.config.objective);
     let _ = writeln!(out, "candidate_count={}", result.candidate_count);
     let _ = writeln!(out, "completed_trials={}", result.completed_trials);
+    let _ = writeln!(
+        out,
+        "validated_candidate_count={}",
+        result.validated_candidate_count
+    );
+    let _ = writeln!(
+        out,
+        "feasible_candidate_count={}",
+        result.feasible_candidate_count
+    );
+    let _ = writeln!(
+        out,
+        "infeasible_candidate_count={}",
+        result.infeasible_candidate_count
+    );
     let _ = writeln!(out, "trials={}", result.config.trials);
     let _ = writeln!(out, "startup_trials={}", result.config.startup_trials);
     let _ = writeln!(out, "workers={}", result.config.workers);
@@ -995,6 +1010,17 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
     }
     if has_configured_constraints(&result.config.constraints) || !result.constraints.passed {
         render_constraint_summary_text(&mut out, "Validation Constraints", &result.constraints);
+    }
+    if !result.constraint_failure_breakdown.is_empty() {
+        out.push_str("Constraint Failure Breakdown\n");
+        for breakdown in &result.constraint_failure_breakdown {
+            let _ = writeln!(
+                out,
+                "kind={} count={}",
+                fmt_constraint_kind(breakdown.kind),
+                breakdown.count
+            );
+        }
     }
 
     out.push_str("Best Candidate\n");
@@ -1038,6 +1064,13 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
                 );
             }
         }
+    }
+
+    if let Some(candidate) = &result.best_infeasible_candidate {
+        out.push_str("Best Infeasible Candidate\n");
+        let _ = writeln!(out, "trial_id={}", candidate.trial_id);
+        let _ = writeln!(out, "objective_score={:.6}", candidate.objective_score);
+        render_optimize_candidate_summary(&mut out, candidate);
     }
 
     if let Some(holdout) = &result.holdout {
@@ -1226,10 +1259,14 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
 
 fn has_configured_constraints(config: &ValidationConstraintConfig) -> bool {
     config.min_trade_count.is_some()
+        || config.min_sharpe_ratio.is_some()
         || config.min_holdout_trade_count.is_some()
         || config.require_positive_holdout
         || config.max_zero_trade_segments.is_some()
         || config.min_holdout_pass_rate.is_some()
+        || config.min_date_perturbation_positive_ratio.is_some()
+        || config.min_date_perturbation_outperform_ratio.is_some()
+        || config.max_overfitting_risk.is_some()
 }
 
 fn render_constraint_summary_text(
@@ -1264,10 +1301,18 @@ fn fmt_constraint_violations(summary: &ValidationConstraintSummary) -> String {
 fn fmt_constraint_kind(kind: ValidationConstraintKind) -> &'static str {
     match kind {
         ValidationConstraintKind::MinTradeCount => "min_trade_count",
+        ValidationConstraintKind::MinSharpeRatio => "min_sharpe_ratio",
         ValidationConstraintKind::MinHoldoutTradeCount => "min_holdout_trade_count",
         ValidationConstraintKind::RequirePositiveHoldout => "require_positive_holdout",
         ValidationConstraintKind::MaxZeroTradeSegments => "max_zero_trade_segments",
         ValidationConstraintKind::MinHoldoutPassRate => "min_holdout_pass_rate",
+        ValidationConstraintKind::MinDatePerturbationPositiveRatio => {
+            "min_date_perturbation_positive_ratio"
+        }
+        ValidationConstraintKind::MinDatePerturbationOutperformRatio => {
+            "min_date_perturbation_outperform_ratio"
+        }
+        ValidationConstraintKind::MaxOverfittingRisk => "max_overfitting_risk",
     }
 }
 

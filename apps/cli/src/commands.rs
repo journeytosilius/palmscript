@@ -13,9 +13,10 @@ use palmscript::{
     BacktestConfig, CompiledProgram, DiagnosticsDetailMode, ExchangeEndpoints,
     ExecutionDaemonConfig, ExecutionError, FeeSchedule, InputSweepDefinition, OptimizeConfig,
     OptimizeError, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
-    OptimizeResult, OptimizeRunner, PaperSessionConfig, PerpBacktestConfig, PerpMarginMode,
-    RuntimeError, SourceTemplate, SubmitPaperSession, ValidationConstraintConfig, VmLimits,
-    WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    OptimizeResult, OptimizeRunner, OverfittingRiskLevel, PaperSessionConfig, PerpBacktestConfig,
+    PerpMarginMode, RuntimeError, SourceTemplate, SubmitPaperSession, ValidationConstraintConfig,
+    VmLimits, WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepError,
+    WalkForwardSweepObjective,
 };
 use sha2::{Digest, Sha256};
 
@@ -23,9 +24,10 @@ use crate::args::{
     BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command,
     DiagnosticsDetailArg, DocsArgs, DumpBytecodeArgs, ExecutionCommand, ExecutionServeArgs,
     ExecutionStatusArgs, MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg,
-    OutputFormat, PaperExportArgs, PaperFillsArgs, PaperListArgs, PaperLogsArgs, PaperOrdersArgs,
-    PaperPositionsArgs, PaperRunArgs, PaperStatusArgs, PaperStopArgs, RunCommand,
-    WalkForwardRunArgs, WalkForwardSweepObjectiveArg, WalkForwardSweepRunArgs,
+    OutputFormat, OverfittingRiskArg, PaperExportArgs, PaperFillsArgs, PaperListArgs,
+    PaperLogsArgs, PaperOrdersArgs, PaperPositionsArgs, PaperRunArgs, PaperStatusArgs,
+    PaperStopArgs, RunCommand, WalkForwardRunArgs, WalkForwardSweepObjectiveArg,
+    WalkForwardSweepRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
 use crate::docs;
@@ -240,10 +242,14 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
             step_bars: args.step_bars.unwrap_or(args.test_bars),
             constraints: ValidationConstraintConfig {
                 min_trade_count: args.min_trades,
+                min_sharpe_ratio: args.min_sharpe,
                 min_holdout_trade_count: None,
                 require_positive_holdout: false,
                 max_zero_trade_segments: args.max_zero_trade_segments,
                 min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
         },
     )
@@ -408,10 +414,14 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             }),
             constraints: ValidationConstraintConfig {
                 min_trade_count: args.min_trades,
+                min_sharpe_ratio: args.min_sharpe,
                 min_holdout_trade_count: None,
                 require_positive_holdout: false,
                 max_zero_trade_segments: args.max_zero_trade_segments,
                 min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
             },
         }),
         OptimizeRunner::Backtest => None,
@@ -444,10 +454,14 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             base_input_overrides: preset_overrides,
             constraints: ValidationConstraintConfig {
                 min_trade_count: args.min_trades,
+                min_sharpe_ratio: args.min_sharpe,
                 min_holdout_trade_count: args.min_holdout_trades,
                 require_positive_holdout: args.require_positive_holdout,
                 max_zero_trade_segments: args.max_zero_trade_segments,
                 min_holdout_pass_rate: args.min_holdout_pass_rate,
+                min_date_perturbation_positive_ratio: args.min_date_perturbation_positive_ratio,
+                min_date_perturbation_outperform_ratio: args.min_date_perturbation_outperform_ratio,
+                max_overfitting_risk: args.max_overfitting_risk.map(map_overfitting_risk),
             },
         },
     )
@@ -1060,6 +1074,14 @@ pub(crate) fn map_diagnostics_detail(detail: DiagnosticsDetailArg) -> Diagnostic
     match detail {
         DiagnosticsDetailArg::Summary => DiagnosticsDetailMode::SummaryOnly,
         DiagnosticsDetailArg::FullTrace => DiagnosticsDetailMode::FullTrace,
+    }
+}
+
+pub(crate) fn map_overfitting_risk(risk: OverfittingRiskArg) -> OverfittingRiskLevel {
+    match risk {
+        OverfittingRiskArg::Low => OverfittingRiskLevel::Low,
+        OverfittingRiskArg::Moderate => OverfittingRiskLevel::Moderate,
+        OverfittingRiskArg::High => OverfittingRiskLevel::High,
     }
 }
 

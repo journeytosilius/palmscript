@@ -445,21 +445,29 @@ pub struct DatePerturbationDiagnostics {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ValidationConstraintConfig {
     pub min_trade_count: Option<usize>,
+    pub min_sharpe_ratio: Option<f64>,
     pub min_holdout_trade_count: Option<usize>,
     #[serde(default)]
     pub require_positive_holdout: bool,
     pub max_zero_trade_segments: Option<usize>,
     pub min_holdout_pass_rate: Option<f64>,
+    pub min_date_perturbation_positive_ratio: Option<f64>,
+    pub min_date_perturbation_outperform_ratio: Option<f64>,
+    pub max_overfitting_risk: Option<OverfittingRiskLevel>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ValidationConstraintKind {
     MinTradeCount,
+    MinSharpeRatio,
     MinHoldoutTradeCount,
     RequirePositiveHoldout,
     MaxZeroTradeSegments,
     MinHoldoutPassRate,
+    MinDatePerturbationPositiveRatio,
+    MinDatePerturbationOutperformRatio,
+    MaxOverfittingRisk,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -474,6 +482,12 @@ pub struct ValidationConstraintSummary {
     pub passed: bool,
     #[serde(default)]
     pub violations: Vec<ValidationConstraintViolation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ConstraintFailureBreakdown {
+    pub kind: ValidationConstraintKind,
+    pub count: usize,
 }
 
 impl Default for ValidationConstraintSummary {

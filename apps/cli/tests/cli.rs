@@ -1583,6 +1583,8 @@ fn run_walk_forward_text_reports_constraint_failures() {
             "2",
             "--min-trades",
             "1",
+            "--min-sharpe",
+            "1.0",
             "--max-zero-trade-segments",
             "0",
             "--initial-capital",
@@ -2037,9 +2039,17 @@ fn run_optimize_emits_constraint_summaries() {
             "2",
             "--min-holdout-trades",
             "2",
+            "--min-sharpe",
+            "0.0",
             "--require-positive-holdout",
             "--min-holdout-pass-rate",
             "1.0",
+            "--min-date-perturbation-positive-ratio",
+            "0.0",
+            "--min-date-perturbation-outperform-ratio",
+            "0.0",
+            "--max-overfitting-risk",
+            "high",
             "--runner",
             "walk-forward",
             "--param",
@@ -2061,6 +2071,14 @@ fn run_optimize_emits_constraint_summaries() {
     assert!(json["best_candidate"]["constraints"].is_object());
     assert!(json["holdout"]["constraints"].is_object());
     assert!(json["robustness"]["holdout_pass_rate"].is_number());
+    assert!(json["validated_candidate_count"].is_number());
+    assert!(json["feasible_candidate_count"].is_number());
+    assert!(json["infeasible_candidate_count"].is_number());
+    assert!(json["constraint_failure_breakdown"].is_array());
+    assert!(
+        json["best_infeasible_candidate"].is_null()
+            || json["best_infeasible_candidate"].is_object()
+    );
 }
 
 #[test]

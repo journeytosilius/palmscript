@@ -111,10 +111,13 @@ Those declarations block only the new entry that would exceed the configured cap
 
 Walk-forward optimize now reserves a final untouched holdout window by default. If you pass `--test-bars 63`, PalmScript also reserves the last `63` execution bars as an unseen holdout unless you override that with `--holdout-bars <N>` or disable it with `--no-holdout`.
 
+Add explicit search constraints such as `--min-sharpe`, `--min-holdout-pass-rate`, `--min-date-perturbation-positive-ratio`, `--min-date-perturbation-outperform-ratio`, and `--max-overfitting-risk` when you want optimize to search only the feasible region instead of filtering winners manually after the fact.
+
 The optimize result now also reports:
 
 - holdout drift versus the stitched optimization summary
 - holdout checks for the top ranked candidates, not only the winner
+- validated / feasible / infeasible survivor counts plus constraint-failure breakdowns for the validated survivor set
 - parameter stability ranges across the ranked and holdout-passing candidates
 - explicit overfitting-risk summaries with typed reasons and scores
 - deterministic machine-readable improvement hints
