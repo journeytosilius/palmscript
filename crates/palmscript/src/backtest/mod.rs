@@ -177,6 +177,7 @@ pub struct BacktestSummary {
     pub realized_pnl: f64,
     pub unrealized_pnl: f64,
     pub total_return: f64,
+    pub sharpe_ratio: Option<f64>,
     pub trade_count: usize,
     pub winning_trade_count: usize,
     pub losing_trade_count: usize,

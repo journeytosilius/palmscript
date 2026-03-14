@@ -5,7 +5,10 @@ use crate::backtest::diagnostics::{
     build_backtest_hints, build_cohort_diagnostics, build_diagnostics_summary,
     build_drawdown_diagnostics, snapshot_from_step, DiagnosticsAccumulator,
 };
-use crate::backtest::overfitting::build_walk_forward_overfitting_risk;
+use crate::backtest::overfitting::{
+    annualized_sharpe_ratio, annualized_sharpe_ratio_from_returns,
+    build_walk_forward_overfitting_risk,
+};
 use crate::backtest::{
     average, execution_bars, run_backtest_with_sources, BacktestCaptureSummary, BacktestConfig,
     BacktestDiagnosticSummary, BacktestError, CohortDiagnostics, DiagnosticsDetailMode,
@@ -30,6 +33,7 @@ pub struct WalkForwardWindowSummary {
     pub starting_equity: f64,
     pub ending_equity: f64,
     pub total_return: f64,
+    pub sharpe_ratio: Option<f64>,
     pub trade_count: usize,
     pub winning_trade_count: usize,
     pub losing_trade_count: usize,
@@ -92,6 +96,7 @@ pub struct WalkForwardStitchedSummary {
     pub starting_equity: f64,
     pub ending_equity: f64,
     pub total_return: f64,
+    pub sharpe_ratio: Option<f64>,
     pub max_drawdown: f64,
     pub average_execution_asset_return: f64,
     pub trade_count: usize,
@@ -340,6 +345,7 @@ pub(crate) fn summarize_window(
         starting_equity,
         ending_equity,
         total_return,
+        sharpe_ratio: annualized_sharpe_ratio(points),
         trade_count,
         winning_trade_count,
         losing_trade_count,
@@ -445,6 +451,7 @@ fn summarize_stitched_curve(
         starting_equity,
         ending_equity,
         total_return,
+        sharpe_ratio: stitched_sharpe_ratio(starting_equity, stitched_curve),
         max_drawdown,
         average_execution_asset_return: average(
             segments
@@ -467,6 +474,44 @@ fn summarize_stitched_curve(
                 .map(|segment| segment.out_of_sample.total_return),
         ),
     }
+}
+
+fn stitched_sharpe_ratio(
+    starting_equity: f64,
+    stitched_curve: &[WalkForwardEquityPoint],
+) -> Option<f64> {
+    if stitched_curve.len() < 2 {
+        return None;
+    }
+    let mut returns = Vec::with_capacity(stitched_curve.len());
+    let mut previous = starting_equity;
+    for point in stitched_curve {
+        if previous.abs() <= crate::backtest::EPSILON {
+            return None;
+        }
+        returns.push(point.equity / previous - 1.0);
+        previous = point.equity;
+    }
+    let deltas = stitched_curve
+        .windows(2)
+        .filter_map(|window| {
+            let delta_ms = window[1].time - window[0].time;
+            (delta_ms > 0.0).then_some(delta_ms)
+        })
+        .collect::<Vec<_>>();
+    if deltas.is_empty() {
+        return None;
+    }
+    let mut sorted = deltas;
+    sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = sorted.len() / 2;
+    let median_delta_ms = if sorted.len() % 2 == 0 {
+        (sorted[mid - 1] + sorted[mid]) / 2.0
+    } else {
+        sorted[mid]
+    };
+    let annualization = 365.25 * 24.0 * 60.0 * 60.0 * 1000.0 / median_delta_ms;
+    annualized_sharpe_ratio_from_returns(&returns, annualization)
 }
 
 pub(crate) fn summarize_segment_diagnostics(
@@ -575,6 +620,7 @@ pub(crate) fn summarize_segment_diagnostics(
             realized_pnl: 0.0,
             unrealized_pnl: 0.0,
             total_return: segment_summary.total_return,
+            sharpe_ratio: segment_summary.sharpe_ratio,
             trade_count: segment_summary.trade_count,
             winning_trade_count: segment_summary.winning_trade_count,
             losing_trade_count: segment_summary.losing_trade_count,

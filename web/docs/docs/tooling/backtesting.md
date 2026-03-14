@@ -188,7 +188,7 @@ V1 optimizer notes:
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
-- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, explicit overfitting-risk summaries, and machine-readable improvement hints
+- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 

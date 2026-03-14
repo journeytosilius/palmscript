@@ -236,6 +236,7 @@ Always-on summary diagnostics include:
 - export summaries
 - cohort summaries
 - drawdown duration and stagnation metrics
+- annualized Sharpe ratio in backtest, walk-forward window, and stitched walk-forward summaries
 - source alignment diagnostics
 - deterministic overfitting-risk summaries with typed risk reasons and scores
 - deterministic improvement hints
@@ -253,7 +254,7 @@ Walk-forward and optimize outputs reuse the same diagnostics model and add:
 - per-segment drift flags
 - final holdout drift summaries
 - optimizer robustness summaries across the top ranked candidates
-- parameter stability plus overfitting-risk summaries
+- parameter stability, overfitting-risk, and Sharpe summaries
 
 ## Output Time And Bar Index
 

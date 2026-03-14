@@ -7,6 +7,79 @@ use crate::backtest::{
 
 const SEGMENT_RETURN_RANGE_BASELINE: f64 = 0.01;
 
+pub(crate) fn annualized_sharpe_ratio(
+    equity_points: &[crate::backtest::EquityPoint],
+) -> Option<f64> {
+    if equity_points.len() < 2 {
+        return None;
+    }
+
+    let mut returns = Vec::with_capacity(equity_points.len().saturating_sub(1));
+    for window in equity_points.windows(2) {
+        let previous = window[0].equity;
+        let current = window[1].equity;
+        if previous.abs() <= crate::backtest::EPSILON {
+            return None;
+        }
+        returns.push(current / previous - 1.0);
+    }
+    annualized_sharpe_ratio_from_returns(&returns, annualization_factor(equity_points)?)
+}
+
+pub(crate) fn annualized_sharpe_ratio_from_returns(
+    returns: &[f64],
+    annualization_factor: f64,
+) -> Option<f64> {
+    if returns.len() < 2 || annualization_factor <= 0.0 || !annualization_factor.is_finite() {
+        return None;
+    }
+    let mean = returns.iter().sum::<f64>() / returns.len() as f64;
+    let variance = returns
+        .iter()
+        .map(|value| {
+            let delta = *value - mean;
+            delta * delta
+        })
+        .sum::<f64>()
+        / (returns.len() as f64 - 1.0);
+    if variance <= crate::backtest::EPSILON || !variance.is_finite() {
+        return None;
+    }
+    Some(mean / variance.sqrt() * annualization_factor.sqrt())
+}
+
+fn annualization_factor(equity_points: &[crate::backtest::EquityPoint]) -> Option<f64> {
+    let deltas = equity_points
+        .windows(2)
+        .filter_map(|window| {
+            let delta_ms = window[1].time - window[0].time;
+            (delta_ms > 0.0).then_some(delta_ms)
+        })
+        .collect::<Vec<_>>();
+    if deltas.is_empty() {
+        return None;
+    }
+    let median_delta_ms = median(&deltas)?;
+    if median_delta_ms <= 0.0 {
+        return None;
+    }
+    Some(365.25 * 24.0 * 60.0 * 60.0 * 1000.0 / median_delta_ms)
+}
+
+fn median(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = sorted.len() / 2;
+    if sorted.len().is_multiple_of(2) {
+        Some((sorted[mid - 1] + sorted[mid]) / 2.0)
+    } else {
+        Some(sorted[mid])
+    }
+}
+
 pub(crate) fn build_backtest_overfitting_risk(summary: &BacktestSummary) -> OverfittingRiskSummary {
     let mut reasons = vec![OverfittingRiskReason {
         kind: OverfittingRiskReasonKind::NoOutOfSampleValidation,
@@ -312,6 +385,7 @@ mod tests {
             starting_equity: 1_000.0,
             ending_equity: 1_000.0 * (1.0 + total_return),
             total_return,
+            sharpe_ratio: None,
             trade_count,
             winning_trade_count: ((trade_count as f64) * win_rate).round() as usize,
             losing_trade_count: trade_count
@@ -333,6 +407,7 @@ mod tests {
             realized_pnl: 50.0,
             unrealized_pnl: 0.0,
             total_return: 0.05,
+            sharpe_ratio: None,
             trade_count: 3,
             winning_trade_count: 2,
             losing_trade_count: 1,
@@ -403,6 +478,7 @@ mod tests {
                 starting_equity: 1_000.0,
                 ending_equity: 940.0,
                 total_return: -0.06,
+                sharpe_ratio: None,
                 max_drawdown: 35.0,
                 average_execution_asset_return: 0.0,
                 trade_count: 1,
@@ -498,6 +574,7 @@ mod tests {
                         starting_equity: 1_000.0,
                         ending_equity: 1_200.0,
                         total_return: 0.20,
+                        sharpe_ratio: None,
                         max_drawdown: 30.0,
                         average_execution_asset_return: 0.0,
                         trade_count: 6,

@@ -167,6 +167,7 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     let _ = writeln!(out, "realized_pnl={:.2}", summary.realized_pnl);
     let _ = writeln!(out, "unrealized_pnl={:.2}", summary.unrealized_pnl);
     let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+    let _ = writeln!(out, "sharpe_ratio={}", fmt_opt_f64(summary.sharpe_ratio));
     let _ = writeln!(out, "trade_count={}", summary.trade_count);
     let _ = writeln!(out, "winning_trade_count={}", summary.winning_trade_count);
     let _ = writeln!(out, "losing_trade_count={}", summary.losing_trade_count);
@@ -705,6 +706,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
     let _ = writeln!(out, "starting_equity={:.2}", summary.starting_equity);
     let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
     let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+    let _ = writeln!(out, "sharpe_ratio={}", fmt_opt_f64(summary.sharpe_ratio));
     let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
     let _ = writeln!(out, "trade_count={}", summary.trade_count);
     let _ = writeln!(out, "win_rate_pct={:.2}", summary.win_rate * 100.0);
@@ -947,6 +949,11 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
             "total_return_pct={:.2}",
             holdout.summary.total_return * 100.0
         );
+        let _ = writeln!(
+            out,
+            "sharpe_ratio={}",
+            fmt_opt_f64(holdout.summary.sharpe_ratio)
+        );
         let _ = writeln!(out, "max_drawdown={:.2}", holdout.summary.max_drawdown);
         let _ = writeln!(
             out,
@@ -1044,6 +1051,11 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
                 "total_return_pct={:.2}",
                 stitched_summary.total_return * 100.0
             );
+            let _ = writeln!(
+                out,
+                "sharpe_ratio={}",
+                fmt_opt_f64(stitched_summary.sharpe_ratio)
+            );
             let _ = writeln!(out, "max_drawdown={:.2}", stitched_summary.max_drawdown);
             let _ = writeln!(out, "segment_count={}", stitched_summary.segment_count);
             let _ = writeln!(out, "trade_count={}", trade_count);
@@ -1062,6 +1074,7 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
             let _ = writeln!(out, "runner_summary=backtest");
             let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
             let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+            let _ = writeln!(out, "sharpe_ratio={}", fmt_opt_f64(summary.sharpe_ratio));
             let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
             let _ = writeln!(
                 out,
@@ -1462,6 +1475,7 @@ mod tests {
                 realized_pnl: 12.0,
                 unrealized_pnl: 0.0,
                 total_return: 0.012,
+                sharpe_ratio: Some(1.23),
                 trade_count: 1,
                 winning_trade_count: 1,
                 losing_trade_count: 0,
@@ -1568,6 +1582,7 @@ mod tests {
         let rendered = render_backtest_text(&result);
         assert!(rendered.contains("Backtest Summary"));
         assert!(rendered.contains("starting_equity=1000.00"));
+        assert!(rendered.contains("sharpe_ratio=1.23"));
         assert!(rendered.contains("Order Summary"));
         assert!(rendered.contains("placed_count=1"));
         assert!(rendered.contains("Diagnostics Summary"));

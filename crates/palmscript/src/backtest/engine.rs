@@ -14,7 +14,7 @@ use crate::backtest::orders::{
     FillExecutionContext, OpenTrade, PositionFillContext, PositionState, TradeEntryContext,
     WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
-use crate::backtest::overfitting::build_backtest_overfitting_risk;
+use crate::backtest::overfitting::{annualized_sharpe_ratio, build_backtest_overfitting_risk};
 use crate::backtest::{
     BacktestCaptureSummary, BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult,
     BacktestSummary, DecisionReason, DiagnosticsDetailMode, EquityPoint, FeatureSnapshot, Fill,
@@ -991,6 +991,7 @@ pub(crate) fn simulate_backtest(
             realized_pnl: total_realized_pnl,
             unrealized_pnl,
             total_return: (ending_equity - config.initial_capital) / config.initial_capital,
+            sharpe_ratio: annualized_sharpe_ratio(&equity_curve),
             trade_count,
             winning_trade_count,
             losing_trade_count,
@@ -1017,6 +1018,7 @@ pub(crate) fn simulate_backtest(
         realized_pnl: total_realized_pnl,
         unrealized_pnl,
         total_return: (ending_equity - config.initial_capital) / config.initial_capital,
+        sharpe_ratio: annualized_sharpe_ratio(&equity_curve),
         trade_count,
         winning_trade_count,
         losing_trade_count,
@@ -2023,6 +2025,7 @@ pub(crate) fn simulate_portfolio_backtest(
         realized_pnl: total_realized_pnl,
         unrealized_pnl,
         total_return: (ending_equity - config.initial_capital) / config.initial_capital,
+        sharpe_ratio: annualized_sharpe_ratio(&equity_curve),
         trade_count,
         winning_trade_count,
         losing_trade_count,
