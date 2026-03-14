@@ -1,8 +1,8 @@
 use crate::backtest::bridge::{capture_request, PreparedBacktest};
 use crate::backtest::diagnostics::{
-    build_backtest_hints, build_cohort_diagnostics, build_diagnostics_summary,
-    build_drawdown_diagnostics, build_order_diagnostics, snapshot_from_step,
-    DiagnosticsAccumulator, OrderDiagnosticContext,
+    build_backtest_hints, build_baseline_comparison, build_cohort_diagnostics,
+    build_diagnostics_summary, build_drawdown_diagnostics, build_order_diagnostics,
+    snapshot_from_step, DiagnosticsAccumulator, OrderDiagnosticContext,
 };
 use crate::backtest::orders::{
     add_to_position, adjusted_price, close_position, close_trade_slice, empty_request_slots,
@@ -1036,6 +1036,7 @@ pub(crate) fn simulate_backtest(
             .unwrap_or(0),
     };
     let overfitting_risk = build_backtest_overfitting_risk(&summary);
+    let baseline_comparison = build_baseline_comparison(&summary, &capture_summary);
 
     Ok(BacktestResult {
         outputs,
@@ -1047,6 +1048,7 @@ pub(crate) fn simulate_backtest(
             trade_diagnostics,
             summary: diagnostics_summary,
             capture_summary,
+            baseline_comparison,
             export_summaries,
             opportunity_events,
             per_bar_trace,
@@ -1057,6 +1059,7 @@ pub(crate) fn simulate_backtest(
             overfitting_risk,
             portfolio_mode: false,
             blocked_portfolio_entries: Vec::new(),
+            date_perturbation: crate::backtest::DatePerturbationDiagnostics::default(),
         },
         equity_curve,
         summary,
@@ -2039,6 +2042,7 @@ pub(crate) fn simulate_portfolio_backtest(
     let drawdown = build_drawdown_diagnostics(&equity_curve);
     let mut hints = build_backtest_hints(&summary, &diagnostics_summary, &cohorts, &drawdown);
     let overfitting_risk = build_backtest_overfitting_risk(&summary);
+    let baseline_comparison = build_baseline_comparison(&summary, &capture_summary);
     let blocked_portfolio_entries = blocked_counts
         .into_iter()
         .map(
@@ -2062,6 +2066,7 @@ pub(crate) fn simulate_portfolio_backtest(
             trade_diagnostics,
             summary: diagnostics_summary,
             capture_summary,
+            baseline_comparison,
             export_summaries,
             opportunity_events,
             per_bar_trace: all_traces,
@@ -2072,6 +2077,7 @@ pub(crate) fn simulate_portfolio_backtest(
             overfitting_risk,
             portfolio_mode: true,
             blocked_portfolio_entries,
+            date_perturbation: crate::backtest::DatePerturbationDiagnostics::default(),
         },
         equity_curve,
         summary,

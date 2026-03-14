@@ -86,6 +86,18 @@ plot(spot.close)";
         .summary
         .order_fill_rate
         >= 0.0));
+    assert!(result.segments.iter().all(|segment| {
+        (segment
+            .out_of_sample_diagnostics
+            .baseline_comparison
+            .execution_asset_return
+            - segment
+                .out_of_sample_diagnostics
+                .capture_summary
+                .execution_asset_return)
+            .abs()
+            < 1e-9
+    }));
 }
 
 #[test]

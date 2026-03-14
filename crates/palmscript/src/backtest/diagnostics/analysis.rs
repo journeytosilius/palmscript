@@ -1,9 +1,10 @@
 use crate::backtest::{
-    average, ratio, BacktestDiagnosticSummary, BacktestSummary, BoolExportActiveTradeSummary,
-    CohortDiagnostics, DrawdownDiagnostics, EquityPoint, ExitClassificationDiagnosticSummary,
-    ExportDiagnosticSummary, HoldingTimeBucket, HoldingTimeBucketSummary, HourDiagnosticSummary,
-    ImprovementHint, ImprovementHintKind, SideDiagnosticSummary, TradeDiagnostic,
-    TradeExitClassification, WeekdayDiagnosticSummary,
+    average, ratio, BacktestCaptureSummary, BacktestDiagnosticSummary, BacktestSummary,
+    BaselineComparisonSummary, BoolExportActiveTradeSummary, CohortDiagnostics,
+    DrawdownDiagnostics, EquityPoint, ExitClassificationDiagnosticSummary, ExportDiagnosticSummary,
+    HoldingTimeBucket, HoldingTimeBucketSummary, HourDiagnosticSummary, ImprovementHint,
+    ImprovementHintKind, SideDiagnosticSummary, TradeDiagnostic, TradeExitClassification,
+    WeekdayDiagnosticSummary,
 };
 use crate::position::PositionSide;
 
@@ -61,6 +62,21 @@ pub(crate) fn build_drawdown_diagnostics(equity_curve: &[EquityPoint]) -> Drawdo
         current_drawdown_bars,
         longest_stagnation_bars,
         average_recovery_bars: average(recovery_durations.into_iter().map(|bars| bars as f64)),
+    }
+}
+
+pub(crate) fn build_baseline_comparison(
+    summary: &BacktestSummary,
+    capture_summary: &BacktestCaptureSummary,
+) -> BaselineComparisonSummary {
+    BaselineComparisonSummary {
+        strategy_total_return: summary.total_return,
+        flat_cash_return: 0.0,
+        execution_asset_return: capture_summary.execution_asset_return,
+        opportunity_cost_return: capture_summary.opportunity_cost_return,
+        excess_return_vs_flat_cash: summary.total_return,
+        excess_return_vs_execution_asset: summary.total_return
+            - capture_summary.execution_asset_return,
     }
 }
 

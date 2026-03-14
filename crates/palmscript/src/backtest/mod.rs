@@ -26,7 +26,7 @@ use crate::exchange::{MarkPriceBasis, VenueRiskSnapshot};
 use crate::order::{OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::output::{OutputValue, Outputs};
 use crate::position::PositionSide;
-use crate::runtime::{Bar, RuntimeStepper, SourceRuntimeConfig, VmLimits};
+use crate::runtime::{slice_runtime_window, Bar, RuntimeStepper, SourceRuntimeConfig, VmLimits};
 
 const BPS_SCALE: f64 = 10_000.0;
 const EPSILON: f64 = 1e-9;
@@ -397,6 +397,51 @@ pub struct BacktestCaptureSummary {
     pub opportunity_cost_return: f64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BaselineComparisonSummary {
+    pub strategy_total_return: f64,
+    pub flat_cash_return: f64,
+    pub execution_asset_return: f64,
+    pub opportunity_cost_return: f64,
+    pub excess_return_vs_flat_cash: f64,
+    pub excess_return_vs_execution_asset: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatePerturbationKind {
+    LateStart,
+    EarlyEnd,
+    TrimmedBoth,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DatePerturbationScenarioSummary {
+    pub kind: DatePerturbationKind,
+    pub from: i64,
+    pub to: i64,
+    pub total_return: f64,
+    pub execution_asset_return: f64,
+    pub excess_return_vs_execution_asset: f64,
+    pub trade_count: usize,
+    pub max_drawdown: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DatePerturbationDiagnostics {
+    pub offset_bars: usize,
+    #[serde(default)]
+    pub scenarios: Vec<DatePerturbationScenarioSummary>,
+    pub return_min: Option<f64>,
+    pub return_max: Option<f64>,
+    pub return_mean: Option<f64>,
+    pub excess_return_vs_execution_asset_min: Option<f64>,
+    pub excess_return_vs_execution_asset_max: Option<f64>,
+    pub excess_return_vs_execution_asset_mean: Option<f64>,
+    pub positive_scenario_count: usize,
+    pub outperformed_execution_asset_count: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OpportunityEventKind {
     ExportActivated,
@@ -657,6 +702,8 @@ pub struct BacktestDiagnostics {
     pub trade_diagnostics: Vec<TradeDiagnostic>,
     pub summary: BacktestDiagnosticSummary,
     pub capture_summary: BacktestCaptureSummary,
+    #[serde(default)]
+    pub baseline_comparison: BaselineComparisonSummary,
     pub export_summaries: Vec<ExportDiagnosticSummary>,
     pub opportunity_events: Vec<OpportunityEvent>,
     #[serde(default)]
@@ -675,6 +722,8 @@ pub struct BacktestDiagnostics {
     pub portfolio_mode: bool,
     #[serde(default)]
     pub blocked_portfolio_entries: Vec<PortfolioControlBlockSummary>,
+    #[serde(default)]
+    pub date_perturbation: DatePerturbationDiagnostics,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -782,12 +831,23 @@ pub fn run_backtest_with_sources(
     compiled: &CompiledProgram,
     runtime: SourceRuntimeConfig,
     vm_limits: VmLimits,
+    config: BacktestConfig,
+) -> Result<BacktestResult, BacktestError> {
+    run_backtest_with_sources_internal(compiled, runtime, vm_limits, config, true)
+}
+
+pub(crate) fn run_backtest_with_sources_internal(
+    compiled: &CompiledProgram,
+    runtime: SourceRuntimeConfig,
+    vm_limits: VmLimits,
     mut config: BacktestConfig,
+    include_date_perturbation: bool,
 ) -> Result<BacktestResult, BacktestError> {
     validate_config(&config)?;
     if !config.portfolio_execution_aliases.is_empty() {
         return run_portfolio_backtest_with_sources(compiled, runtime, vm_limits, config);
     }
+    let perturbation_runtime = include_date_perturbation.then(|| runtime.clone());
     let execution = bridge::resolve_execution_source(compiled, &config.execution_source_alias)?;
     match execution.template {
         crate::interval::SourceTemplate::BinanceSpot
@@ -828,7 +888,17 @@ pub fn run_backtest_with_sources(
     let prepared =
         bridge::prepare_backtest(compiled, &config.execution_source_alias, execution.template)?;
     let stepper = RuntimeStepper::try_new(compiled, runtime, vm_limits)?;
-    engine::simulate_backtest(stepper, execution_bars, &config, prepared)
+    let mut result = engine::simulate_backtest(stepper, execution_bars.clone(), &config, prepared)?;
+    if let Some(runtime) = perturbation_runtime {
+        result.diagnostics.date_perturbation = build_date_perturbation_diagnostics(
+            compiled,
+            &runtime,
+            vm_limits,
+            &config,
+            &execution_bars,
+        )?;
+    }
+    Ok(result)
 }
 
 fn run_portfolio_backtest_with_sources(
@@ -873,6 +943,118 @@ fn run_portfolio_backtest_with_sources(
         })
         .collect::<Result<Vec<_>, _>>()?;
     engine::simulate_portfolio_backtest(runtime_steppers, execution_bars, &config, prepared)
+}
+
+fn build_date_perturbation_diagnostics(
+    compiled: &CompiledProgram,
+    runtime: &SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &BacktestConfig,
+    execution_bars: &[Bar],
+) -> Result<DatePerturbationDiagnostics, BacktestError> {
+    if execution_bars.len() < 10 {
+        return Ok(DatePerturbationDiagnostics::default());
+    }
+    let offset_bars = (execution_bars.len() / 10).max(1);
+    if execution_bars.len() <= offset_bars * 2 {
+        return Ok(DatePerturbationDiagnostics::default());
+    }
+
+    let scenarios = [
+        (
+            DatePerturbationKind::LateStart,
+            offset_bars,
+            execution_bars.len(),
+        ),
+        (
+            DatePerturbationKind::EarlyEnd,
+            0usize,
+            execution_bars.len() - offset_bars,
+        ),
+        (
+            DatePerturbationKind::TrimmedBoth,
+            offset_bars,
+            execution_bars.len() - offset_bars,
+        ),
+    ];
+
+    let mut summaries = Vec::new();
+    for (kind, start_index, end_index) in scenarios {
+        if end_index <= start_index + 1 {
+            continue;
+        }
+        let from = execution_bars[start_index].time as i64;
+        let to = perturbation_end_time(execution_bars, end_index);
+        let sliced_runtime = slice_runtime_window(runtime, from, to);
+        let result = run_backtest_with_sources_internal(
+            compiled,
+            sliced_runtime,
+            vm_limits,
+            config.clone(),
+            false,
+        )?;
+        let excess_return_vs_execution_asset =
+            result.summary.total_return - result.diagnostics.capture_summary.execution_asset_return;
+        summaries.push(DatePerturbationScenarioSummary {
+            kind,
+            from,
+            to,
+            total_return: result.summary.total_return,
+            execution_asset_return: result.diagnostics.capture_summary.execution_asset_return,
+            excess_return_vs_execution_asset,
+            trade_count: result.summary.trade_count,
+            max_drawdown: result.summary.max_drawdown,
+        });
+    }
+
+    if summaries.is_empty() {
+        return Ok(DatePerturbationDiagnostics::default());
+    }
+
+    Ok(DatePerturbationDiagnostics {
+        offset_bars,
+        return_min: summaries
+            .iter()
+            .map(|summary| summary.total_return)
+            .reduce(f64::min),
+        return_max: summaries
+            .iter()
+            .map(|summary| summary.total_return)
+            .reduce(f64::max),
+        return_mean: Some(average(
+            summaries.iter().map(|summary| summary.total_return),
+        )),
+        excess_return_vs_execution_asset_min: summaries
+            .iter()
+            .map(|summary| summary.excess_return_vs_execution_asset)
+            .reduce(f64::min),
+        excess_return_vs_execution_asset_max: summaries
+            .iter()
+            .map(|summary| summary.excess_return_vs_execution_asset)
+            .reduce(f64::max),
+        excess_return_vs_execution_asset_mean: Some(average(
+            summaries
+                .iter()
+                .map(|summary| summary.excess_return_vs_execution_asset),
+        )),
+        positive_scenario_count: summaries
+            .iter()
+            .filter(|summary| summary.total_return > EPSILON)
+            .count(),
+        outperformed_execution_asset_count: summaries
+            .iter()
+            .filter(|summary| summary.excess_return_vs_execution_asset > EPSILON)
+            .count(),
+        scenarios: summaries,
+    })
+}
+
+fn perturbation_end_time(execution_bars: &[Bar], end_index: usize) -> i64 {
+    execution_bars
+        .get(end_index)
+        .map(|bar| bar.time as i64)
+        .or_else(|| execution_bars.last().map(|bar| bar.time as i64 + 1))
+        .unwrap_or(i64::MIN)
 }
 
 fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {

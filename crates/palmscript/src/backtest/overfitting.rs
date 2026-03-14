@@ -443,6 +443,7 @@ mod tests {
                 out_of_sample_diagnostics: WalkForwardSegmentDiagnostics {
                     summary: crate::backtest::BacktestDiagnosticSummary::default(),
                     capture_summary: crate::backtest::BacktestCaptureSummary::default(),
+                    baseline_comparison: crate::backtest::BaselineComparisonSummary::default(),
                     export_summaries: Vec::new(),
                     opportunity_event_count: 0,
                     cohorts: crate::backtest::CohortDiagnostics::default(),
@@ -462,6 +463,7 @@ mod tests {
                 out_of_sample_diagnostics: WalkForwardSegmentDiagnostics {
                     summary: crate::backtest::BacktestDiagnosticSummary::default(),
                     capture_summary: crate::backtest::BacktestCaptureSummary::default(),
+                    baseline_comparison: crate::backtest::BaselineComparisonSummary::default(),
                     export_summaries: Vec::new(),
                     opportunity_event_count: 0,
                     cohorts: crate::backtest::CohortDiagnostics::default(),
@@ -600,6 +602,7 @@ mod tests {
                 diagnostics: WalkForwardSegmentDiagnostics {
                     summary: crate::backtest::BacktestDiagnosticSummary::default(),
                     capture_summary: crate::backtest::BacktestCaptureSummary::default(),
+                    baseline_comparison: crate::backtest::BaselineComparisonSummary::default(),
                     export_summaries: Vec::new(),
                     opportunity_event_count: 0,
                     cohorts: crate::backtest::CohortDiagnostics::default(),

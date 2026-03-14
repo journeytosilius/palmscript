@@ -144,6 +144,86 @@ plot(spot.close)",
     assert_eq!(result.summary.trade_count, 1);
 }
 
+#[test]
+fn backtest_reports_baseline_and_date_perturbation_diagnostics() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = spot.close < spot.close[1]
+exit short = true
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+
+    let closes = [
+        10.0, 11.0, 12.0, 11.0, 12.0, 13.0, 12.0, 13.0, 14.0, 13.0, 14.0, 15.0,
+    ];
+    let bars = closes
+        .iter()
+        .enumerate()
+        .map(|(index, close)| bar(index as i64 * 60_000, *close - 0.5, *close))
+        .collect::<Vec<_>>();
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: bars.clone(),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars,
+            },
+        ],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should run");
+
+    approx_eq(
+        result
+            .diagnostics
+            .baseline_comparison
+            .execution_asset_return,
+        result.diagnostics.capture_summary.execution_asset_return,
+    );
+    approx_eq(
+        result
+            .diagnostics
+            .baseline_comparison
+            .excess_return_vs_execution_asset,
+        result.summary.total_return - result.diagnostics.capture_summary.execution_asset_return,
+    );
+    assert_eq!(result.diagnostics.date_perturbation.offset_bars, 1);
+    assert_eq!(result.diagnostics.date_perturbation.scenarios.len(), 3);
+    assert!(result
+        .diagnostics
+        .date_perturbation
+        .scenarios
+        .iter()
+        .any(|scenario| scenario.kind == palmscript::DatePerturbationKind::LateStart));
+    assert!(result
+        .diagnostics
+        .date_perturbation
+        .scenarios
+        .iter()
+        .any(|scenario| scenario.kind == palmscript::DatePerturbationKind::EarlyEnd));
+    assert!(result
+        .diagnostics
+        .date_perturbation
+        .scenarios
+        .iter()
+        .any(|scenario| scenario.kind == palmscript::DatePerturbationKind::TrimmedBoth));
+}
+
 fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),

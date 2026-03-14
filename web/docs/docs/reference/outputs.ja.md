@@ -224,9 +224,9 @@ size target long = 0.5
 PalmScript now exposes richer machine-readable backtest diagnostics in every public locale build:
 
 - `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
-- summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, overfitting-risk, and hint data
+- summary mode keeps cohort, drawdown-path, baseline-comparison, source-alignment, holdout-drift, robustness, overfitting-risk, and hint data, and top-level backtests also add bounded date-perturbation reruns
 - full-trace mode adds one typed per-bar decision trace per execution bar
-- optimize output now includes top-candidate holdout checks plus parameter stability, overfitting-risk, and Sharpe summaries
+- optimize output now includes top-candidate holdout checks plus parameter stability, baseline-comparison, overfitting-risk, and Sharpe summaries
 
 ## Latest Execution Additions
 

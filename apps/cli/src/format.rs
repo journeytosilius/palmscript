@@ -265,6 +265,34 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         "opportunity_cost_return_pct={:.2}",
         result.diagnostics.capture_summary.opportunity_cost_return * 100.0
     );
+    out.push_str("Baseline Comparison\n");
+    let _ = writeln!(
+        out,
+        "execution_asset_buy_and_hold_return_pct={:.2}",
+        result
+            .diagnostics
+            .baseline_comparison
+            .execution_asset_return
+            * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "excess_return_vs_execution_asset_pct={:.2}",
+        result
+            .diagnostics
+            .baseline_comparison
+            .excess_return_vs_execution_asset
+            * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "excess_return_vs_flat_cash_pct={:.2}",
+        result
+            .diagnostics
+            .baseline_comparison
+            .excess_return_vs_flat_cash
+            * 100.0
+    );
     let _ = writeln!(
         out,
         "longest_drawdown_bars={}",
@@ -291,6 +319,84 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         "Overfitting Risk",
         &result.diagnostics.overfitting_risk,
     );
+    if !result.diagnostics.date_perturbation.scenarios.is_empty() {
+        out.push_str("Date Perturbation\n");
+        let _ = writeln!(
+            out,
+            "offset_bars={}",
+            result.diagnostics.date_perturbation.offset_bars
+        );
+        let _ = writeln!(
+            out,
+            "return_mean_pct={}",
+            fmt_opt_f64(
+                result
+                    .diagnostics
+                    .date_perturbation
+                    .return_mean
+                    .map(|value| value * 100.0)
+            )
+        );
+        let _ = writeln!(
+            out,
+            "return_min_pct={}",
+            fmt_opt_f64(
+                result
+                    .diagnostics
+                    .date_perturbation
+                    .return_min
+                    .map(|value| value * 100.0)
+            )
+        );
+        let _ = writeln!(
+            out,
+            "return_max_pct={}",
+            fmt_opt_f64(
+                result
+                    .diagnostics
+                    .date_perturbation
+                    .return_max
+                    .map(|value| value * 100.0)
+            )
+        );
+        let _ = writeln!(
+            out,
+            "excess_return_vs_execution_asset_mean_pct={}",
+            fmt_opt_f64(
+                result
+                    .diagnostics
+                    .date_perturbation
+                    .excess_return_vs_execution_asset_mean
+                    .map(|value| value * 100.0)
+            )
+        );
+        let _ = writeln!(
+            out,
+            "positive_scenario_count={}",
+            result.diagnostics.date_perturbation.positive_scenario_count
+        );
+        let _ = writeln!(
+            out,
+            "outperformed_execution_asset_count={}",
+            result
+                .diagnostics
+                .date_perturbation
+                .outperformed_execution_asset_count
+        );
+        for scenario in &result.diagnostics.date_perturbation.scenarios {
+            let _ = writeln!(
+                out,
+                "kind={:?} from={} to={} total_return_pct={:.2} execution_asset_return_pct={:.2} trade_count={} max_drawdown={:.2}",
+                scenario.kind,
+                scenario.from,
+                scenario.to,
+                scenario.total_return * 100.0,
+                scenario.execution_asset_return * 100.0,
+                scenario.trade_count,
+                scenario.max_drawdown,
+            );
+        }
+    }
 
     if !result.diagnostics.blocked_portfolio_entries.is_empty() {
         out.push_str("Portfolio Blocks\n");
@@ -743,7 +849,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
         for segment in &result.segments[start..] {
             let _ = writeln!(
                 out,
-                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2} protect_exit_count={} target_exit_count={} liquidation_exit_count={} flat_bar_pct={:.2}",
+                "index={} train_from={} train_to={} test_from={} test_to={} train_return_pct={:.2} test_return_pct={:.2} execution_asset_return_pct={:.2} trade_count={} win_rate_pct={:.2} max_drawdown={:.2} protect_exit_count={} target_exit_count={} liquidation_exit_count={} flat_bar_pct={:.2}",
                 segment.segment_index,
                 segment.train_from,
                 segment.train_to,
@@ -751,6 +857,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
                 segment.test_to,
                 segment.in_sample.total_return * 100.0,
                 segment.out_of_sample.total_return * 100.0,
+                segment.out_of_sample_diagnostics.baseline_comparison.execution_asset_return * 100.0,
                 segment.out_of_sample.trade_count,
                 segment.out_of_sample.win_rate * 100.0,
                 segment.out_of_sample.max_drawdown,
@@ -959,6 +1066,15 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
             out,
             "execution_asset_return_pct={:.2}",
             holdout.summary.execution_asset_return * 100.0
+        );
+        let _ = writeln!(
+            out,
+            "excess_return_vs_execution_asset_pct={:.2}",
+            holdout
+                .diagnostics
+                .baseline_comparison
+                .excess_return_vs_execution_asset
+                * 100.0
         );
         let _ = writeln!(
             out,
@@ -1518,6 +1634,14 @@ mod tests {
                     execution_return_while_short: 0.0,
                     opportunity_cost_return: 0.10,
                 },
+                baseline_comparison: palmscript::BaselineComparisonSummary {
+                    strategy_total_return: 0.012,
+                    flat_cash_return: 0.0,
+                    execution_asset_return: 0.10,
+                    opportunity_cost_return: 0.10,
+                    excess_return_vs_flat_cash: 0.012,
+                    excess_return_vs_execution_asset: -0.088,
+                },
                 export_summaries: vec![ExportDiagnosticSummary::Bool(
                     palmscript::BoolExportDiagnosticSummary {
                         name: "trend_state".to_string(),
@@ -1573,6 +1697,27 @@ mod tests {
                 },
                 portfolio_mode: false,
                 blocked_portfolio_entries: vec![],
+                date_perturbation: palmscript::DatePerturbationDiagnostics {
+                    offset_bars: 2,
+                    scenarios: vec![palmscript::DatePerturbationScenarioSummary {
+                        kind: palmscript::DatePerturbationKind::LateStart,
+                        from: 10,
+                        to: 20,
+                        total_return: 0.02,
+                        execution_asset_return: 0.01,
+                        excess_return_vs_execution_asset: 0.01,
+                        trade_count: 1,
+                        max_drawdown: 5.0,
+                    }],
+                    return_min: Some(0.02),
+                    return_max: Some(0.02),
+                    return_mean: Some(0.02),
+                    excess_return_vs_execution_asset_min: Some(0.01),
+                    excess_return_vs_execution_asset_max: Some(0.01),
+                    excess_return_vs_execution_asset_mean: Some(0.01),
+                    positive_scenario_count: 1,
+                    outperformed_execution_asset_count: 1,
+                },
             },
             open_position: None,
             open_positions: vec![],
@@ -1590,6 +1735,10 @@ mod tests {
         assert!(rendered.contains("Overfitting Risk"));
         assert!(rendered.contains("level=Unknown"));
         assert!(rendered.contains("execution_asset_return_pct=10.00"));
+        assert!(rendered.contains("Baseline Comparison"));
+        assert!(rendered.contains("excess_return_vs_execution_asset_pct=-8.80"));
+        assert!(rendered.contains("Date Perturbation"));
+        assert!(rendered.contains("positive_scenario_count=1"));
         assert!(rendered.contains("Top Export States"));
         assert!(rendered.contains("Recent Opportunity Events"));
         assert!(rendered.contains("Recent Orders"));

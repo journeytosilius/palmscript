@@ -11,10 +11,11 @@ use thiserror::Error;
 
 use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
-    bridge, run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
-    BacktestConfig, BacktestError, BacktestSummary, DiagnosticsDetailMode, ImprovementHint,
-    ImprovementHintKind, OverfittingRiskSummary, WalkForwardConfig, WalkForwardResult,
-    WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    bridge, run_backtest_with_sources_internal, run_walk_forward_with_sources,
+    BacktestCaptureSummary, BacktestConfig, BacktestError, BacktestSummary, DiagnosticsDetailMode,
+    ImprovementHint, ImprovementHintKind, OverfittingRiskSummary, WalkForwardConfig,
+    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary,
+    WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -1055,11 +1056,12 @@ fn evaluate_holdout(
         bridge::resolve_execution_source(&compiled, &config.backtest.execution_source_alias)?
             .template,
     )?;
-    let result = run_backtest_with_sources(
+    let result = run_backtest_with_sources_internal(
         &compiled,
         runtime.clone(),
         vm_limits,
         config.backtest.clone(),
+        false,
     )?;
     let starting_equity = if plan.split_index == 0 {
         config.backtest.initial_capital
@@ -1338,7 +1340,13 @@ fn evaluate_candidate(
             summarize_walk_forward_candidate(&result)
         }
         OptimizeRunner::Backtest => {
-            let result = run_backtest_with_sources(&compiled, runtime, vm_limits, config.backtest)?;
+            let result = run_backtest_with_sources_internal(
+                &compiled,
+                runtime,
+                vm_limits,
+                config.backtest,
+                false,
+            )?;
             OptimizeEvaluationSummary::Backtest {
                 summary: result.summary,
                 capture_summary: result.diagnostics.capture_summary,

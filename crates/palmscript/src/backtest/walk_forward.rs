@@ -2,17 +2,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::backtest::bridge::PreparedExport;
 use crate::backtest::diagnostics::{
-    build_backtest_hints, build_cohort_diagnostics, build_diagnostics_summary,
-    build_drawdown_diagnostics, snapshot_from_step, DiagnosticsAccumulator,
+    build_backtest_hints, build_baseline_comparison, build_cohort_diagnostics,
+    build_diagnostics_summary, build_drawdown_diagnostics, snapshot_from_step,
+    DiagnosticsAccumulator,
 };
 use crate::backtest::overfitting::{
     annualized_sharpe_ratio, annualized_sharpe_ratio_from_returns,
     build_walk_forward_overfitting_risk,
 };
 use crate::backtest::{
-    average, execution_bars, run_backtest_with_sources, BacktestCaptureSummary, BacktestConfig,
-    BacktestDiagnosticSummary, BacktestError, CohortDiagnostics, DiagnosticsDetailMode,
-    DrawdownDiagnostics, ExportDiagnosticSummary, ImprovementHint, OverfittingRiskSummary,
+    average, execution_bars, run_backtest_with_sources_internal, BacktestCaptureSummary,
+    BacktestConfig, BacktestDiagnosticSummary, BacktestError, BaselineComparisonSummary,
+    CohortDiagnostics, DiagnosticsDetailMode, DrawdownDiagnostics, ExportDiagnosticSummary,
+    ImprovementHint, OverfittingRiskSummary,
 };
 use crate::compiler::CompiledProgram;
 use crate::output::{OutputSample, StepOutput};
@@ -61,6 +63,8 @@ pub struct WalkForwardSegmentResult {
 pub struct WalkForwardSegmentDiagnostics {
     pub summary: BacktestDiagnosticSummary,
     pub capture_summary: BacktestCaptureSummary,
+    #[serde(default)]
+    pub baseline_comparison: BaselineComparisonSummary,
     pub export_summaries: Vec<ExportDiagnosticSummary>,
     pub opportunity_event_count: usize,
     #[serde(default)]
@@ -165,7 +169,13 @@ pub fn run_walk_forward_with_sources(
         let runtime_slice = slice_runtime_window(&runtime, train_from, test_to);
         let mut backtest = config.backtest.clone();
         backtest.diagnostics_detail = config.diagnostics_detail;
-        let result = run_backtest_with_sources(compiled, runtime_slice, vm_limits, backtest)?;
+        let result = run_backtest_with_sources_internal(
+            compiled,
+            runtime_slice,
+            vm_limits,
+            backtest,
+            false,
+        )?;
 
         let in_sample = summarize_window(
             &result.equity_curve,
@@ -505,7 +515,7 @@ fn stitched_sharpe_ratio(
     let mut sorted = deltas;
     sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
     let mid = sorted.len() / 2;
-    let median_delta_ms = if sorted.len() % 2 == 0 {
+    let median_delta_ms = if sorted.len().is_multiple_of(2) {
         (sorted[mid - 1] + sorted[mid]) / 2.0
     } else {
         sorted[mid]
@@ -613,31 +623,30 @@ pub(crate) fn summarize_segment_diagnostics(
             .map(|point| point.equity)
             .unwrap_or(result.summary.starting_equity),
     );
-    let hints = build_backtest_hints(
-        &crate::backtest::BacktestSummary {
-            starting_equity: segment_summary.starting_equity,
-            ending_equity: segment_summary.ending_equity,
-            realized_pnl: 0.0,
-            unrealized_pnl: 0.0,
-            total_return: segment_summary.total_return,
-            sharpe_ratio: segment_summary.sharpe_ratio,
-            trade_count: segment_summary.trade_count,
-            winning_trade_count: segment_summary.winning_trade_count,
-            losing_trade_count: segment_summary.losing_trade_count,
-            win_rate: segment_summary.win_rate,
-            max_drawdown: segment_summary.max_drawdown,
-            max_gross_exposure: 0.0,
-            max_net_exposure: 0.0,
-            peak_open_position_count: 0,
-        },
-        &summary,
-        &cohorts,
-        &drawdown,
-    );
+    let segment_backtest_summary = crate::backtest::BacktestSummary {
+        starting_equity: segment_summary.starting_equity,
+        ending_equity: segment_summary.ending_equity,
+        realized_pnl: 0.0,
+        unrealized_pnl: 0.0,
+        total_return: segment_summary.total_return,
+        sharpe_ratio: segment_summary.sharpe_ratio,
+        trade_count: segment_summary.trade_count,
+        winning_trade_count: segment_summary.winning_trade_count,
+        losing_trade_count: segment_summary.losing_trade_count,
+        win_rate: segment_summary.win_rate,
+        max_drawdown: segment_summary.max_drawdown,
+        max_gross_exposure: 0.0,
+        max_net_exposure: 0.0,
+        peak_open_position_count: 0,
+    };
+    let hints = build_backtest_hints(&segment_backtest_summary, &summary, &cohorts, &drawdown);
+    let baseline_comparison =
+        build_baseline_comparison(&segment_backtest_summary, &capture_summary);
 
     WalkForwardSegmentDiagnostics {
         summary,
         capture_summary,
+        baseline_comparison,
         export_summaries,
         opportunity_event_count,
         cohorts,

@@ -237,9 +237,11 @@ Always-on summary diagnostics include:
 - cohort summaries
 - drawdown duration and stagnation metrics
 - annualized Sharpe ratio in backtest, walk-forward window, and stitched walk-forward summaries
+- baseline comparisons against flat cash and execution-asset buy-and-hold
 - source alignment diagnostics
 - deterministic overfitting-risk summaries with typed risk reasons and scores
 - deterministic improvement hints
+- bounded date-perturbation reruns on top-level backtests
 
 When `--diagnostics full-trace` is enabled, PalmScript also records one `per_bar_trace` record for each execution bar. Each trace includes:
 
@@ -254,7 +256,7 @@ Walk-forward and optimize outputs reuse the same diagnostics model and add:
 - per-segment drift flags
 - final holdout drift summaries
 - optimizer robustness summaries across the top ranked candidates
-- parameter stability, overfitting-risk, and Sharpe summaries
+- parameter stability, baseline-comparison, overfitting-risk, and Sharpe summaries
 
 ## Output Time And Bar Index
 
