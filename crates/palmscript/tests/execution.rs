@@ -99,9 +99,8 @@ fn paper_daemon_processes_a_submitted_session_against_mocked_exchange_bars() {
         config: PaperSessionConfig {
             execution_source_aliases: vec!["spot".to_string()],
             initial_capital: 1_000.0,
-            fee_bps: 0.0,
-            maker_fee_bps: None,
-            taker_fee_bps: None,
+            maker_fee_bps: 0.0,
+            taker_fee_bps: 0.0,
             execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 0.0,
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
@@ -170,9 +169,8 @@ fn queued_paper_session_can_be_stopped_before_the_daemon_picks_it_up() {
         config: PaperSessionConfig {
             execution_source_aliases: vec!["spot".to_string()],
             initial_capital: 1_000.0,
-            fee_bps: 0.0,
-            maker_fee_bps: None,
-            taker_fee_bps: None,
+            maker_fee_bps: 0.0,
+            taker_fee_bps: 0.0,
             execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 0.0,
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,

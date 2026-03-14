@@ -127,8 +127,7 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
     let execution_source_aliases =
         resolve_execution_source_aliases(&compiled, &args.execution_source)?;
     let execution_source_alias = execution_source_aliases[0].clone();
-    let global_fee_schedule =
-        resolve_global_fee_schedule(args.fee_bps, args.maker_fee_bps, args.taker_fee_bps);
+    let global_fee_schedule = global_fee_schedule(args.maker_fee_bps, args.taker_fee_bps);
     let execution_fee_schedules =
         parse_execution_fee_schedules(&args.fee_schedule, &execution_source_aliases)?;
     let endpoints = ExchangeEndpoints::from_env();
@@ -161,9 +160,8 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             },
             activation_time_ms: None,
             initial_capital: args.initial_capital,
-            fee_bps: args.fee_bps,
-            maker_fee_bps: Some(global_fee_schedule.maker_bps),
-            taker_fee_bps: Some(global_fee_schedule.taker_bps),
+            maker_fee_bps: global_fee_schedule.maker_bps,
+            taker_fee_bps: global_fee_schedule.taker_bps,
             execution_fee_schedules,
             slippage_bps: args.slippage_bps,
             diagnostics_detail: map_diagnostics_detail(args.diagnostics),
@@ -193,8 +191,7 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
     let execution_source_aliases =
         resolve_execution_source_aliases(&compiled, &args.execution_source)?;
     let execution_source_alias = execution_source_aliases[0].clone();
-    let global_fee_schedule =
-        resolve_global_fee_schedule(args.fee_bps, args.maker_fee_bps, args.taker_fee_bps);
+    let global_fee_schedule = global_fee_schedule(args.maker_fee_bps, args.taker_fee_bps);
     let execution_fee_schedules =
         parse_execution_fee_schedules(&args.fee_schedule, &execution_source_aliases)?;
     let endpoints = ExchangeEndpoints::from_env();
@@ -228,9 +225,8 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
                 },
                 activation_time_ms: None,
                 initial_capital: args.initial_capital,
-                fee_bps: args.fee_bps,
-                maker_fee_bps: Some(global_fee_schedule.maker_bps),
-                taker_fee_bps: Some(global_fee_schedule.taker_bps),
+                maker_fee_bps: global_fee_schedule.maker_bps,
+                taker_fee_bps: global_fee_schedule.taker_bps,
                 execution_fee_schedules,
                 slippage_bps: args.slippage_bps,
                 diagnostics_detail: map_diagnostics_detail(args.diagnostics),
@@ -267,8 +263,7 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
     let execution_source_aliases =
         resolve_execution_source_aliases(&compiled, &args.execution_source)?;
     let execution_source_alias = execution_source_aliases[0].clone();
-    let global_fee_schedule =
-        resolve_global_fee_schedule(args.fee_bps, args.maker_fee_bps, args.taker_fee_bps);
+    let global_fee_schedule = global_fee_schedule(args.maker_fee_bps, args.taker_fee_bps);
     let execution_fee_schedules =
         parse_execution_fee_schedules(&args.fee_schedule, &execution_source_aliases)?;
     let endpoints = ExchangeEndpoints::from_env();
@@ -303,9 +298,8 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
                     },
                     activation_time_ms: None,
                     initial_capital: args.initial_capital,
-                    fee_bps: args.fee_bps,
-                    maker_fee_bps: Some(global_fee_schedule.maker_bps),
-                    taker_fee_bps: Some(global_fee_schedule.taker_bps),
+                    maker_fee_bps: global_fee_schedule.maker_bps,
+                    taker_fee_bps: global_fee_schedule.taker_bps,
                     execution_fee_schedules: execution_fee_schedules.clone(),
                     slippage_bps: args.slippage_bps,
                     diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
@@ -355,8 +349,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
     let execution_source_aliases =
         resolve_execution_source_aliases(&base_compiled, &args.execution_source)?;
     let execution_source_alias = execution_source_aliases[0].clone();
-    let global_fee_schedule =
-        resolve_global_fee_schedule(args.fee_bps, args.maker_fee_bps, args.taker_fee_bps);
+    let global_fee_schedule = global_fee_schedule(args.maker_fee_bps, args.taker_fee_bps);
     let execution_fee_schedules =
         parse_execution_fee_schedules(&args.fee_schedule, &execution_source_aliases)?;
     let endpoints = ExchangeEndpoints::from_env();
@@ -382,9 +375,8 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
         },
         activation_time_ms: None,
         initial_capital: args.initial_capital,
-        fee_bps: args.fee_bps,
-        maker_fee_bps: Some(global_fee_schedule.maker_bps),
-        taker_fee_bps: Some(global_fee_schedule.taker_bps),
+        maker_fee_bps: global_fee_schedule.maker_bps,
+        taker_fee_bps: global_fee_schedule.taker_bps,
         execution_fee_schedules,
         slippage_bps: args.slippage_bps,
         diagnostics_detail: map_diagnostics_detail(args.diagnostics),
@@ -462,8 +454,7 @@ fn run_paper(args: PaperRunArgs) -> Result<(), String> {
     }
     let execution_source_aliases =
         resolve_execution_source_aliases(&compiled, &args.execution_source)?;
-    let global_fee_schedule =
-        resolve_global_fee_schedule(args.fee_bps, args.maker_fee_bps, args.taker_fee_bps);
+    let global_fee_schedule = global_fee_schedule(args.maker_fee_bps, args.taker_fee_bps);
     let execution_fee_schedules =
         parse_execution_fee_schedules(&args.fee_schedule, &execution_source_aliases)?;
     let manifest = submit_paper_session(SubmitPaperSession {
@@ -472,9 +463,8 @@ fn run_paper(args: PaperRunArgs) -> Result<(), String> {
         config: PaperSessionConfig {
             execution_source_aliases,
             initial_capital: args.initial_capital,
-            fee_bps: args.fee_bps,
-            maker_fee_bps: Some(global_fee_schedule.maker_bps),
-            taker_fee_bps: Some(global_fee_schedule.taker_bps),
+            maker_fee_bps: global_fee_schedule.maker_bps,
+            taker_fee_bps: global_fee_schedule.taker_bps,
             execution_fee_schedules,
             slippage_bps: args.slippage_bps,
             diagnostics_detail: map_diagnostics_detail(args.diagnostics),
@@ -1051,14 +1041,10 @@ pub(crate) fn map_diagnostics_detail(detail: DiagnosticsDetailArg) -> Diagnostic
     }
 }
 
-pub(crate) fn resolve_global_fee_schedule(
-    fee_bps: f64,
-    maker_fee_bps: Option<f64>,
-    taker_fee_bps: Option<f64>,
-) -> FeeSchedule {
+pub(crate) fn global_fee_schedule(maker_fee_bps: f64, taker_fee_bps: f64) -> FeeSchedule {
     FeeSchedule {
-        maker_bps: maker_fee_bps.unwrap_or(fee_bps),
-        taker_bps: taker_fee_bps.unwrap_or(fee_bps),
+        maker_bps: maker_fee_bps,
+        taker_bps: taker_fee_bps,
     }
 }
 
@@ -1257,14 +1243,14 @@ fn _runtime_error(_err: RuntimeError) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_execution_fee_schedules, resolve_global_fee_schedule};
+    use super::{global_fee_schedule, parse_execution_fee_schedules};
     use palmscript::FeeSchedule;
     use std::collections::BTreeMap;
 
     #[test]
-    fn global_fee_schedule_defaults_missing_sides_to_fee_bps() {
+    fn global_fee_schedule_uses_explicit_values() {
         assert_eq!(
-            resolve_global_fee_schedule(5.0, Some(2.0), None),
+            global_fee_schedule(2.0, 5.0),
             FeeSchedule {
                 maker_bps: 2.0,
                 taker_bps: 5.0,

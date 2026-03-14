@@ -86,7 +86,7 @@ order exit long = market_order
 
 Backtests can also run in portfolio mode when you repeat `--execution-source`. In that mode PalmScript evaluates one shared-equity ledger across the selected execution aliases, and only explicitly routed orders whose `venue = <execution_alias>` matches the active alias participate on that leg. Top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.
 
-Fee modeling now supports live-like maker/taker schedules. `--fee-bps` remains a uniform fallback, `--maker-fee-bps` and `--taker-fee-bps` split the default schedule, and `--fee-schedule <alias:maker:taker>` overrides one selected execution alias so portfolio backtests can simulate different exchange fee tiers in the same run.
+Fee modeling now requires explicit live-like maker/taker schedules on execution-oriented CLI runs. `--maker-fee-bps` and `--taker-fee-bps` set the default schedule, and `--fee-schedule <alias:maker:taker>` overrides one selected execution alias so portfolio backtests can simulate different exchange fee tiers in the same run.
 
 Backtest-oriented CLI commands now also expose a richer diagnostics surface. `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`. Summary mode keeps compact machine-readable cohort, drawdown, source-alignment, holdout-drift, robustness, and hint data. Full-trace mode adds one typed per-bar decision trace per execution bar so agents can inspect why a signal or order was queued, blocked, expired, or forced out.
 

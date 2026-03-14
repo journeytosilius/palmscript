@@ -58,7 +58,8 @@ execution aliases, pass `--execution-source <alias>` or repeat that flag for
 portfolio mode.
 
 Those execution-oriented commands also require explicit `order ...`
-declarations for each declared `entry` / `exit` signal role. The checked-in
+declarations for each declared `entry` / `exit` signal role plus explicit
+`--maker-fee-bps` and `--taker-fee-bps` inputs on the CLI. The checked-in
 backtest and paper examples now declare those orders explicitly instead of
 depending on synthesized default orders, and `palmscript check` rejects
 execution scripts that omit them.
@@ -66,7 +67,7 @@ execution scripts that omit them.
 The same checked-in strategies can also be queued into the local paper daemon with `run paper`:
 
 ```bash
-./palmscript run paper crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --execution-source perp
+./palmscript run paper crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --execution-source perp --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript execution serve --once
 ./palmscript run paper-export <session-id> --format json
 ```
@@ -90,15 +91,15 @@ Common commands:
 ./palmscript run market crates/palmscript/examples/strategies/gate_spot.ps --from 1704067200000 --to 1704153600000
 ./palmscript run market crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps --from 1704067200000 --to 1704153600000
 ./palmscript run market crates/palmscript/examples/strategies/exchange_backed_sources.ps --from 1704067200000 --to 1704153600000
-./palmscript run backtest crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
-./palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
-./palmscript run backtest crates/palmscript/examples/strategies/portfolio_caps_backtest.ps --from 1704067200000 --to 1704153600000 --execution-source left --execution-source right
-./palmscript run backtest crates/palmscript/examples/strategies/risk_controls_backtest.ps --from 1704067200000 --to 1706745600000
-./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000
-./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63
-./palmscript run optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63 --trials 50 --preset-out best.json
-./palmscript run backtest crates/palmscript/examples/strategies/multi_strategy_backtest.ps --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
-./palmscript run backtest crates/palmscript/examples/strategies/venue_orders_backtest.ps --from 1704067200000 --to 1704931200000 --format text
+./palmscript run backtest crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --maker-fee-bps 2 --taker-fee-bps 5 --leverage 2
+./palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --maker-fee-bps 2 --taker-fee-bps 5 --leverage 2
+./palmscript run backtest crates/palmscript/examples/strategies/portfolio_caps_backtest.ps --from 1704067200000 --to 1704153600000 --execution-source left --execution-source right --maker-fee-bps 2 --taker-fee-bps 5
+./palmscript run backtest crates/palmscript/examples/strategies/risk_controls_backtest.ps --from 1704067200000 --to 1706745600000 --maker-fee-bps 2 --taker-fee-bps 5
+./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5
+./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63
+./palmscript run optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63 --trials 50 --preset-out best.json
+./palmscript run backtest crates/palmscript/examples/strategies/multi_strategy_backtest.ps --from 1741348800000 --to 1772884800000 --maker-fee-bps 2 --taker-fee-bps 5 --slippage-bps 2
+./palmscript run backtest crates/palmscript/examples/strategies/venue_orders_backtest.ps --from 1704067200000 --to 1704931200000 --maker-fee-bps 2 --taker-fee-bps 5 --format text
 ```
 
-Backtest and paper commands also accept `--maker-fee-bps`, `--taker-fee-bps`, and repeated `--fee-schedule <alias:maker:taker>` overrides when you need per-venue fee simulation instead of one uniform `--fee-bps` model.
+Backtest and paper commands require `--maker-fee-bps` and `--taker-fee-bps`, and they also accept repeated `--fee-schedule <alias:maker:taker>` overrides when you need per-venue fee simulation for selected execution aliases.

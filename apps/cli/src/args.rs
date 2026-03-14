@@ -87,12 +87,10 @@ pub struct BacktestRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
-    #[arg(long, default_value_t = 5.0)]
-    pub fee_bps: f64,
     #[arg(long)]
-    pub maker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
     #[arg(long)]
-    pub taker_fee_bps: Option<f64>,
+    pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
@@ -124,12 +122,10 @@ pub struct WalkForwardRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
-    #[arg(long, default_value_t = 5.0)]
-    pub fee_bps: f64,
     #[arg(long)]
-    pub maker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
     #[arg(long)]
-    pub taker_fee_bps: Option<f64>,
+    pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
@@ -167,12 +163,10 @@ pub struct WalkForwardSweepRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
-    #[arg(long, default_value_t = 5.0)]
-    pub fee_bps: f64,
     #[arg(long)]
-    pub maker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
     #[arg(long)]
-    pub taker_fee_bps: Option<f64>,
+    pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
@@ -214,12 +208,10 @@ pub struct OptimizeRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
-    #[arg(long, default_value_t = 5.0)]
-    pub fee_bps: f64,
     #[arg(long)]
-    pub maker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
     #[arg(long)]
-    pub taker_fee_bps: Option<f64>,
+    pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
@@ -273,12 +265,10 @@ pub struct PaperRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
-    #[arg(long, default_value_t = 5.0)]
-    pub fee_bps: f64,
     #[arg(long)]
-    pub maker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
     #[arg(long)]
-    pub taker_fee_bps: Option<f64>,
+    pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]

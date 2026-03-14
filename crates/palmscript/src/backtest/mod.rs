@@ -38,12 +38,8 @@ pub struct BacktestConfig {
     #[serde(default)]
     pub activation_time_ms: Option<i64>,
     pub initial_capital: f64,
-    #[serde(default)]
-    pub fee_bps: f64,
-    #[serde(default)]
-    pub maker_fee_bps: Option<f64>,
-    #[serde(default)]
-    pub taker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
+    pub taker_fee_bps: f64,
     #[serde(default)]
     pub execution_fee_schedules: BTreeMap<String, FeeSchedule>,
     pub slippage_bps: f64,
@@ -61,23 +57,14 @@ pub struct FeeSchedule {
     pub taker_bps: f64,
 }
 
-impl FeeSchedule {
-    pub const fn uniform(bps: f64) -> Self {
-        Self {
-            maker_bps: bps,
-            taker_bps: bps,
-        }
-    }
-}
-
 impl BacktestConfig {
     pub fn fee_schedule_for_alias(&self, alias: &str) -> FeeSchedule {
         self.execution_fee_schedules
             .get(alias)
             .copied()
             .unwrap_or(FeeSchedule {
-                maker_bps: self.maker_fee_bps.unwrap_or(self.fee_bps),
-                taker_bps: self.taker_fee_bps.unwrap_or(self.fee_bps),
+                maker_bps: self.maker_fee_bps,
+                taker_bps: self.taker_fee_bps,
             })
     }
 }
@@ -692,8 +679,6 @@ pub enum BacktestError {
     MissingExecutionBaseFeed { alias: String },
     #[error("backtest initial capital must be finite and > 0, found {value}")]
     InvalidInitialCapital { value: f64 },
-    #[error("backtest fee_bps must be finite and >= 0, found {value}")]
-    InvalidFeeBps { value: f64 },
     #[error("backtest maker_fee_bps must be finite and >= 0, found {value}")]
     InvalidMakerFeeBps { value: f64 },
     #[error("backtest taker_fee_bps must be finite and >= 0, found {value}")]
@@ -852,25 +837,14 @@ fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
             value: config.initial_capital,
         });
     }
-    if !config.fee_bps.is_finite() || config.fee_bps < 0.0 {
-        return Err(BacktestError::InvalidFeeBps {
-            value: config.fee_bps,
-        });
-    }
-    if config
-        .maker_fee_bps
-        .is_some_and(|value| !value.is_finite() || value < 0.0)
-    {
+    if !config.maker_fee_bps.is_finite() || config.maker_fee_bps < 0.0 {
         return Err(BacktestError::InvalidMakerFeeBps {
-            value: config.maker_fee_bps.unwrap_or(config.fee_bps),
+            value: config.maker_fee_bps,
         });
     }
-    if config
-        .taker_fee_bps
-        .is_some_and(|value| !value.is_finite() || value < 0.0)
-    {
+    if !config.taker_fee_bps.is_finite() || config.taker_fee_bps < 0.0 {
         return Err(BacktestError::InvalidTakerFeeBps {
-            value: config.taker_fee_bps.unwrap_or(config.fee_bps),
+            value: config.taker_fee_bps,
         });
     }
     for (alias, schedule) in &config.execution_fee_schedules {

@@ -99,7 +99,6 @@ pub(crate) fn process_paper_session(
             },
             activation_time_ms: Some(manifest.start_time_ms),
             initial_capital: manifest.config.initial_capital,
-            fee_bps: manifest.config.fee_bps,
             maker_fee_bps: manifest.config.maker_fee_bps,
             taker_fee_bps: manifest.config.taker_fee_bps,
             execution_fee_schedules: manifest.config.execution_fee_schedules.clone(),

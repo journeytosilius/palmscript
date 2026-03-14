@@ -68,12 +68,8 @@ pub enum ExecutionSessionHealth {
 pub struct PaperSessionConfig {
     pub execution_source_aliases: Vec<String>,
     pub initial_capital: f64,
-    #[serde(default)]
-    pub fee_bps: f64,
-    #[serde(default)]
-    pub maker_fee_bps: Option<f64>,
-    #[serde(default)]
-    pub taker_fee_bps: Option<f64>,
+    pub maker_fee_bps: f64,
+    pub taker_fee_bps: f64,
     #[serde(default)]
     pub execution_fee_schedules: std::collections::BTreeMap<String, FeeSchedule>,
     pub slippage_bps: f64,

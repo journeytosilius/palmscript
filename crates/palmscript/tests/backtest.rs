@@ -84,9 +84,8 @@ fn config(alias: &str) -> BacktestConfig {
         portfolio_execution_aliases: Vec::new(),
         activation_time_ms: None,
         initial_capital: 1_000.0,
-        fee_bps: 0.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
+        maker_fee_bps: 0.0,
+        taker_fee_bps: 0.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
@@ -151,9 +150,8 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
         portfolio_execution_aliases: Vec::new(),
         activation_time_ms: None,
         initial_capital: 1_000.0,
-        fee_bps: 0.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
+        maker_fee_bps: 0.0,
+        taker_fee_bps: 0.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
@@ -211,19 +209,13 @@ fn rejects_invalid_backtest_config() {
     assert!(matches!(err, BacktestError::InvalidInitialCapital { .. }));
 
     let mut invalid = config("spot");
-    invalid.fee_bps = -1.0;
-    let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
-        .expect_err("expected invalid fee");
-    assert!(matches!(err, BacktestError::InvalidFeeBps { .. }));
-
-    let mut invalid = config("spot");
-    invalid.maker_fee_bps = Some(-1.0);
+    invalid.maker_fee_bps = -1.0;
     let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
         .expect_err("expected invalid maker fee");
     assert!(matches!(err, BacktestError::InvalidMakerFeeBps { .. }));
 
     let mut invalid = config("spot");
-    invalid.taker_fee_bps = Some(-1.0);
+    invalid.taker_fee_bps = -1.0;
     let err = run_backtest_with_sources(&compiled, runtime.clone(), VmLimits::default(), invalid)
         .expect_err("expected invalid taker fee");
     assert!(matches!(err, BacktestError::InvalidTakerFeeBps { .. }));
@@ -1144,7 +1136,8 @@ plot(spot.close)",
         }],
     };
     let mut cfg = config("spot");
-    cfg.fee_bps = 100.0;
+    cfg.maker_fee_bps = 100.0;
+    cfg.taker_fee_bps = 100.0;
     cfg.slippage_bps = 100.0;
     let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), cfg)
         .expect("backtest should succeed");
@@ -1191,8 +1184,8 @@ plot(spot.close)",
         }],
     };
     let mut cfg = config("spot");
-    cfg.maker_fee_bps = Some(0.0);
-    cfg.taker_fee_bps = Some(100.0);
+    cfg.maker_fee_bps = 0.0;
+    cfg.taker_fee_bps = 100.0;
     let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), cfg)
         .expect("backtest should succeed");
 
@@ -1241,8 +1234,8 @@ plot(spot.close)",
         }],
     };
     let mut cfg = config("spot");
-    cfg.maker_fee_bps = Some(0.0);
-    cfg.taker_fee_bps = Some(100.0);
+    cfg.maker_fee_bps = 0.0;
+    cfg.taker_fee_bps = 100.0;
     let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), cfg)
         .expect("backtest should succeed");
 

@@ -69,8 +69,7 @@ Requirements:
 palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
-  [--fee-bps <N>] \
-  [--maker-fee-bps <N>] [--taker-fee-bps <N>] \
+  --maker-fee-bps <N> --taker-fee-bps <N> \
   [--fee-schedule <alias:maker:taker>]... \
   [--slippage-bps <N>] \
   [--diagnostics summary|full-trace] \
@@ -81,6 +80,7 @@ Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
+- execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 
 ## `palmscript run walk-forward`
 
@@ -88,6 +88,10 @@ Additional diagnostics flag:
 palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
   --train-bars <N> --test-bars <N> [--step-bars <N>] \
   [--execution-source <alias>]... \
+  [--initial-capital <N>] \
+  --maker-fee-bps <N> --taker-fee-bps <N> \
+  [--fee-schedule <alias:maker:taker>]... \
+  [--slippage-bps <N>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
 ```
@@ -96,6 +100,7 @@ Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
+- execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 
 ## `palmscript run optimize`
 
@@ -103,6 +108,10 @@ Additional diagnostics flag:
 palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--runner walk-forward|backtest] \
   [--execution-source <alias>]... \
+  [--initial-capital <N>] \
+  --maker-fee-bps <N> --taker-fee-bps <N> \
+  [--fee-schedule <alias:maker:taker>]... \
+  [--slippage-bps <N>] \
   [--train-bars <N>] \
   [--test-bars <N>] \
   [--step-bars <N>] \
@@ -129,6 +138,11 @@ Arguments and flags:
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--runner`: optimize evaluation mode; defaults to `walk-forward`
 - `--execution-source <alias>`: execution alias selection; repeat it to activate portfolio mode
+- `--initial-capital <N>`: account starting equity for each execution-oriented run; default `10000`
+- `--maker-fee-bps <N>`: required global maker fee in basis points for execution-oriented runs
+- `--taker-fee-bps <N>`: required global taker fee in basis points for execution-oriented runs
+- `--fee-schedule <alias:maker:taker>`: optional execution-alias-specific maker/taker fee override; repeat per alias
+- `--slippage-bps <N>`: slippage model in basis points; default `2`
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - `--train-bars <N>`: in-sample bars per walk-forward segment
@@ -154,6 +168,7 @@ Default safety behavior:
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
 - repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
+- execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
@@ -165,8 +180,7 @@ Default safety behavior:
 palmscript run paper <script.ps> \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
-  [--fee-bps <N>] \
-  [--maker-fee-bps <N>] [--taker-fee-bps <N>] \
+  --maker-fee-bps <N> --taker-fee-bps <N> \
   [--fee-schedule <alias:maker:taker>]... \
   [--slippage-bps <N>] \
   [--leverage <N>] \
@@ -181,9 +195,8 @@ Arguments and flags:
 - `--execution-source <alias>`: execution alias selection; repeat it to activate shared-equity portfolio paper mode
 - `run paper` requires at least one declared `execution` target in the script
 - `--initial-capital <N>`: paper account starting equity; default `10000`
-- `--fee-bps <N>`: uniform fee fallback in basis points; default `5`
-- `--maker-fee-bps <N>`: optional global maker fee override; defaults to `--fee-bps`
-- `--taker-fee-bps <N>`: optional global taker fee override; defaults to `--fee-bps`
+- `--maker-fee-bps <N>`: required global maker fee in basis points for execution-oriented runs
+- `--taker-fee-bps <N>`: required global taker fee in basis points for execution-oriented runs
 - `--fee-schedule <alias:maker:taker>`: optional execution-alias-specific maker/taker fee override; repeat per alias
 - `--slippage-bps <N>`: slippage model in basis points; default `2`
 - `--leverage <N>`: optional isolated leverage for perp execution aliases

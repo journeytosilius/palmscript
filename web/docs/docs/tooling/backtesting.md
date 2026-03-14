@@ -36,7 +36,6 @@ Run a backtest end to end:
 palmscript run backtest strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
-  --fee-bps 10 \
   --maker-fee-bps 2 \
   --taker-fee-bps 5 \
   --slippage-bps 2
@@ -48,6 +47,8 @@ Diagnostics detail can now be configured explicitly:
 palmscript run backtest strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --diagnostics full-trace
 ```
 
@@ -66,7 +67,7 @@ venue.
 
 Every executable inline order and every `order_template` must declare `venue = <execution_alias>` explicitly, even when the script declares only one execution target.
 
-Fee modeling now supports global maker/taker splits plus per-execution-alias overrides. `--fee-bps` remains a uniform fallback, `--maker-fee-bps` and `--taker-fee-bps` split the default schedule, and `--fee-schedule <alias:maker:taker>` overrides one selected execution alias for portfolio or cross-exchange simulations.
+Fee modeling now requires explicit global maker/taker inputs for execution-oriented runs. Pass `--maker-fee-bps` and `--taker-fee-bps` on every backtest, walk-forward, walk-forward-sweep, optimize, or paper invocation, and repeat `--fee-schedule <alias:maker:taker>` when one selected execution alias should use a different fee tier.
 
 Execution-routed order example:
 
@@ -88,7 +89,6 @@ palmscript run backtest portfolio_caps_backtest.ps \
   --to 1772884800000 \
   --execution-source left \
   --execution-source right \
-  --fee-bps 10 \
   --maker-fee-bps 2 \
   --taker-fee-bps 5 \
   --slippage-bps 2
@@ -106,6 +106,8 @@ Perp execution sources also accept isolated-margin controls:
 palmscript run backtest strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --execution-source perp \
   --leverage 3 \
   --margin-mode isolated
@@ -117,6 +119,8 @@ Run a rolling walk-forward evaluation:
 palmscript run walk-forward strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63
@@ -135,6 +139,8 @@ Run a bounded walk-forward sweep:
 palmscript run walk-forward-sweep strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
@@ -158,6 +164,8 @@ Run seeded optimization:
 palmscript run optimize strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
@@ -188,6 +196,8 @@ Run optimize in the foreground when you want a direct result:
 palmscript run optimize strategy.ps \
   --from 1741348800000 \
   --to 1772884800000 \
+  --maker-fee-bps 2 \
+  --taker-fee-bps 5 \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
@@ -221,7 +231,7 @@ This does not replace paper trading or live forward validation, but it does make
 PalmScript now also exposes a first-class local paper mode on top of the same VM and deterministic order simulator:
 
 ```bash
-palmscript run paper strategy.ps --execution-source exec
+palmscript run paper strategy.ps --execution-source exec --maker-fee-bps 2 --taker-fee-bps 5
 palmscript execution serve
 ```
 
@@ -336,9 +346,8 @@ let result = run_backtest_with_sources(
         execution_source_alias: "spot".to_string(),
         portfolio_execution_aliases: Vec::new(),
         initial_capital: 10_000.0,
-        fee_bps: 5.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
+        maker_fee_bps: 2.0,
+        taker_fee_bps: 5.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 2.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
@@ -378,10 +387,9 @@ let result = run_walk_forward_with_sources(
             execution_source_alias: "spot".to_string(),
             portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
-            fee_bps: 5.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
-        execution_fee_schedules: std::collections::BTreeMap::new(),
+            maker_fee_bps: 2.0,
+            taker_fee_bps: 5.0,
+            execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 2.0,
             diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
@@ -428,10 +436,9 @@ let result = run_walk_forward_sweep_with_source(
                 execution_source_alias: "spot".to_string(),
                 portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
-                fee_bps: 5.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
-        execution_fee_schedules: std::collections::BTreeMap::new(),
+                maker_fee_bps: 2.0,
+                taker_fee_bps: 5.0,
+                execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 2.0,
                 diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
@@ -491,10 +498,9 @@ let result = run_optimize_with_source(
             execution_source_alias: "spot".to_string(),
             portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
-            fee_bps: 5.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
-        execution_fee_schedules: std::collections::BTreeMap::new(),
+            maker_fee_bps: 2.0,
+            taker_fee_bps: 5.0,
+            execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 2.0,
             diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
@@ -506,10 +512,9 @@ let result = run_optimize_with_source(
                 execution_source_alias: "spot".to_string(),
                 portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
-                fee_bps: 5.0,
-        maker_fee_bps: None,
-        taker_fee_bps: None,
-        execution_fee_schedules: std::collections::BTreeMap::new(),
+                maker_fee_bps: 2.0,
+                taker_fee_bps: 5.0,
+                execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 2.0,
                 diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
