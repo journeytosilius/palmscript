@@ -417,9 +417,9 @@ plot(left.close)",
     );
     assert!(legacy_trigger.iter().any(|diag| {
         diag.0 == DiagnosticKind::Type
-            && diag.1.contains(
-                "signal declaration for `long_entry` requires a matching `order ...` declaration",
-            )
+            && diag
+                .1
+                .contains("legacy trigger `long_entry` is no longer supported for execution")
     }));
 }
 
@@ -458,7 +458,9 @@ fn compile_accepts_new_exchange_backed_source_templates() {
 
 #[test]
 fn rejects_position_namespace_outside_attached_exits() {
-    let source = with_interval("entry long = position.entry_price > 0\nplot(src.close)");
+    let source = with_interval(
+        "entry long = position.entry_price > 0\nexecution src = binance.spot(\"BTCUSDT\")\norder entry long = market()\nplot(src.close)",
+    );
     assert_compile_diagnostics(
         "position_namespace_outside_attached_exits",
         &source,
@@ -871,6 +873,8 @@ fn parse_diagnostics_aggregate_cleanly_without_panics() {
 fn rejects_risk_pct_for_target_size_declarations() {
     let source = with_interval(
         "entry long = close > close[1]
+execution src = binance.spot(\"BTCUSDT\")
+order entry long = market()
 target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
 size target long = risk_pct(0.01, close)
 plot(close)",
@@ -889,6 +893,7 @@ plot(close)",
 fn rejects_invalid_risk_pct_arity() {
     let source = with_interval(
         "entry long = close > close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = market()
 size entry long = risk_pct(0.01)
 plot(close)",
@@ -929,6 +934,7 @@ fn rejects_duplicate_order_declarations_for_same_role() {
         "duplicate_order_role",
         &with_interval(
             "entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = market()
 order entry long = limit(src.close[1], tif.gtc, false)
 plot(src.close)",
@@ -946,6 +952,8 @@ fn rejects_duplicate_staged_order_declarations_for_same_role() {
         "duplicate_staged_order_role",
         &with_interval(
             "entry1 long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
+order entry1 long = market()
 target2 long = take_profit_market(src.close + 1, trigger_ref.last)
 target2 long = take_profit_market(src.close + 2, trigger_ref.last)
 plot(src.close)",
@@ -963,6 +971,7 @@ fn rejects_invalid_order_constructor_argument_types() {
         "invalid_limit_tif",
         &with_interval(
             "entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = limit(src.close[1], ma_type.ema, false)
 plot(src.close)",
         ),
@@ -979,6 +988,7 @@ fn rejects_unknown_order_enum_variants() {
         "unknown_order_enum",
         &with_interval(
             "entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = stop_market(src.close + 1, trigger_ref.foo)
 plot(src.close)",
         ),

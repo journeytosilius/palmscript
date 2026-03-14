@@ -81,7 +81,7 @@ Rules:
 `trigger` publishes a named boolean output series:
 
 ```palmscript
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 ```
 
 Rules:
@@ -132,7 +132,7 @@ Rules:
 
 - order declarations are top-level only
 - there may be at most one `order` declaration per signal role
-- execution-oriented CLI modes require an explicit `order ...` declaration for every declared `entry` / `exit` signal role
+- any script that declares trading signal roles requires an explicit `order ...` declaration for every declared `entry` / `exit` signal role
 - `execution` declarations are top-level venue bindings that keep execution routing separate from market-data `source` declarations
 - order constructors support the legacy positional form and the named-argument form
 - named order arguments may not be mixed with positional arguments in the same constructor call
@@ -140,7 +140,7 @@ Rules:
 - numeric order fields such as `price`, `trigger_price`, and `expire_time_ms` are evaluated by the runtime as hidden internal series
 - `tif.<variant>` and `trigger_ref.<variant>` are typed enum literals checked at compile time
 - venue-specific compatibility checks run when the backtest starts, based on the selected execution target
-- execution-oriented CLI commands require at least one declared `execution` target
+- any script that declares trading signal roles requires at least one declared `execution` target
 
 ## Attached Exits
 
@@ -193,20 +193,17 @@ Rules:
 - outside backtests, `position_event.*` is defined but evaluates to `false` on every step
 - outside backtests, `last_*_exit.*` is defined but evaluates to `na`
 
-## Legacy Trigger Compatibility
+## Reserved Trading Trigger Names
 
-Legacy strategy scripts that use trigger names are still supported temporarily:
+Ordinary `trigger` declarations remain valid for alerting and non-trading
+consumers, but the reserved trading trigger names are no longer executable
+aliases.
 
-- `trigger long_entry = ...`
-- `trigger long_exit = ...`
-- `trigger short_entry = ...`
-- `trigger short_exit = ...`
+Rules:
 
-Compatibility rules:
-
-- if a script declares any first-class `entry` / `exit` signals, the backtester uses those roles directly
-- if a script declares no first-class signals, the backtester falls back to the legacy trigger names above
-- ordinary `trigger` declarations remain valid for alerting or non-strategy consumers
+- `trigger long_entry = ...`, `trigger long_exit = ...`, `trigger short_entry = ...`, and `trigger short_exit = ...` are rejected for executable trading scripts
+- use first-class `entry` / `exit` declarations plus matching `order ...` templates instead
+- non-reserved trigger names such as `trigger breakout = ...` remain valid
 
 ## Runtime Output Collections
 

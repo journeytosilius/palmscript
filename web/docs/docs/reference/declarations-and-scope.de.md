@@ -151,7 +151,7 @@ Order-Deklarationen sind nur auf Top-Level erlaubt:
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
 order entry1 long = limit(spot.close[1], tif.gtc, false)
@@ -227,9 +227,9 @@ Regeln:
   `bar_index`, `realized_pnl`, `realized_return` und `bars_held`
 - `last_*_exit.kind` enthaelt `exit_kind.liquidation` zusaetzlich zu den
   vorhandenen Exit-Typen
-- Legacy-Skripte im Stil `trigger long_entry = ...` bleiben als
-  Kompatibilitaetsbruecke unterstuetzt, solange keine erstklassigen
-  Signal-Deklarationen vorhanden sind
+- Reservierte Trigger-Namen wie `trigger long_entry = ...` sind keine
+  ausfuehrbaren Aliasse mehr; verwende erstklassige `entry` / `exit`
+  Deklarationen plus passende `order ...` Templates
 
 ## Bedingter Scope
 
@@ -281,4 +281,4 @@ Regeln:
 - Matching `source` and `execution` aliases may mirror each other when the template and symbol are the same.
 - Order constructors now accept named arguments, and `venue = exec` binds that order role to a declared execution alias.
 - Positional and named order arguments cannot be mixed in the same order constructor call.
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

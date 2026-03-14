@@ -10,7 +10,7 @@ use palmscript::{
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
 
 fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
-    compile_script(&support::mirror_execution_and_order_decls(source))
+    compile_script(&support::mirror_execution_decls(source))
 }
 
 #[test]
@@ -21,6 +21,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = spot.close < spot.close[1]
 exit short = true
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()
 plot(spot.close)";
     let compiled = compile(source).expect("script compiles");
     let runtime = source_runtime_config(
@@ -89,7 +93,11 @@ source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true";
+exit short = true
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()";
     let compiled = compile(source).expect("script compiles");
     let runtime = source_runtime_config(
         Interval::Min1,
@@ -127,14 +135,18 @@ exit short = true";
 
 #[test]
 fn walk_forward_sweep_ranks_input_candidates() {
-    let source = support::mirror_execution_and_order_decls(
+    let source = support::mirror_execution_decls(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0
 entry long = spot.close > spot.close[1] + threshold
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true",
+exit short = true
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()",
     );
     let runtime = source_runtime_config(
         Interval::Min1,

@@ -774,7 +774,7 @@ fn state_builtin_persists_regime_transitions() {
 #[test]
 fn triggers_emit_samples_and_events() {
     let compiled = palmscript::compile(&with_interval(
-        "trigger long_entry = close > close[1]\nplot(0)",
+        "trigger breakout = close > close[1]\nplot(0)",
     ))
     .expect("script compiles");
     let outputs = run(

@@ -13,14 +13,18 @@ use palmscript::{
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
 
 fn optimize_source() -> String {
-    support::mirror_execution_and_order_decls(
+    support::mirror_execution_decls(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0
 entry long = spot.close > spot.close[1] + threshold
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true",
+exit short = true
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()",
     )
 }
 
@@ -276,7 +280,7 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
 
 #[test]
 fn optimize_respects_stepped_param_spaces() {
-    let source = support::mirror_execution_and_order_decls(
+    let source = support::mirror_execution_decls(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0
@@ -284,7 +288,11 @@ input offset = 0
 entry long = spot.close > spot.close[1] + threshold + offset
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true",
+exit short = true
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()",
     );
     let result = run_optimize_with_source(
         &source,

@@ -96,7 +96,7 @@ Reglas:
 `trigger` publica una serie de salida booleana con nombre:
 
 ```palmscript
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 ```
 
 Reglas:
@@ -240,24 +240,11 @@ Reglas:
   `false` en cada paso
 - fuera de los backtests, `last_*_exit.*` esta definido pero evalua a `na`
 
-## Compatibilidad Con Triggers Legacy
+## Reserved Trading Trigger Names
 
-Los scripts de estrategia legacy que usan nombres de trigger siguen soportados
-temporalmente:
-
-- `trigger long_entry = ...`
-- `trigger long_exit = ...`
-- `trigger short_entry = ...`
-- `trigger short_exit = ...`
-
-Reglas de compatibilidad:
-
-- si un script declara senales `entry` / `exit` de primera clase, el backtester
-  usa esos roles directamente
-- si un script no declara senales de primera clase, el backtester vuelve a los
-  nombres legacy de trigger listados arriba
-- las declaraciones `trigger` ordinarias siguen siendo validas para alertas o
-  consumidores no orientados a estrategia
+- `trigger long_entry = ...`, `trigger long_exit = ...`, `trigger short_entry = ...`, and `trigger short_exit = ...` are no longer executable aliases
+- use first-class `entry` / `exit` declarations plus matching `order ...` templates instead
+- ordinary `trigger` declarations with other names remain valid
 
 ## Colecciones De Salida En Runtime
 
@@ -291,4 +278,4 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
 - full-trace mode adds one typed per-bar decision trace per execution bar
 - optimize output now includes top-candidate holdout checks plus parameter stability summaries
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

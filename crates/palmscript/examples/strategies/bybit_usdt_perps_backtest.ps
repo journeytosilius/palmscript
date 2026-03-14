@@ -4,8 +4,8 @@ source bb = bybit.usdt_perps("BTCUSDT")
 execution bb = bybit.usdt_perps("BTCUSDT")
 use bb 1h
 
-trigger long_entry = bb.close > bb.close[1] and bb.close > bb.1h.close
-trigger long_exit = bb.close < bb.close[1]
+entry long = bb.close > bb.close[1] and bb.close > bb.1h.close
+exit long = bb.close < bb.close[1]
 
 order entry long = market()
 order exit long = market()

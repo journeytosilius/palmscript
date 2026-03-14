@@ -314,22 +314,30 @@ impl<'a> Analyzer<'a> {
         for stmt in &ast.statements {
             self.analyze_stmt(stmt);
         }
-        if !self.analysis.declared_executions.is_empty() {
-            let mut declared_signal_spans = HashMap::new();
-            for stmt in &ast.statements {
-                match &stmt.kind {
-                    StmtKind::Signal { role, .. } => {
-                        declared_signal_spans
-                            .entry(compiled_signal_role(*role))
-                            .or_insert(stmt.span);
-                    }
-                    StmtKind::Trigger { name, .. } => {
-                        if let Some(role) = legacy_compiled_signal_role(name) {
-                            declared_signal_spans.entry(role).or_insert(stmt.span);
-                        }
-                    }
-                    _ => {}
+        let mut declared_signal_spans = HashMap::new();
+        let mut first_executable_span = None;
+        for stmt in &ast.statements {
+            match &stmt.kind {
+                StmtKind::Signal { role, .. } => {
+                    first_executable_span.get_or_insert(stmt.span);
+                    declared_signal_spans
+                        .entry(compiled_signal_role(*role))
+                        .or_insert(stmt.span);
                 }
+                StmtKind::Order { .. } | StmtKind::OrderSize { .. } => {
+                    first_executable_span.get_or_insert(stmt.span);
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(span) = first_executable_span {
+            if self.analysis.declared_executions.is_empty() {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "trading scripts must declare at least one `execution <alias> = <exchange>.<market>(\"...\")` target",
+                    span,
+                ));
             }
             for (role, span) in declared_signal_spans {
                 if self.analysis.orders.iter().any(|order| order.role == role) {
@@ -338,7 +346,7 @@ impl<'a> Analyzer<'a> {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!(
-                        "signal declaration for `{}` requires a matching `order ...` declaration when the script declares `execution` targets",
+                        "signal declaration for `{}` requires a matching `order ...` declaration",
                         role.canonical_name()
                     ),
                     span,
@@ -1347,6 +1355,16 @@ impl<'a> Analyzer<'a> {
                 self.analyze_regime_stmt(stmt, name, expr);
             }
             StmtKind::Trigger { name, expr, .. } => {
+                if let Some(role) = legacy_compiled_signal_role(name) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "legacy trigger `{name}` is no longer supported for execution; use `{}` plus a matching `order ...` declaration",
+                            signal_role_surface(role)
+                        ),
+                        stmt.span,
+                    ));
+                }
                 self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger, None);
             }
             StmtKind::Signal { role, expr } => {
@@ -5085,6 +5103,33 @@ fn legacy_compiled_signal_role(name: &str) -> Option<CompiledSignalRole> {
         "short_entry" => Some(CompiledSignalRole::ShortEntry),
         "short_exit" => Some(CompiledSignalRole::ShortExit),
         _ => None,
+    }
+}
+
+fn signal_role_surface(role: CompiledSignalRole) -> &'static str {
+    match role {
+        CompiledSignalRole::LongEntry => "entry long = ...",
+        CompiledSignalRole::LongEntry2 => "entry2 long = ...",
+        CompiledSignalRole::LongEntry3 => "entry3 long = ...",
+        CompiledSignalRole::LongExit => "exit long = ...",
+        CompiledSignalRole::ShortEntry => "entry short = ...",
+        CompiledSignalRole::ShortEntry2 => "entry2 short = ...",
+        CompiledSignalRole::ShortEntry3 => "entry3 short = ...",
+        CompiledSignalRole::ShortExit => "exit short = ...",
+        CompiledSignalRole::ProtectLong => "protect long = ...",
+        CompiledSignalRole::ProtectAfterTarget1Long => "protect_after_target1 long = ...",
+        CompiledSignalRole::ProtectAfterTarget2Long => "protect_after_target2 long = ...",
+        CompiledSignalRole::ProtectAfterTarget3Long => "protect_after_target3 long = ...",
+        CompiledSignalRole::ProtectShort => "protect short = ...",
+        CompiledSignalRole::ProtectAfterTarget1Short => "protect_after_target1 short = ...",
+        CompiledSignalRole::ProtectAfterTarget2Short => "protect_after_target2 short = ...",
+        CompiledSignalRole::ProtectAfterTarget3Short => "protect_after_target3 short = ...",
+        CompiledSignalRole::TargetLong => "target long = ...",
+        CompiledSignalRole::TargetLong2 => "target2 long = ...",
+        CompiledSignalRole::TargetLong3 => "target3 long = ...",
+        CompiledSignalRole::TargetShort => "target short = ...",
+        CompiledSignalRole::TargetShort2 => "target2 short = ...",
+        CompiledSignalRole::TargetShort3 => "target3 short = ...",
     }
 }
 

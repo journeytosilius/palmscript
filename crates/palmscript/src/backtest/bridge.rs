@@ -99,14 +99,6 @@ pub(crate) fn prepare_backtest_for_aliases(
     let signal_roles = resolve_signals(compiled)?;
     let order_templates = explicit_orders_by_role(compiled);
 
-    for role in signal_roles.values().copied() {
-        if !order_templates.contains_key(&role) {
-            return Err(BacktestError::MissingOrderDeclaration {
-                role: role.canonical_name().to_string(),
-            });
-        }
-    }
-
     for (execution_alias, template) in executions {
         let venue = VenueOrderProfile::from_template(*template);
         for order in order_templates.values() {
@@ -200,23 +192,13 @@ fn explicit_orders_by_role(compiled: &CompiledProgram) -> HashMap<SignalRole, Or
 fn resolve_signals(
     compiled: &CompiledProgram,
 ) -> Result<HashMap<usize, SignalRole>, BacktestError> {
-    let has_first_class = compiled
-        .program
-        .outputs
-        .iter()
-        .any(|decl| decl.signal_role.is_some());
     let mut roles = HashMap::new();
 
     for (output_id, decl) in compiled.program.outputs.iter().enumerate() {
         if !matches!(decl.kind, crate::bytecode::OutputKind::Trigger) {
             continue;
         }
-        let role = if has_first_class {
-            decl.signal_role
-        } else {
-            legacy_signal_role(&decl.name)
-        };
-        if let Some(role) = role {
+        if let Some(role) = decl.signal_role {
             roles.insert(output_id, role);
         }
     }
@@ -242,16 +224,6 @@ fn resolve_signals(
         });
     }
     Ok(roles)
-}
-
-fn legacy_signal_role(name: &str) -> Option<SignalRole> {
-    match name {
-        "long_entry" => Some(SignalRole::LongEntry),
-        "long_exit" => Some(SignalRole::LongExit),
-        "short_entry" => Some(SignalRole::ShortEntry),
-        "short_exit" => Some(SignalRole::ShortExit),
-        _ => None,
-    }
 }
 
 fn collect_exports(compiled: &CompiledProgram) -> Vec<PreparedExport> {

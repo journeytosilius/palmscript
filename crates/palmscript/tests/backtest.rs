@@ -13,7 +13,7 @@ use palmscript::{
 mod support;
 
 fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
-    compile_script(&support::mirror_execution_and_order_decls(source))
+    compile_script(&support::mirror_execution_decls(source))
 }
 
 fn bar(time: i64, open: f64, close: f64) -> Bar {
@@ -143,7 +143,7 @@ fn approx_eq(left: f64, right: f64) {
 #[test]
 fn rejects_invalid_backtest_config() {
     let compiled = compile(
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = true\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = true\norder entry long = market()\nplot(spot.close)",
     )
     .expect("script should compile");
     let runtime = SourceRuntimeConfig {
@@ -177,7 +177,7 @@ fn rejects_invalid_backtest_config() {
 #[test]
 fn rejects_unknown_execution_source_alias() {
     let compiled = compile(
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = true\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = true\norder entry long = market()\nplot(spot.close)",
     )
     .expect("script should compile");
     let runtime = SourceRuntimeConfig {
@@ -242,8 +242,10 @@ fn long_trade_applies_next_bar_open_and_marks_equity() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger long_entry = spot.close > spot.close[1]
-trigger long_exit = spot.close < spot.close[1]
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market()
+order exit long = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -302,6 +304,9 @@ entry short = false
 exit long = false
 exit short = false
 order entry long = market(venue = gate_exec)
+order entry short = market()
+order exit long = market()
+order exit short = market()
 size entry long = 0.4
 plot(left.close)",
     )
@@ -378,6 +383,9 @@ entry short = false
 exit long = false
 exit short = false
 order entry long = market(venue = gate_exec)
+order entry short = market()
+order exit long = market()
+order exit short = market()
 protect long = stop_market(trigger_price = position.entry_price - 10, trigger_ref = trigger_ref.last, venue = gate_exec)
 target long = take_profit_market(trigger_price = position.entry_price + 1, trigger_ref = trigger_ref.last, venue = gate_exec)
 plot(left.close)",
@@ -475,6 +483,10 @@ entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
 entry short = false
 exit short = false
+order entry long = market()
+order exit long = market()
+order entry short = market()
+order exit short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -516,6 +528,10 @@ entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
 entry short = false
 exit short = false
+order entry long = market()
+order exit long = market()
+order entry short = market()
+order exit short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -584,6 +600,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = false
 exit short = false
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -630,6 +650,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = spot.close < spot.close[1]
 exit short = false
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -666,6 +690,9 @@ size entry long = 0.4
 entry short = false
 exit long = false
 exit short = false
+order entry short = market()
+order exit long = market()
+order exit short = market()
 plot(left.close)",
     )
     .expect("script should compile");
@@ -730,6 +757,9 @@ size entry long = 0.4
 entry short = false
 exit long = false
 exit short = false
+order entry short = market()
+order exit long = market()
+order exit short = market()
 plot(left.close)",
     )
     .expect("script should compile");
@@ -783,6 +813,10 @@ entry long = spot.close > spot.close[1]
 entry short = false
 exit long = false
 exit short = false
+order entry long = market()
+order entry short = market()
+order exit long = market()
+order exit short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -846,6 +880,10 @@ entry long = spot.close > spot.close[1]
 exit long = false
 entry short = false
 exit short = false
+order entry long = market()
+order exit long = market()
+order entry short = market()
+order exit short = market()
 export timed_out = last_long_exit.kind == exit_kind.signal
 plot(spot.close)",
     )
@@ -900,6 +938,8 @@ source spot = binance.spot(\"BTCUSDT\")
 export trend_state = spot.close > spot.close[1]
 entry long = spot.close > spot.close[1]
 exit long = spot.close < spot.close[1]
+order entry long = market()
+order exit long = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -997,8 +1037,10 @@ fn fees_and_slippage_adjust_fill_prices_and_fees() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger long_entry = spot.close > spot.close[1]
-trigger long_exit = spot.close < spot.close[1]
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market()
+order exit long = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1042,8 +1084,10 @@ fn short_trade_marks_to_market_and_realizes_on_exit() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger short_entry = spot.close < spot.close[1]
-trigger short_exit = spot.close > spot.close[1]
+entry short = spot.close < spot.close[1]
+exit short = spot.close > spot.close[1]
+order entry short = market()
+order exit short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1087,8 +1131,10 @@ fn reversal_closes_and_reopens_on_same_execution_bar() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger long_entry = spot.close > spot.close[1]
-trigger short_entry = spot.close < spot.close[1]
+entry long = spot.close > spot.close[1]
+entry short = spot.close < spot.close[1]
+order entry long = market()
+order entry short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1131,7 +1177,8 @@ fn same_side_reentry_is_ignored() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger long_entry = spot.close > spot.close[1]
+entry long = spot.close > spot.close[1]
+order entry long = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1180,6 +1227,7 @@ entry long = spot.time == {t0} or spot.time == {}
 order entry long = market()
 size entry long = 0.5
 exit long = false
+order exit long = market()
 plot(spot.close)",
         t0 + support::MINUTE_MS
     ))
@@ -1230,8 +1278,10 @@ fn conflicting_entries_are_rejected() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger long_entry = true
-trigger short_entry = true
+entry long = true
+entry short = true
+order entry long = market()
+order entry short = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1257,7 +1307,8 @@ fn multi_source_signal_fills_on_next_execution_bar() {
         "interval 1m
 source exec = binance.spot(\"BTCUSDT\")
 source signal = bybit.usdt_perps(\"BTCUSDT\")
-trigger long_entry = signal.close > signal.close[1]
+entry long = signal.close > signal.close[1]
+order entry long = market()
 plot(exec.close)",
     )
     .expect("script should compile");
@@ -1317,7 +1368,8 @@ fn open_position_is_reported_without_synthetic_close() {
     let compiled = compile(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
-trigger long_entry = spot.close > spot.close[1]
+entry long = spot.close > spot.close[1]
+order entry long = market()
 plot(spot.close)",
     )
     .expect("script should compile");
@@ -1535,6 +1587,7 @@ fn isolated_perp_mode_liquidates_on_mark_price_touch_and_surfaces_exit_state() {
         "interval 1m
 source perp = binance.usdm(\"BTCUSDT\")
 entry long = perp.close > perp.close[1]
+order entry long = market()
 plot(perp.close)
 export liquidated = position_event.long_liquidation_fill
 export last_kind = last_long_exit.kind == exit_kind.liquidation",
@@ -1636,6 +1689,7 @@ fn isolated_perp_does_not_liquidate_on_entry_bar_range() {
         "interval 1m
 source perp = binance.usdm(\"BTCUSDT\")
 entry long = perp.close > perp.close[1]
+order entry long = market()
 plot(perp.close)",
     )
     .expect("script should compile");
@@ -1695,6 +1749,7 @@ fn isolated_perp_liquidation_caps_loss_to_isolated_margin() {
         "interval 1m
 source perp = binance.usdm(\"BTCUSDT\")
 entry long = perp.close > perp.close[1]
+order entry long = market()
 plot(perp.close)",
     )
     .expect("script should compile");
@@ -2018,6 +2073,7 @@ fn attached_exits_use_position_state_and_protect_wins_same_bar_ambiguity() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
+order entry long = market()
 protect long = stop_market(position.entry_price - 1, trigger_ref.last)
 target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
 plot(spot.close)"
@@ -2092,6 +2148,8 @@ fn signal_exit_cancels_attached_exits_when_position_closes() {
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
 exit long = spot.time == {}
+order entry long = market()
+order exit long = market()
 protect long = stop_market(position.entry_price - 5, trigger_ref.last)
 target long = take_profit_market(position.entry_price + 5, trigger_ref.last)
 plot(spot.close)",
@@ -2139,6 +2197,7 @@ fn partial_target_exit_closes_a_slice_and_leaves_runner_for_protect() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
+order entry long = market()
 protect long = stop_market(position.entry_price - 1, trigger_ref.last)
 target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
 size target long = 0.5
@@ -2436,6 +2495,7 @@ fn position_event_anchors_fire_on_fill_bar_and_drive_since_helpers() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
+order entry long = market()
 export entry_fill = position_event.long_entry_fill
 export trail = highest_since(position_event.long_entry_fill, spot.high)
 plot(spot.close)"
@@ -2518,6 +2578,7 @@ fn exit_outcome_events_and_last_exit_snapshot_are_visible_on_fill_bar() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
+order entry long = market()
 target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
 export exit_fill = position_event.long_exit_fill
 export target_fill = position_event.long_target_fill
@@ -2604,6 +2665,7 @@ entry long = spot.time == {t0} or (
     last_long_exit.kind == exit_kind.target
     and barssince(position_event.long_target_fill) == 1
 )
+order entry long = market()
 protect long = stop_market(position.entry_price - 5, trigger_ref.last)
 target long = take_profit_market(position.entry_price + 1, trigger_ref.last)
 plot(spot.close)"
@@ -2659,8 +2721,10 @@ fn last_exit_global_alias_tracks_most_recent_closed_side() {
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 entry long = spot.time == {t0}
+order entry long = market()
 target long = take_profit_market(position.entry_price + 1, trigger_ref.last)
 entry short = last_long_exit.kind == exit_kind.target and barssince(position_event.long_target_fill) == 1
+order entry short = market()
 target short = take_profit_market(position.entry_price - 1, trigger_ref.last)
 export last_exit_is_short = last_exit.side == position_side.short
 plot(spot.close)"

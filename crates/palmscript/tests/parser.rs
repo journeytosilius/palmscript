@@ -148,6 +148,7 @@ fn parses_portfolio_control_and_group_declarations() {
         "interval 1m
 source left = binance.spot(\"BTCUSDT\")
 source right = gate.spot(\"BTC_USDT\")
+execution exec = binance.spot(\"BTCUSDT\")
 max_positions = 2
 max_long_positions = 1
 max_short_positions = 1
@@ -158,6 +159,10 @@ entry long = left.close > right.close
 entry short = left.close < right.close
 exit long = false
 exit short = false
+order entry long = market(venue = exec)
+order entry short = market(venue = exec)
+order exit long = market(venue = exec)
+order exit short = market(venue = exec)
 plot(left.close)",
     )
     .expect("portfolio declarations should compile");
@@ -222,6 +227,7 @@ fn parses_order_declarations_with_enum_literals() {
     compile(&with_interval(
         "entry long = src.close > src.close[1]
 exit long = src.close < src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = limit(src.close[1], tif.gtc, false)
 order exit long = stop_market(src.close[1], trigger_ref.last)
 plot(src.close)",
@@ -317,10 +323,12 @@ fn parses_attached_exit_declarations_with_position_fields() {
         "interval 1m
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 protect long = stop_market(
     position.side == position_side.long ? position.entry_price - 1 : position.entry_price - 2,
     trigger_ref.last
 )
+order entry long = market()
 target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
 plot(src.close)",
     )
@@ -333,6 +341,8 @@ fn parses_partial_target_size_declarations() {
         "interval 1m
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
+order entry long = market()
 target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
 size target long = 0.5
 plot(src.close)",
@@ -346,6 +356,7 @@ fn parses_partial_entry_size_declarations() {
         "interval 1m
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = market()
 size entry long = 0.5
 plot(src.close)",
@@ -360,6 +371,7 @@ fn parses_risk_based_entry_size_declarations() {
 source src = binance.spot(\"BTCUSDT\")
 let stop_price = src.close - 2
 entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry long = market()
 size entry long = risk_pct(0.01, stop_price)
 protect long = stop_market(stop_price, trigger_ref.last)
@@ -375,6 +387,7 @@ fn parses_staged_entries_targets_and_protect_ratchets() {
 source src = binance.spot(\"BTCUSDT\")
 entry1 long = src.close > src.close[1]
 entry2 long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
 order entry1 long = market()
 order entry2 long = market()
 size entry1 long = 0.5
@@ -396,6 +409,8 @@ fn parses_position_event_anchors_with_since_helpers() {
         "interval 1m
 source src = binance.spot(\"BTCUSDT\")
 entry long = src.close > src.close[1]
+execution src = binance.spot(\"BTCUSDT\")
+order entry long = market()
 protect long = stop_market(
     highest_since(position_event.long_entry_fill, src.high) - 2 * atr(src.high, src.low, src.close, 14),
     trigger_ref.last
@@ -412,6 +427,8 @@ fn parses_last_exit_namespaces_and_exit_kind_literals() {
         "interval 1m
 source src = binance.spot(\"BTCUSDT\")
 entry long = last_long_exit.kind == exit_kind.target or last_exit.kind == exit_kind.liquidation or last_exit.side == position_side.long
+execution src = binance.spot(\"BTCUSDT\")
+order entry long = market()
 export last_short_price = last_short_exit.price
 plot(src.close)",
     )
@@ -615,7 +632,7 @@ fn parses_export_statements() {
 #[test]
 fn parses_trigger_statements() {
     compile(&with_interval(
-        "trigger long_entry = close > high[1]\nplot(1)",
+        "trigger breakout = close > high[1]\nplot(1)",
     ))
     .expect("trigger statements should compile");
 }
@@ -623,7 +640,7 @@ fn parses_trigger_statements() {
 #[test]
 fn parses_const_input_and_signal_statements() {
     compile(&with_interval(
-        "input length = 14\nconst limit = 50\nentry long = close > ema(close, length)\nexit long = close < ema(close, length)\nentry short = close < ema(close, length)\nexit short = close > ema(close, length)\nplot(limit)",
+        "input length = 14\nconst limit = 50\nentry long = close > ema(close, length)\nexit long = close < ema(close, length)\nentry short = close < ema(close, length)\nexit short = close > ema(close, length)\nexecution src = binance.spot(\"BTCUSDT\")\norder entry long = market()\norder exit long = market()\norder entry short = market()\norder exit short = market()\nplot(limit)",
     ))
     .expect("const/input/signal statements should compile");
 }

@@ -152,7 +152,7 @@ superior:
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
 order entry1 long = limit(spot.close[1], tif.gtc, false)
@@ -229,9 +229,9 @@ Reglas:
   `time`, `bar_index`, `realized_pnl`, `realized_return` y `bars_held`
 - `last_*_exit.kind` incluye `exit_kind.liquidation` ademas de los tipos de
   salida existentes
-- los scripts legacy del estilo `trigger long_entry = ...` siguen soportados
-  como puente de compatibilidad cuando no hay declaraciones de senales de
-  primera clase
+- los nombres reservados de trigger como `trigger long_entry = ...` ya no son
+  aliases ejecutables; use declaraciones `entry` / `exit` de primera clase mas
+  templates `order ...` correspondientes
 
 ## Scope Condicional
 
@@ -282,4 +282,4 @@ Reglas:
 - Matching `source` and `execution` aliases may mirror each other when the template and symbol are the same.
 - Order constructors now accept named arguments, and `venue = exec` binds that order role to a declared execution alias.
 - Positional and named order arguments cannot be mixed in the same order constructor call.
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

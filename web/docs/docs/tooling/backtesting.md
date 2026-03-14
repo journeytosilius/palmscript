@@ -54,7 +54,13 @@ Modes:
 - `--diagnostics summary` keeps the default compact diagnostics payload
 - `--diagnostics full-trace` adds one typed per-bar decision trace record for each execution bar
 
-Execution-oriented commands require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
+Trading scripts require at least one declared `execution` alias. When the
+script declares exactly one `execution` alias, the CLI uses it as the
+execution target automatically. Otherwise pass `--execution-source <alias>`.
+Repeat `--execution-source` to activate portfolio mode across multiple
+execution aliases. `execution` declarations stay separate from `source`
+declarations, so cross-source strategies can still route orders onto one
+venue.
 
 Execution-routed order example:
 
@@ -583,7 +589,7 @@ Preferred v1 surface:
 - `target long = ...`
 - `target short = ...`
 
-Explicit execution templates for execution-oriented modes:
+Explicit execution templates for trading scripts:
 
 - `order entry long = market()`
 - `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
@@ -604,11 +610,10 @@ Attached position-aware exits:
 - `size target1 long = 0.5`
 - `position.*` is valid only inside `protect` and `target`
 
-Execution-oriented modes no longer synthesize implicit `market()` orders for
-plain `entry` / `exit` signals. Declare `order entry ...` and `order exit ...`
-explicitly for every signal role you want backtest, walk-forward, optimize, or
-paper execution to use. When a script declares `execution` targets, `palmscript check`
-also rejects missing matching `order ...` declarations at compile time.
+PalmScript no longer synthesizes implicit `market()` orders for trading
+scripts. Declare `order entry ...` and `order exit ...` explicitly for every
+signal role you want `check`, `run market`, `run backtest`, `run walk-forward`,
+`run walk-forward-sweep`, `run optimize`, or `run paper` to accept.
 
 Actual-fill anchor helpers:
 
@@ -629,11 +634,11 @@ Latest closed-trade state:
 - `last_*_exit.kind` compares against `exit_kind.protect`, `exit_kind.target`, `exit_kind.signal`, `exit_kind.reversal`, and `exit_kind.liquidation`
 - outside backtests, `last_*_exit.*` evaluates to `na`
 
-Legacy compatibility bridge:
+Reserved trading trigger names:
 
-- if no first-class signal declarations are present, the backtester falls back to trigger names `long_entry`, `long_exit`, `short_entry`, and `short_exit`
+- `trigger long_entry`, `trigger long_exit`, `trigger short_entry`, and `trigger short_exit` are no longer executable aliases
 - if no entry signals are present after resolution, backtest startup fails validation
-- ordinary `trigger` declarations remain available for non-backtest consumers
+- ordinary `trigger` declarations with other names remain available for non-backtest consumers
 
 ## Execution Model
 

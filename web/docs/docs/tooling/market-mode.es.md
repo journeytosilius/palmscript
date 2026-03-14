@@ -18,6 +18,7 @@ Rules:
 - the script must declare at least one `source`
 - `--from` and `--to` are Unix milliseconds UTC
 - `--from` must be strictly less than `--to`
+- if the script declares trading signal roles, it must also declare at least one `execution` target and matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 
 ## Supported Source Templates
 

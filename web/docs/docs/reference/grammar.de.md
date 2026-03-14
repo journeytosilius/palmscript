@@ -205,4 +205,4 @@ Die Parser-Oberflaeche akzeptiert jetzt ein optionales `optimize(...)`-Suffix an
 - Order constructors now accept named arguments in addition to the legacy positional form.
 - `venue = <execution_alias>` binds an order role to a declared execution target.
 - Positional and named order arguments cannot be mixed in the same constructor call.
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

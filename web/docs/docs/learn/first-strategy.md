@@ -28,7 +28,7 @@ order exit long = market()
 - `export` emits a named output series
 - `entry long = ...` emits a long-entry signal
 - `exit long = ...` emits a long-exit signal
-- `order entry long = market()` and `order exit long = market()` tell execution-oriented commands exactly how to fill the entry and exit signals
+- `order entry long = market()` and `order exit long = market()` tell trading scripts exactly how to fill the entry and exit signals in every executable mode
 
 ## Try It In The Browser IDE
 

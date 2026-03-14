@@ -94,7 +94,7 @@ Regras:
 `trigger` publica uma serie de saida booleana nomeada:
 
 ```palmscript
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 ```
 
 Regras:
@@ -239,24 +239,11 @@ Regras:
   em todos os passos
 - fora de backtests, `last_*_exit.*` e definido, mas se avalia como `na`
 
-## Compatibilidade Com Triggers Legados
+## Reserved Trading Trigger Names
 
-Scripts de estrategia legados que usam nomes de trigger ainda sao suportados
-temporariamente:
-
-- `trigger long_entry = ...`
-- `trigger long_exit = ...`
-- `trigger short_entry = ...`
-- `trigger short_exit = ...`
-
-Regras de compatibilidade:
-
-- se um script declarar quaisquer sinais `entry` / `exit` de primeira classe, o
-  backtester usa esses roles diretamente
-- se um script nao declarar sinais de primeira classe, o backtester faz
-  fallback para os nomes de trigger legados acima
-- declaracoes `trigger` comuns continuam validas para alertas ou consumidores
-  nao estrategicos
+- `trigger long_entry = ...`, `trigger long_exit = ...`, `trigger short_entry = ...`, and `trigger short_exit = ...` are no longer executable aliases
+- use first-class `entry` / `exit` declarations plus matching `order ...` templates instead
+- ordinary `trigger` declarations with other names remain valid
 
 ## Colecoes De Saida Em Runtime
 
@@ -297,4 +284,4 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - Order constructors accept named arguments in addition to the legacy positional form.
 - `venue = <execution_alias>` binds an `order`, `protect`, or `target` role to a declared execution alias.
 - Named order arguments cannot be mixed with positional arguments in the same constructor call.
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

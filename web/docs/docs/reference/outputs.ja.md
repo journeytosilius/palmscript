@@ -81,7 +81,7 @@ regime trend_long = state(
 `trigger` は名前付き boolean 出力シリーズを公開します。
 
 ```palmscript
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 ```
 
 ルール:
@@ -184,20 +184,11 @@ size target long = 0.5
 - バックテスト外では、`position_event.*` は定義されるが各ステップで `false` に評価される
 - バックテスト外では、`last_*_exit.*` は定義されるが `na` に評価される
 
-## 旧来 trigger 互換
+## Reserved Trading Trigger Names
 
-旧来の trigger 名を使う戦略スクリプトも一時的にサポートされます。
-
-- `trigger long_entry = ...`
-- `trigger long_exit = ...`
-- `trigger short_entry = ...`
-- `trigger short_exit = ...`
-
-互換ルール:
-
-- スクリプトが第一級 `entry` / `exit` シグナルを一つでも宣言していれば、バックテスタはそれらのロールを直接使う
-- 第一級シグナルがなければ、バックテスタは上記の旧来 trigger 名にフォールバックする
-- 通常の `trigger` 宣言は、alerting や非戦略コンシューマ向けに引き続き有効
+- `trigger long_entry = ...`, `trigger long_exit = ...`, `trigger short_entry = ...`, and `trigger short_exit = ...` are no longer executable aliases
+- use first-class `entry` / `exit` declarations plus matching `order ...` templates instead
+- ordinary `trigger` declarations with other names remain valid
 
 ## ランタイム出力コレクション
 
@@ -236,4 +227,4 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - Order constructors accept named arguments in addition to the legacy positional form.
 - `venue = <execution_alias>` binds an `order`, `protect`, or `target` role to a declared execution alias.
 - Named order arguments cannot be mixed with positional arguments in the same constructor call.
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

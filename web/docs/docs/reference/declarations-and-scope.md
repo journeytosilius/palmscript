@@ -73,7 +73,7 @@ Rules:
 - the symbol argument must be a string literal
 - `execution` declarations do not create market series bindings
 - orders may target a declared execution alias with `venue = <alias>`
-- execution-oriented CLI commands require at least one declared `execution` target
+- any script that declares trading signal roles requires at least one declared `execution` target
 - scripts still require at least one declared `source` for market data
 
 ## `use` Declarations
@@ -174,7 +174,7 @@ export trend = ema(spot.close, 20) > ema(spot.close, 50)
 regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
 execution exec = binance.spot("BTCUSDT")
 portfolio_group "majors" = [spot, hedge]
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
 order entry1 long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
@@ -228,7 +228,7 @@ Rules:
 - `size target1..3 long|short` optionally size a staged `target` fill as a fraction of the open position
 - at most one `order` declaration is allowed per signal role
 - at most one declaration is allowed per staged role
-- execution-oriented CLI modes require an explicit `order ...` declaration for each declared `entry` / `exit` signal role
+- any script that declares trading signal roles requires an explicit `order ...` declaration for each declared `entry` / `exit` signal role
 - `size entry ...` and `size target ...` each require a matching staged `order ...` or staged attached `target ...` declaration for the same role
 - `risk_pct(...)` is only valid on staged entry size declarations in v1
 - staged attached exits are sequential: only the next target stage and the current protect stage are active at once
@@ -245,7 +245,7 @@ Rules:
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are available anywhere ordinary expressions are valid
 - current `last_*_exit` fields are `kind`, `stage`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
 - `last_*_exit.kind` includes `exit_kind.liquidation` in addition to the existing exit kinds
-- legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
+- reserved trigger names such as `trigger long_entry = ...` are no longer executable aliases; use first-class `entry` / `exit` declarations plus matching `order ...` templates
 
 ## Conditional Scope
 

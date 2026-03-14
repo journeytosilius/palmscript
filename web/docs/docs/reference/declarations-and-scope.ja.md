@@ -138,7 +138,7 @@ const neutral_rsi = 50
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
-trigger long_entry = spot.close > spot.high[1]
+trigger breakout = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
 order entry1 long = limit(spot.close[1], tif.gtc, false)
@@ -192,7 +192,7 @@ size target1 long = 0.5
 - `last_exit.*`、`last_long_exit.*`、`last_short_exit.*` は通常の式が有効な場所ならどこでも使える
 - 現在の `last_*_exit` フィールドは `kind`, `stage`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, `bars_held`
 - `last_*_exit.kind` には既存の exit 種別に加えて `exit_kind.liquidation` が含まれる
-- 第一級シグナル宣言が存在しない場合に限り、`trigger long_entry = ...` 形式の旧来スクリプトは互換ブリッジとして引き続きサポートされる
+- `trigger long_entry = ...` のような予約済み trigger 名は実行用エイリアスではなくなったため、第一級 `entry` / `exit` 宣言と対応する `order ...` テンプレートを使う
 
 ## 条件スコープ
 
@@ -243,4 +243,4 @@ input weekly_bias = 21 optimize(choice, 13, 21, 34)
 - Matching `source` and `execution` aliases may mirror each other when the template and symbol are the same.
 - Order constructors now accept named arguments, and `venue = exec` binds that order role to a declared execution alias.
 - Positional and named order arguments cannot be mixed in the same order constructor call.
-- Execution-oriented CLI modes now require at least one declared `execution` target.
+- Trading scripts now require at least one declared `execution` target.

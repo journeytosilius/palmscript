@@ -58,17 +58,16 @@ mkdocs build --strict -f web/docs/mkdocs.yml
 sh infra/scripts/build_docs_site.sh
 ```
 
-Execution-oriented commands now require at least one top-level `execution`
-declaration in the script. If the script declares exactly one `execution`
-alias, the CLI selects it automatically. If the script declares multiple
-execution aliases, pass `--execution-source <alias>` to choose one or repeat
-that flag to activate portfolio mode.
+Any script that declares trading signal roles now requires at least one
+top-level `execution` declaration and matching explicit `order ...`
+declarations for every declared `entry` / `exit` signal role. If the script
+declares exactly one `execution` alias, the CLI selects it automatically. If
+the script declares multiple execution aliases, pass `--execution-source
+<alias>` to choose one or repeat that flag to activate portfolio mode.
 
-Execution-oriented commands also require explicit `order ...` declarations for
-each declared `entry` / `exit` signal role. PalmScript no longer synthesizes
-implicit `market()` orders for backtest, walk-forward, optimize, or paper
-execution, and `palmscript check` rejects execution scripts that omit the
-matching `order ...` declarations.
+PalmScript no longer synthesizes implicit `market()` orders for trading scripts
+in `check`, `run market`, `run backtest`, `run walk-forward`,
+`run walk-forward-sweep`, `run optimize`, or `run paper`.
 
 `run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 

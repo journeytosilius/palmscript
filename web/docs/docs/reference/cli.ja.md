@@ -127,7 +127,8 @@ Arguments and flags:
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--runner`: optimize evaluation mode; defaults to `walk-forward`
 - `--execution-source <alias>`: execution alias selection; repeat it to activate portfolio mode
-- execution-oriented commands require at least one declared `execution` target in the script
+- trading scripts require at least one declared `execution` target in the script
+- trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - `--train-bars <N>`: in-sample bars per walk-forward segment
 - `--test-bars <N>`: out-of-sample bars per walk-forward segment
 - `--step-bars <N>`: segment advance size; defaults to `test-bars`
@@ -151,7 +152,8 @@ Default safety behavior:
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
 - repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
-- execution-oriented commands require at least one declared `execution` target in the script
+- trading scripts require at least one declared `execution` target in the script
+- trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
 - the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
 

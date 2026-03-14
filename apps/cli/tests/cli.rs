@@ -28,64 +28,9 @@ fn mirror_execution_decls(contents: &str) -> String {
     out.join("\n")
 }
 
-fn mirror_execution_and_order_decls(contents: &str) -> String {
-    let with_execution = mirror_execution_decls(contents);
-    let mut declared_orders = std::collections::BTreeSet::new();
-    for line in with_execution.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("order ") {
-            if let Some((role, _)) = rest.split_once('=') {
-                declared_orders.insert(role.trim().to_string());
-            }
-        }
-    }
-
-    let mut missing_orders = Vec::new();
-    for line in with_execution.lines() {
-        let trimmed = line.trim_start();
-        let role = match () {
-            _ if trimmed.starts_with("entry1 long =") => Some("entry1 long"),
-            _ if trimmed.starts_with("entry2 long =") => Some("entry2 long"),
-            _ if trimmed.starts_with("entry3 long =") => Some("entry3 long"),
-            _ if trimmed.starts_with("entry long =") => Some("entry long"),
-            _ if trimmed.starts_with("exit long =") => Some("exit long"),
-            _ if trimmed.starts_with("entry1 short =") => Some("entry1 short"),
-            _ if trimmed.starts_with("entry2 short =") => Some("entry2 short"),
-            _ if trimmed.starts_with("entry3 short =") => Some("entry3 short"),
-            _ if trimmed.starts_with("entry short =") => Some("entry short"),
-            _ if trimmed.starts_with("exit short =") => Some("exit short"),
-            _ if trimmed.starts_with("trigger long_entry =") => Some("entry long"),
-            _ if trimmed.starts_with("trigger long_exit =") => Some("exit long"),
-            _ if trimmed.starts_with("trigger short_entry =") => Some("entry short"),
-            _ if trimmed.starts_with("trigger short_exit =") => Some("exit short"),
-            _ => None,
-        };
-        if let Some(role) = role {
-            if declared_orders.insert(role.to_string()) {
-                missing_orders.push(role);
-            }
-        }
-    }
-
-    if missing_orders.is_empty() {
-        return with_execution;
-    }
-
-    let mut out = with_execution;
-    if !out.ends_with('\n') {
-        out.push('\n');
-    }
-    for role in missing_orders {
-        out.push_str("order ");
-        out.push_str(role);
-        out.push_str(" = market()\n");
-    }
-    out
-}
-
 fn write_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = dir.join(name);
-    fs::write(&path, mirror_execution_and_order_decls(contents)).expect("writes test file");
+    fs::write(&path, mirror_execution_decls(contents)).expect("writes test file");
     path
 }
 
@@ -180,7 +125,7 @@ fn mock_gate_futures_interval(
 }
 
 fn optimize_script() -> &'static str {
-    "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true"
+    "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()"
 }
 
 #[test]
@@ -267,7 +212,7 @@ fn paper_submit_list_and_stop_use_local_execution_state() {
     let script = write_file(
         dir.path(),
         "paper.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = false\nexit short = false\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(spot.close)",
     );
 
     let output = palmscript_cmd()
@@ -311,7 +256,7 @@ fn run_paper_uses_single_declared_execution_by_default() {
     let script = write_file(
         dir.path(),
         "paper_default_execution.ps",
-        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nexecution exec = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = exec)\nplot(left.close)",
+        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nexecution exec = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = exec)\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(left.close)",
     );
 
     let output = palmscript_cmd()
@@ -933,7 +878,7 @@ fn run_backtest_executes_single_source_script_with_default_execution_source() {
     let script = write_file(
         dir.path(),
         "backtest.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\ntrigger long_exit = spot.close < spot.close[1]\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nexit long = spot.close < spot.close[1]\norder entry long = market()\norder exit long = market()\nplot(spot.close)",
     );
 
     let output = palmscript_cmd()
@@ -989,7 +934,7 @@ fn run_backtest_supports_text_output() {
     let script = write_file(
         dir.path(),
         "backtest.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\ntrigger long_exit = spot.close < spot.close[1]\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nexit long = spot.close < spot.close[1]\norder entry long = market()\norder exit long = market()\nplot(spot.close)",
     );
 
     let mut cmd = palmscript_cmd();
@@ -1041,7 +986,7 @@ fn run_backtest_full_trace_text_reports_trace_count_and_hints() {
     let script = write_file(
         dir.path(),
         "backtest.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = false\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = false\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(spot.close)",
     );
 
     let mut cmd = palmscript_cmd();
@@ -1148,7 +1093,7 @@ fn run_backtest_supports_bybit_usdt_perps_execution_source() {
     let script = write_file(
         dir.path(),
         "backtest_bybit.ps",
-        "interval 1m\nsource perp = bybit.usdt_perps(\"BTCUSDT\")\ntrigger long_entry = perp.close > perp.close[1]\ntrigger long_exit = perp.close < perp.close[1]\nplot(perp.close)",
+        "interval 1m\nsource perp = bybit.usdt_perps(\"BTCUSDT\")\nentry long = perp.close > perp.close[1]\nexit long = perp.close < perp.close[1]\norder entry long = market()\norder exit long = market()\nplot(perp.close)",
     );
 
     let output = palmscript_cmd()
@@ -1184,7 +1129,7 @@ fn run_backtest_rejects_leverage_for_spot_sources() {
     let script = write_file(
         dir.path(),
         "spot_backtest.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\norder entry long = market()\nplot(spot.close)",
     );
 
     palmscript_cmd()
@@ -1212,7 +1157,7 @@ fn run_backtest_requires_execution_source_for_multi_source_scripts() {
     let script = write_file(
         dir.path(),
         "backtest.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nsource perp = binance.usdm(\"BTCUSDT\")\ntrigger long_entry = spot.close > perp.close\nplot(spot.close - perp.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nsource perp = binance.usdm(\"BTCUSDT\")\nentry long = spot.close > perp.close\norder entry long = market()\nplot(spot.close - perp.close)",
     );
 
     let mut cmd = palmscript_cmd();
@@ -1301,7 +1246,7 @@ fn run_backtest_accepts_repeated_execution_sources_for_portfolio_mode() {
     let script = write_file(
         dir.path(),
         "portfolio.ps",
-        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\norder entry long = market()\nsize entry long = 0.4\nentry short = false\nexit long = false\nexit short = false\nplot(left.close)",
+        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\norder entry long = market()\nsize entry long = 0.4\nentry short = false\nexit long = false\nexit short = false\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(left.close)",
     );
 
     let output = palmscript_cmd()
@@ -1365,7 +1310,7 @@ fn run_backtest_uses_single_declared_execution_by_default() {
     let script = write_file(
         dir.path(),
         "default_execution.ps",
-        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nexecution exec = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = exec)\nsize entry long = 0.4\nplot(left.close)",
+        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nexecution exec = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = exec)\norder entry short = market()\norder exit long = market()\norder exit short = market()\nsize entry long = 0.4\nplot(left.close)",
     );
 
     let output = palmscript_cmd()
@@ -1415,7 +1360,7 @@ fn run_walk_forward_emits_segmented_json() {
     let script = write_file(
         dir.path(),
         "walk_forward.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(spot.close)",
     );
 
     let output = palmscript_cmd()
@@ -1476,7 +1421,7 @@ fn run_walk_forward_supports_text_output() {
     let script = write_file(
         dir.path(),
         "walk_forward.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\nplot(spot.close)",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(spot.close)",
     );
 
     let mut cmd = palmscript_cmd();
@@ -1566,7 +1511,7 @@ fn run_walk_forward_supports_gate_usdt_perps_execution_source() {
     let script = write_file(
         dir.path(),
         "walk_forward_gate_perp.ps",
-        "interval 1m\nsource perp = gate.usdt_perps(\"BTC_USDT\")\nentry long = perp.close > perp.close[1]\nentry short = false\nexit long = perp.close < perp.close[1]\nexit short = true\nplot(perp.close)",
+        "interval 1m\nsource perp = gate.usdt_perps(\"BTC_USDT\")\nentry long = perp.close > perp.close[1]\nentry short = false\nexit long = perp.close < perp.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()\nplot(perp.close)",
     );
 
     let output = palmscript_cmd()
@@ -1623,7 +1568,7 @@ fn run_walk_forward_sweep_emits_ranked_json() {
     let script = write_file(
         dir.path(),
         "walk_forward_sweep.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let output = palmscript_cmd()
@@ -1686,7 +1631,7 @@ fn run_walk_forward_sweep_supports_text_output() {
     let script = write_file(
         dir.path(),
         "walk_forward_sweep.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let mut cmd = palmscript_cmd();
@@ -1778,7 +1723,7 @@ fn run_walk_forward_sweep_supports_gate_usdt_perps_execution_source() {
     let script = write_file(
         dir.path(),
         "walk_forward_sweep_gate_perp.ps",
-        "interval 1m\nsource perp = gate.usdt_perps(\"BTC_USDT\")\ninput threshold = 0\nentry long = perp.close > perp.close[1] + threshold\nentry short = false\nexit long = perp.close < perp.close[1]\nexit short = true",
+        "interval 1m\nsource perp = gate.usdt_perps(\"BTC_USDT\")\ninput threshold = 0\nentry long = perp.close > perp.close[1] + threshold\nentry short = false\nexit long = perp.close < perp.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let output = palmscript_cmd()
@@ -1837,7 +1782,7 @@ fn run_optimize_emits_ranked_json() {
     let script = write_file(
         dir.path(),
         "optimize.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let output = palmscript_cmd()
@@ -1905,7 +1850,7 @@ fn run_optimize_infers_params_from_input_metadata() {
     let script = write_file(
         dir.path(),
         "optimize_metadata.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0 optimize(choice, 0, 100)\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0 optimize(choice, 0, 100)\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let output = palmscript_cmd()
@@ -1971,7 +1916,7 @@ fn run_optimize_accepts_step_syntax_in_param_ranges() {
     let script = write_file(
         dir.path(),
         "optimize_step.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let output = palmscript_cmd()
@@ -2095,7 +2040,7 @@ fn run_optimize_supports_text_output_and_presets() {
     let script = write_file(
         dir.path(),
         "optimize.ps",
-        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
     let preset = dir.path().join("best.json");
 
@@ -2314,7 +2259,7 @@ fn run_optimize_supports_bybit_usdt_perps_execution_source() {
     let script = write_file(
         dir.path(),
         "optimize_bybit_perp.ps",
-        "interval 1m\nsource perp = bybit.usdt_perps(\"BTCUSDT\")\ninput threshold = 0\nentry long = perp.close > perp.close[1] + threshold\nentry short = false\nexit long = perp.close < perp.close[1]\nexit short = true",
+        "interval 1m\nsource perp = bybit.usdt_perps(\"BTCUSDT\")\ninput threshold = 0\nentry long = perp.close > perp.close[1] + threshold\nentry short = false\nexit long = perp.close < perp.close[1]\nexit short = true\norder entry long = market()\norder entry short = market()\norder exit long = market()\norder exit short = market()",
     );
 
     let output = palmscript_cmd()
