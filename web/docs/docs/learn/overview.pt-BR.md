@@ -20,7 +20,7 @@ Fluxo tipico:
 Para jobs longos de tuning pela CLI:
 
 - use `palmscript run optimize ...` para otimizar diretamente pela CLI
-- salve os candidatos uteis com `--preset-out best.json` para reroda-los com `run backtest` ou `run walk-forward`
+- salve os candidatos uteis com `--preset-out best.json` para reroda-los com `run backtest` ou `run walk-forward`, e use `--preset-trial-id <N>` mais `--set name=value` para replay e mutacao exatos do candidato
 - mantenha o holdout final intacto ativado por padrao, a menos que queira desativar essa protecao de forma intencional
 - adicione restricoes explicitas como `--min-sharpe`, `--min-holdout-pass-rate` e `--max-overfitting-risk` quando quiser que o otimizador busque apenas na regiao viavel
 - adicione `--direct-validate-top <N>` quando quiser que o otimizador rode automaticamente os melhores survivors viaveis na janela completa

@@ -22,7 +22,7 @@ Typical workflow:
 For long CLI tuning jobs:
 
 - use `palmscript run optimize ...` for direct tuning from the CLI
-- save survivors with `--preset-out best.json` so they can be rerun with `run backtest` or `run walk-forward`
+- save survivors with `--preset-out best.json` so they can be rerun with `run backtest` or `run walk-forward`, and use `--preset-trial-id <N>` plus `--set name=value` for exact candidate replay and mutation
 - keep the default untouched holdout enabled unless you are intentionally disabling that protection
 - add explicit constraints such as `--min-sharpe`, `--min-holdout-pass-rate`, and `--max-overfitting-risk` when you want the optimizer to search only the feasible region
 - add `--direct-validate-top <N>` when you want the optimizer to replay the best feasible survivors on the full window automatically

@@ -67,10 +67,13 @@ Requirements:
 
 ```bash
 palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
+  [--preset <path>] \
+  [--preset-trial-id <N>] \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
   --maker-fee-bps <N> --taker-fee-bps <N> \
   [--fee-schedule <alias:maker:taker>]... \
+  [--set name=value]... \
   [--slippage-bps <N>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
@@ -79,6 +82,9 @@ palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
 Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- `--preset <path>`: load saved optimize survivor overrides from a preset artifact
+- `--preset-trial-id <N>`: replay that saved top-candidate `trial_id` instead of the preset best candidate
+- `--set name=value`: override one numeric `input` on top of the selected preset survivor; repeat per input
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 
@@ -88,10 +94,13 @@ Additional diagnostics flag:
 palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
   --train-bars <N> --test-bars <N> [--step-bars <N>] \
   [--min-trades <N>] [--min-sharpe <N>] [--max-zero-trade-segments <N>] \
+  [--preset <path>] \
+  [--preset-trial-id <N>] \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
   --maker-fee-bps <N> --taker-fee-bps <N> \
   [--fee-schedule <alias:maker:taker>]... \
+  [--set name=value]... \
   [--slippage-bps <N>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
@@ -103,6 +112,9 @@ Additional diagnostics flag:
 - `--min-trades <N>`: require at least `N` out-of-sample trades across stitched walk-forward segments
 - `--min-sharpe <N>`: require stitched walk-forward Sharpe to stay at or above `N`
 - `--max-zero-trade-segments <N>`: fail validation when more than `N` out-of-sample segments produce zero trades
+- `--preset <path>`: load saved optimize survivor overrides from a preset artifact
+- `--preset-trial-id <N>`: replay that saved top-candidate `trial_id` instead of the preset best candidate
+- `--set name=value`: override one numeric `input` on top of the selected preset survivor; repeat per input
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 

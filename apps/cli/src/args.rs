@@ -79,6 +79,8 @@ pub struct BacktestRunArgs {
     pub script: PathBuf,
     #[arg(long)]
     pub preset: Option<PathBuf>,
+    #[arg(long, requires = "preset")]
+    pub preset_trial_id: Option<usize>,
     #[arg(long)]
     pub from: i64,
     #[arg(long)]
@@ -93,6 +95,8 @@ pub struct BacktestRunArgs {
     pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
+    #[arg(long = "set")]
+    pub set_overrides: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
@@ -114,6 +118,8 @@ pub struct WalkForwardRunArgs {
     pub script: PathBuf,
     #[arg(long)]
     pub preset: Option<PathBuf>,
+    #[arg(long, requires = "preset")]
+    pub preset_trial_id: Option<usize>,
     #[arg(long)]
     pub from: i64,
     #[arg(long)]
@@ -128,6 +134,8 @@ pub struct WalkForwardRunArgs {
     pub taker_fee_bps: f64,
     #[arg(long = "fee-schedule")]
     pub fee_schedule: Vec<String>,
+    #[arg(long = "set")]
+    pub set_overrides: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]

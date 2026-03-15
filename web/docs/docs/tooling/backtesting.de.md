@@ -208,6 +208,7 @@ V1 optimizer notes:
 - the search is seeded and deterministic for the same script, seed, and search space
 - `--workers` only controls bounded parallel evaluation
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
+- `run backtest` and `run walk-forward` now accept `--preset-trial-id <N>` so one saved top candidate can be replayed directly, and `--set name=value` can mutate that survivor without editing the preset file
 - `--direct-validate-top <N>` reruns that many top feasible validated survivors as full-window backtests so stitched and direct metrics can be reviewed together
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
@@ -238,6 +239,7 @@ Foreground optimize notes:
 - when `--param` is omitted, optimize uses the same preset-or-input-metadata inference path as any other CLI optimize run
 - every trial still respects bounded workers, deterministic seeding, and the final untouched holdout when holdout protection is enabled
 - `--preset-out` exports the best known preset from the completed search so you can rerun it immediately in backtest or walk-forward mode
+- use `--preset-trial-id <N>` when you want an exact saved survivor instead of the preset best candidate, and add `--set name=value` to test small mutations on top of it
 - the final result includes the holdout summary when holdout protection is enabled
 
 ## Default Safety Profile

@@ -2361,6 +2361,17 @@ fn run_optimize_supports_text_output_and_presets() {
         .as_f64()
         .expect("threshold is numeric");
     assert!(best_threshold == 0.0 || best_threshold == 100.0);
+    let muted_candidate_trial_id = preset_json["top_candidates"]
+        .as_array()
+        .expect("top candidates array")
+        .iter()
+        .find_map(|candidate| {
+            let threshold = candidate["input_overrides"]["threshold"].as_f64()?;
+            (threshold == 100.0).then(|| candidate["trial_id"].as_u64())
+        })
+        .flatten()
+        .expect("preset should retain a muted candidate trial")
+        .to_string();
 
     let output = palmscript_cmd()
         .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
@@ -2393,6 +2404,73 @@ fn run_optimize_supports_text_output_and_presets() {
             .unwrap_or_default()
             >= 1000.0
     );
+
+    let muted_output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--preset",
+            preset.to_str().unwrap(),
+            "--preset-trial-id",
+            &muted_candidate_trial_id,
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--maker-fee-bps",
+            "0",
+            "--taker-fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+        ])
+        .output()
+        .expect("backtest with selected candidate executes");
+    assert!(muted_output.status.success());
+    let muted_json: Value = serde_json::from_slice(&muted_output.stdout).expect("stdout is json");
+    assert_eq!(muted_json["summary"]["trade_count"], Value::from(0));
+    assert_eq!(muted_json["summary"]["ending_equity"], Value::from(1000.0));
+
+    let replay_output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--preset",
+            preset.to_str().unwrap(),
+            "--preset-trial-id",
+            &muted_candidate_trial_id,
+            "--set",
+            "threshold=0",
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--maker-fee-bps",
+            "0",
+            "--taker-fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+        ])
+        .output()
+        .expect("backtest with replay mutation executes");
+    assert!(replay_output.status.success());
+    let replay_json: Value = serde_json::from_slice(&replay_output.stdout).expect("stdout is json");
+    assert!(
+        replay_json["summary"]["trade_count"]
+            .as_u64()
+            .unwrap_or_default()
+            > 0
+    );
+    assert_ne!(replay_json["summary"]["trade_count"], Value::from(0));
 }
 
 #[test]

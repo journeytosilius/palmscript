@@ -21,7 +21,7 @@ PalmScript の公開ドキュメントは次の二つを中心に構成されて
 
 - すぐに前面で結果が欲しいなら `palmscript run optimize ...` を使う
 - CLI から直接最適化したいなら `palmscript run optimize ...` を使う
-- 有望な candidate は `--preset-out best.json` で保存し、`run backtest` や `run walk-forward` で再評価する
+- 有望な candidate は `--preset-out best.json` で保存し、`run backtest` や `run walk-forward` で再評価する。正確な candidate replay と mutation には `--preset-trial-id <N>` と `--set name=value` を使う
 - 明示的に無効化したい場合を除き、既定の untouched holdout を有効のままにする
 - feasible region だけを探索したいなら `--min-sharpe`、`--min-holdout-pass-rate`、`--max-overfitting-risk` のような明示的 constraints を追加する
 - 最良の feasible survivors を full window で自動 replay したいなら `--direct-validate-top <N>` を追加する

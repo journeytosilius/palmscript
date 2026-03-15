@@ -122,7 +122,13 @@ fn run_market(args: MarketRunArgs) -> Result<(), String> {
 fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
     let preset = load_preset(&source, &args.script, args.preset.as_deref())?;
-    let compiled = compile_with_preset_overrides(&source, &args.script, preset.as_ref())?;
+    let compiled = compile_with_preset_overrides(
+        &source,
+        &args.script,
+        preset.as_ref(),
+        args.preset_trial_id,
+        &args.set_overrides,
+    )?;
     if compiled.program.declared_sources.is_empty() {
         return Err("backtest mode requires at least one `source` declaration".to_string());
     }
@@ -186,7 +192,13 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
 fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
     let preset = load_preset(&source, &args.script, args.preset.as_deref())?;
-    let compiled = compile_with_preset_overrides(&source, &args.script, preset.as_ref())?;
+    let compiled = compile_with_preset_overrides(
+        &source,
+        &args.script,
+        preset.as_ref(),
+        args.preset_trial_id,
+        &args.set_overrides,
+    )?;
     if compiled.program.declared_sources.is_empty() {
         return Err("walk-forward mode requires at least one `source` declaration".to_string());
     }
@@ -267,7 +279,8 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
 fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
     let preset = load_preset(&source, &args.script, args.preset.as_deref())?;
-    let compiled = compile_with_preset_overrides(&source, &args.script, preset.as_ref())?;
+    let compiled =
+        compile_with_preset_overrides(&source, &args.script, preset.as_ref(), None, &[])?;
     if compiled.program.declared_sources.is_empty() {
         return Err(
             "walk-forward sweep mode requires at least one `source` declaration".to_string(),
@@ -737,11 +750,42 @@ pub(crate) fn compile_with_preset_overrides(
     source: &str,
     path: &Path,
     preset: Option<&OptimizePreset>,
+    preset_trial_id: Option<usize>,
+    raw_input_overrides: &[String],
 ) -> Result<CompiledProgram, String> {
-    let overrides = preset
-        .map(|preset| preset.best_input_overrides.clone())
-        .unwrap_or_default();
+    let overrides = resolve_preset_input_overrides(preset, preset_trial_id, raw_input_overrides)?;
     compile_with_input_overrides(source, &overrides).map_err(|err| format_compile_error(path, &err))
+}
+
+pub(crate) fn resolve_preset_input_overrides(
+    preset: Option<&OptimizePreset>,
+    preset_trial_id: Option<usize>,
+    raw_input_overrides: &[String],
+) -> Result<BTreeMap<String, f64>, String> {
+    if preset_trial_id.is_some() && preset.is_none() {
+        return Err("`--preset-trial-id` requires `--preset <path>`".to_string());
+    }
+
+    let mut overrides = match (preset, preset_trial_id) {
+        (Some(preset), Some(trial_id)) => preset
+            .top_candidates
+            .iter()
+            .find(|candidate| candidate.trial_id == trial_id)
+            .map(|candidate| candidate.input_overrides.clone())
+            .ok_or_else(|| {
+                format!(
+                    "preset does not contain top-candidate trial_id {}; replay is limited to saved top candidates",
+                    trial_id
+                )
+            })?,
+        (Some(preset), None) => preset.best_input_overrides.clone(),
+        (None, None) => BTreeMap::new(),
+        (None, Some(_)) => unreachable!("validated above"),
+    };
+
+    let explicit_overrides = parse_input_override_assignments(raw_input_overrides)?;
+    overrides.extend(explicit_overrides);
+    Ok(overrides)
 }
 
 pub(crate) fn load_source(path: &Path) -> Result<String, String> {
@@ -857,6 +901,32 @@ fn parse_input_sweep_definitions(raw_sets: &[String]) -> Result<Vec<InputSweepDe
         });
     }
     Ok(inputs)
+}
+
+pub(crate) fn parse_input_override_assignments(
+    raw_assignments: &[String],
+) -> Result<BTreeMap<String, f64>, String> {
+    let mut overrides = BTreeMap::new();
+    for raw in raw_assignments {
+        let (name, raw_value) = raw
+            .split_once('=')
+            .ok_or_else(|| format!("invalid `--set {raw}`: expected name=value"))?;
+        if name.is_empty() {
+            return Err(format!("invalid `--set {raw}`: missing input name"));
+        }
+        let value = raw_value.parse::<f64>().map_err(|err| {
+            format!("invalid `--set {raw}`: failed to parse `{raw_value}` as number: {err}")
+        })?;
+        if !value.is_finite() {
+            return Err(format!(
+                "invalid `--set {raw}`: `{raw_value}` must be a finite number"
+            ));
+        }
+        if overrides.insert(name.to_string(), value).is_some() {
+            return Err(format!("duplicate `--set` override for input `{name}`"));
+        }
+    }
+    Ok(overrides)
 }
 
 pub(crate) fn resolve_optimize_params(
@@ -1289,8 +1359,14 @@ fn _runtime_error(_err: RuntimeError) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{global_fee_schedule, parse_execution_fee_schedules};
-    use palmscript::FeeSchedule;
+    use super::{
+        global_fee_schedule, parse_execution_fee_schedules, parse_input_override_assignments,
+        resolve_preset_input_overrides,
+    };
+    use palmscript::{
+        FeeSchedule, OptimizeCandidateSummary, OptimizeEvaluationSummary, OptimizeObjective,
+        OptimizePreset, OptimizeRunner,
+    };
     use std::collections::BTreeMap;
 
     #[test]
@@ -1335,6 +1411,126 @@ mod tests {
                         taker_bps: 4.5,
                     },
                 ),
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_input_override_assignments_rejects_duplicate_names() {
+        let err = parse_input_override_assignments(&[
+            "threshold=1".to_string(),
+            "threshold=2".to_string(),
+        ])
+        .expect_err("duplicate names should fail");
+        assert!(err.contains("duplicate `--set` override"));
+    }
+
+    #[test]
+    fn resolve_preset_input_overrides_selects_trial_and_applies_mutations() {
+        let preset = OptimizePreset {
+            version: 1,
+            script_path: Some("strategy.ps".to_string()),
+            script_sha256: "hash".to_string(),
+            runner: OptimizeRunner::Backtest,
+            objective: OptimizeObjective::EndingEquity,
+            backtest: palmscript::BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
+                activation_time_ms: None,
+                initial_capital: 1_000.0,
+                maker_fee_bps: 0.0,
+                taker_fee_bps: 0.0,
+                execution_fee_schedules: BTreeMap::new(),
+                slippage_bps: 0.0,
+                diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
+                perp: None,
+                perp_context: None,
+                portfolio_perp_contexts: BTreeMap::new(),
+            },
+            walk_forward: None,
+            diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
+            holdout: None,
+            constraints: palmscript::ValidationConstraintConfig::default(),
+            parameter_space: Vec::new(),
+            best_input_overrides: BTreeMap::from([
+                ("threshold".to_string(), 0.0),
+                ("atr_mult".to_string(), 2.0),
+            ]),
+            top_candidates: vec![
+                OptimizeCandidateSummary {
+                    trial_id: 7,
+                    input_overrides: BTreeMap::from([
+                        ("threshold".to_string(), 100.0),
+                        ("atr_mult".to_string(), 2.0),
+                    ]),
+                    objective_score: 1.0,
+                    summary: OptimizeEvaluationSummary::Backtest {
+                        summary: palmscript::BacktestSummary {
+                            starting_equity: 1_000.0,
+                            ending_equity: 1_000.0,
+                            realized_pnl: 0.0,
+                            unrealized_pnl: 0.0,
+                            total_return: 0.0,
+                            sharpe_ratio: None,
+                            trade_count: 0,
+                            winning_trade_count: 0,
+                            losing_trade_count: 0,
+                            win_rate: 0.0,
+                            max_drawdown: 0.0,
+                            max_gross_exposure: 0.0,
+                            max_net_exposure: 0.0,
+                            peak_open_position_count: 0,
+                        },
+                        capture_summary: palmscript::BacktestCaptureSummary::default(),
+                    },
+                    time_bucket_cohorts: Vec::new(),
+                    constraints: palmscript::ValidationConstraintSummary::default(),
+                },
+                OptimizeCandidateSummary {
+                    trial_id: 9,
+                    input_overrides: BTreeMap::from([
+                        ("threshold".to_string(), 0.0),
+                        ("atr_mult".to_string(), 3.0),
+                    ]),
+                    objective_score: 2.0,
+                    summary: OptimizeEvaluationSummary::Backtest {
+                        summary: palmscript::BacktestSummary {
+                            starting_equity: 1_000.0,
+                            ending_equity: 1_100.0,
+                            realized_pnl: 100.0,
+                            unrealized_pnl: 0.0,
+                            total_return: 0.1,
+                            sharpe_ratio: Some(1.0),
+                            trade_count: 2,
+                            winning_trade_count: 2,
+                            losing_trade_count: 0,
+                            win_rate: 1.0,
+                            max_drawdown: 0.0,
+                            max_gross_exposure: 0.0,
+                            max_net_exposure: 0.0,
+                            peak_open_position_count: 1,
+                        },
+                        capture_summary: palmscript::BacktestCaptureSummary::default(),
+                    },
+                    time_bucket_cohorts: Vec::new(),
+                    constraints: palmscript::ValidationConstraintSummary::default(),
+                },
+            ],
+        };
+
+        let overrides = resolve_preset_input_overrides(
+            Some(&preset),
+            Some(7),
+            &["atr_mult=4".to_string(), "risk=1.5".to_string()],
+        )
+        .expect("trial selection should succeed");
+
+        assert_eq!(
+            overrides,
+            BTreeMap::from([
+                ("atr_mult".to_string(), 4.0),
+                ("risk".to_string(), 1.5),
+                ("threshold".to_string(), 100.0),
             ])
         );
     }

@@ -21,7 +21,7 @@ Para trabajos largos de tuning por CLI:
 
 - usa `palmscript run optimize ...` cuando quieras el resultado en primer plano
 - usa `palmscript run optimize ...` para optimizar directamente desde la CLI
-- guarda los candidatos utiles con `--preset-out best.json` para reejecutarlos con `run backtest` o `run walk-forward`
+- guarda los candidatos utiles con `--preset-out best.json` para reejecutarlos con `run backtest` o `run walk-forward`, y usa `--preset-trial-id <N>` mas `--set name=value` para replay y mutacion exactos del candidato
 - manten activado el holdout final intacto por defecto salvo que quieras desactivar esa proteccion de forma intencional
 - agrega restricciones explicitas como `--min-sharpe`, `--min-holdout-pass-rate` y `--max-overfitting-risk` cuando quieras que el optimizador busque solo en la region factible
 - agrega `--direct-validate-top <N>` cuando quieras que el optimizador vuelva a ejecutar automaticamente los mejores survivors factibles en la ventana completa
