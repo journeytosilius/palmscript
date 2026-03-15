@@ -40,6 +40,29 @@ Notes:
 - `--list` is the best discovery mode before calling a specific topic
 - the embedded docs are generated from `web/docs/docs/` at build time
 
+## `palmscript inspect`
+
+```bash
+palmscript inspect exports <artifact.json> [--format json|text]
+palmscript inspect export <artifact.json> <name> [--format json|text]
+palmscript inspect overlap <artifact.json> <left> <right> [--format json|text]
+```
+
+Queries saved PalmScript outputs artifacts without writing ad hoc JSON-processing scripts.
+
+Arguments and flags:
+
+- `<artifact.json>`: path to a saved backtest result, paper export, or raw outputs JSON artifact
+- `<name>`: one export name to summarize
+- `<left>` / `<right>`: two boolean export names to compare
+- `--format json|text`: output rendering format, default `json`
+
+Notes:
+
+- `inspect exports` lists every export with point counts plus bool or numeric summary stats
+- `inspect export` prints the same summary for one named export
+- `inspect overlap` requires boolean exports and reports counts such as `both_true_count`, `left_only_true_count`, and `na_count`
+
 ## `palmscript run market`
 
 ```bash

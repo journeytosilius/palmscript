@@ -13,6 +13,10 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Docs(DocsArgs),
+    Inspect {
+        #[command(subcommand)]
+        command: Box<InspectCommand>,
+    },
     Run {
         #[command(subcommand)]
         mode: Box<RunCommand>,
@@ -25,6 +29,13 @@ pub enum Command {
     DumpBytecode(DumpBytecodeArgs),
 }
 
+#[derive(Debug, Subcommand)]
+pub enum InspectCommand {
+    Exports(InspectExportsArgs),
+    Export(InspectExportArgs),
+    Overlap(InspectOverlapArgs),
+}
+
 #[derive(Debug, clap::Args)]
 pub struct DocsArgs {
     pub topic: Option<String>,
@@ -32,6 +43,30 @@ pub struct DocsArgs {
     pub all: bool,
     #[arg(long, conflicts_with_all = ["topic", "all"])]
     pub list: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct InspectExportsArgs {
+    pub artifact: PathBuf,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct InspectExportArgs {
+    pub artifact: PathBuf,
+    pub name: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct InspectOverlapArgs {
+    pub artifact: PathBuf,
+    pub left: String,
+    pub right: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
 }
 
 #[derive(Debug, Subcommand)]

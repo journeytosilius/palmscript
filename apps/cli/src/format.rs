@@ -12,6 +12,8 @@ use palmscript::{
     VenueRiskSnapshot, WalkForwardResult, WalkForwardSweepResult,
 };
 
+use crate::inspect::{BoolExportOverlapSummary, ExportListSummary, ExportSeriesSummary};
+
 pub fn render_outputs_text(outputs: &Outputs) -> String {
     let mut out = String::new();
 
@@ -83,6 +85,88 @@ pub fn render_outputs_text(outputs: &Outputs) -> String {
         }
     }
 
+    out
+}
+
+pub fn render_export_list_text(summary: &ExportListSummary) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "artifact_kind={:?} export_count={}",
+        summary.artifact_kind, summary.export_count
+    );
+    for export in &summary.exports {
+        let _ = writeln!(
+            out,
+            "name={} kind={:?} points={} true={} false={} na={} numeric={} min={} max={} mean={}",
+            export.name,
+            export.kind,
+            export.point_count,
+            export.true_count,
+            export.false_count,
+            export.na_count,
+            export.numeric_count,
+            fmt_opt_f64(export.min_value),
+            fmt_opt_f64(export.max_value),
+            fmt_opt_f64(export.mean_value),
+        );
+    }
+    out
+}
+
+pub fn render_export_summary_text(summary: &ExportSeriesSummary) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "name={}", summary.name);
+    let _ = writeln!(out, "kind={:?}", summary.kind);
+    let _ = writeln!(out, "point_count={}", summary.point_count);
+    let _ = writeln!(out, "true_count={}", summary.true_count);
+    let _ = writeln!(out, "false_count={}", summary.false_count);
+    let _ = writeln!(out, "na_count={}", summary.na_count);
+    let _ = writeln!(out, "numeric_count={}", summary.numeric_count);
+    let _ = writeln!(out, "min_value={}", fmt_opt_f64(summary.min_value));
+    let _ = writeln!(out, "max_value={}", fmt_opt_f64(summary.max_value));
+    let _ = writeln!(out, "mean_value={}", fmt_opt_f64(summary.mean_value));
+    let _ = writeln!(
+        out,
+        "first_bar_index={}",
+        summary
+            .first_bar_index
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NA".to_string())
+    );
+    let _ = writeln!(
+        out,
+        "last_bar_index={}",
+        summary
+            .last_bar_index
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "NA".to_string())
+    );
+    out
+}
+
+pub fn render_export_overlap_text(summary: &BoolExportOverlapSummary) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "left={}", summary.left);
+    let _ = writeln!(out, "right={}", summary.right);
+    let _ = writeln!(out, "point_count={}", summary.point_count);
+    let _ = writeln!(
+        out,
+        "comparable_point_count={}",
+        summary.comparable_point_count
+    );
+    let _ = writeln!(out, "na_count={}", summary.na_count);
+    let _ = writeln!(out, "left_true_count={}", summary.left_true_count);
+    let _ = writeln!(out, "right_true_count={}", summary.right_true_count);
+    let _ = writeln!(out, "both_true_count={}", summary.both_true_count);
+    let _ = writeln!(out, "either_true_count={}", summary.either_true_count);
+    let _ = writeln!(out, "left_only_true_count={}", summary.left_only_true_count);
+    let _ = writeln!(
+        out,
+        "right_only_true_count={}",
+        summary.right_only_true_count
+    );
+    let _ = writeln!(out, "both_false_count={}", summary.both_false_count);
     out
 }
 

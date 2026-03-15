@@ -3,6 +3,7 @@ mod commands;
 mod diagnostics;
 mod docs;
 mod format;
+mod inspect;
 
 use clap::Parser;
 

@@ -23,21 +23,23 @@ use sha2::{Digest, Sha256};
 use crate::args::{
     BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command,
     DiagnosticsDetailArg, DocsArgs, DumpBytecodeArgs, ExecutionCommand, ExecutionServeArgs,
-    ExecutionStatusArgs, MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg,
-    OutputFormat, OverfittingRiskArg, PaperExportArgs, PaperFillsArgs, PaperListArgs,
-    PaperLogsArgs, PaperOrdersArgs, PaperPositionsArgs, PaperRunArgs, PaperStatusArgs,
-    PaperStopArgs, RunCommand, WalkForwardRunArgs, WalkForwardSweepObjectiveArg,
-    WalkForwardSweepRunArgs,
+    ExecutionStatusArgs, InspectCommand, InspectExportArgs, InspectExportsArgs, InspectOverlapArgs,
+    MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg, OutputFormat,
+    OverfittingRiskArg, PaperExportArgs, PaperFillsArgs, PaperListArgs, PaperLogsArgs,
+    PaperOrdersArgs, PaperPositionsArgs, PaperRunArgs, PaperStatusArgs, PaperStopArgs, RunCommand,
+    WalkForwardRunArgs, WalkForwardSweepObjectiveArg, WalkForwardSweepRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
 use crate::docs;
 use crate::format::{
     render_backtest_text, render_bytecode_text, render_execution_daemon_status_text,
+    render_export_list_text, render_export_overlap_text, render_export_summary_text,
     render_optimize_text, render_outputs_text, render_paper_export_text,
     render_paper_export_text_full, render_paper_logs_text, render_paper_manifest_text,
     render_paper_positions_text, render_paper_snapshot_text, render_walk_forward_sweep_text,
     render_walk_forward_text,
 };
+use crate::inspect::{inspect_export, inspect_exports, inspect_overlap};
 
 type ResolvedPerpContexts = (
     Option<PerpBacktestConfig>,
@@ -48,6 +50,7 @@ type ResolvedPerpContexts = (
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Docs(args) => print_docs(args),
+        Command::Inspect { command } => run_inspect(*command),
         Command::Run { mode } => run_mode(*mode),
         Command::Execution { command } => run_execution(*command),
         Command::Check(args) => check_script(args),
@@ -79,12 +82,56 @@ fn run_mode(mode: RunCommand) -> Result<(), String> {
     }
 }
 
+fn run_inspect(command: InspectCommand) -> Result<(), String> {
+    match command {
+        InspectCommand::Exports(args) => run_inspect_exports(args),
+        InspectCommand::Export(args) => run_inspect_export(args),
+        InspectCommand::Overlap(args) => run_inspect_overlap(args),
+    }
+}
+
 fn run_execution(command: ExecutionCommand) -> Result<(), String> {
     match command {
         ExecutionCommand::Serve(args) => run_execution_serve(args),
         ExecutionCommand::Status(args) => run_execution_status(args),
         ExecutionCommand::Stop => run_execution_stop(),
     }
+}
+
+fn run_inspect_exports(args: InspectExportsArgs) -> Result<(), String> {
+    let summary = inspect_exports(&args.artifact)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&summary).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_export_list_text(&summary)),
+    }
+    Ok(())
+}
+
+fn run_inspect_export(args: InspectExportArgs) -> Result<(), String> {
+    let summary = inspect_export(&args.artifact, &args.name)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&summary).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_export_summary_text(&summary)),
+    }
+    Ok(())
+}
+
+fn run_inspect_overlap(args: InspectOverlapArgs) -> Result<(), String> {
+    let summary = inspect_overlap(&args.artifact, &args.left, &args.right)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&summary).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_export_overlap_text(&summary)),
+    }
+    Ok(())
 }
 
 fn run_market(args: MarketRunArgs) -> Result<(), String> {

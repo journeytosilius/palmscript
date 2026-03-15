@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use assert_cmd::prelude::*;
 use mockito::{Matcher, Server};
+use palmscript::{OutputKind, OutputSample, OutputSeries, OutputValue, Outputs};
 use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::tempdir;
@@ -128,6 +129,91 @@ fn optimize_script() -> &'static str {
     "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true\norder entry long = market(venue = spot)\norder entry short = market(venue = spot)\norder exit long = market(venue = spot)\norder exit short = market(venue = spot)"
 }
 
+fn sample_outputs_artifact() -> Outputs {
+    Outputs {
+        exports: vec![
+            OutputSeries {
+                id: 0,
+                name: "audit_long_setup_state".to_string(),
+                kind: OutputKind::ExportSeries,
+                points: vec![
+                    OutputSample {
+                        output_id: 0,
+                        name: "audit_long_setup_state".to_string(),
+                        bar_index: 0,
+                        time: Some(10.0),
+                        value: OutputValue::Bool(true),
+                    },
+                    OutputSample {
+                        output_id: 0,
+                        name: "audit_long_setup_state".to_string(),
+                        bar_index: 1,
+                        time: Some(11.0),
+                        value: OutputValue::Bool(false),
+                    },
+                    OutputSample {
+                        output_id: 0,
+                        name: "audit_long_setup_state".to_string(),
+                        bar_index: 2,
+                        time: Some(12.0),
+                        value: OutputValue::NA,
+                    },
+                ],
+            },
+            OutputSeries {
+                id: 1,
+                name: "audit_long_time_ok".to_string(),
+                kind: OutputKind::ExportSeries,
+                points: vec![
+                    OutputSample {
+                        output_id: 1,
+                        name: "audit_long_time_ok".to_string(),
+                        bar_index: 0,
+                        time: Some(10.0),
+                        value: OutputValue::Bool(true),
+                    },
+                    OutputSample {
+                        output_id: 1,
+                        name: "audit_long_time_ok".to_string(),
+                        bar_index: 1,
+                        time: Some(11.0),
+                        value: OutputValue::Bool(true),
+                    },
+                    OutputSample {
+                        output_id: 1,
+                        name: "audit_long_time_ok".to_string(),
+                        bar_index: 2,
+                        time: Some(12.0),
+                        value: OutputValue::NA,
+                    },
+                ],
+            },
+            OutputSeries {
+                id: 2,
+                name: "audit_score".to_string(),
+                kind: OutputKind::ExportSeries,
+                points: vec![
+                    OutputSample {
+                        output_id: 2,
+                        name: "audit_score".to_string(),
+                        bar_index: 0,
+                        time: Some(10.0),
+                        value: OutputValue::F64(1.0),
+                    },
+                    OutputSample {
+                        output_id: 2,
+                        name: "audit_score".to_string(),
+                        bar_index: 1,
+                        time: Some(11.0),
+                        value: OutputValue::F64(3.0),
+                    },
+                ],
+            },
+        ],
+        ..Outputs::default()
+    }
+}
+
 #[test]
 fn help_prints_usage() {
     let mut cmd = palmscript_cmd();
@@ -136,9 +222,71 @@ fn help_prints_usage() {
         .success()
         .stdout(predicate::str::contains("Usage:"))
         .stdout(predicate::str::contains("docs"))
+        .stdout(predicate::str::contains("inspect"))
         .stdout(predicate::str::contains("run"))
         .stdout(predicate::str::contains("check"))
         .stdout(predicate::str::contains("dump-bytecode"));
+}
+
+#[test]
+fn inspect_exports_emits_export_summaries() {
+    let dir = tempdir().expect("tempdir");
+    let artifact = dir.path().join("outputs.json");
+    fs::write(
+        &artifact,
+        serde_json::to_string_pretty(&sample_outputs_artifact()).expect("artifact json"),
+    )
+    .expect("artifact write");
+
+    let mut cmd = palmscript_cmd();
+    cmd.args([
+        "inspect",
+        "exports",
+        artifact.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let json: Value = serde_json::from_slice(&output).expect("stdout is json");
+    assert_eq!(json["artifact_kind"], Value::from("outputs"));
+    assert_eq!(json["export_count"], Value::from(3));
+    assert_eq!(
+        json["exports"][0]["name"],
+        Value::from("audit_long_setup_state")
+    );
+    assert_eq!(json["exports"][0]["true_count"], Value::from(1));
+    assert_eq!(json["exports"][0]["false_count"], Value::from(1));
+    assert_eq!(json["exports"][0]["na_count"], Value::from(1));
+    assert_eq!(json["exports"][2]["mean_value"], Value::from(2.0));
+}
+
+#[test]
+fn inspect_overlap_counts_joint_true_bars() {
+    let dir = tempdir().expect("tempdir");
+    let artifact = dir.path().join("outputs.json");
+    fs::write(
+        &artifact,
+        serde_json::to_string_pretty(&sample_outputs_artifact()).expect("artifact json"),
+    )
+    .expect("artifact write");
+
+    let mut cmd = palmscript_cmd();
+    cmd.args([
+        "inspect",
+        "overlap",
+        artifact.to_str().unwrap(),
+        "audit_long_setup_state",
+        "audit_long_time_ok",
+        "--format",
+        "json",
+    ]);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let json: Value = serde_json::from_slice(&output).expect("stdout is json");
+    assert_eq!(json["both_true_count"], Value::from(1));
+    assert_eq!(json["left_true_count"], Value::from(1));
+    assert_eq!(json["right_true_count"], Value::from(2));
+    assert_eq!(json["na_count"], Value::from(1));
+    assert_eq!(json["either_true_count"], Value::from(2));
 }
 
 #[test]
