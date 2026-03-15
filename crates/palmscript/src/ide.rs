@@ -87,14 +87,10 @@ const MARKET_FIELDS: [(&str, &str); 6] = [
     ("time", "Candle open time"),
 ];
 
-const BINANCE_USDM_AUXILIARY_FIELDS: [(&str, &str); 6] = [
+const BINANCE_USDM_AUXILIARY_FIELDS: [(&str, &str); 5] = [
     (
         "funding_rate",
         "Latest historical Binance USD-M funding rate",
-    ),
-    (
-        "open_interest",
-        "Historical Binance USD-M open interest snapshot",
     ),
     ("mark_price", "Binance USD-M mark-price close value"),
     ("index_price", "Binance USD-M index-price close value"),
@@ -2270,7 +2266,6 @@ fn render_market_field(field: MarketField) -> &'static str {
         MarketField::Volume => "volume",
         MarketField::Time => "time",
         MarketField::FundingRate => "funding_rate",
-        MarketField::OpenInterest => "open_interest",
         MarketField::MarkPrice => "mark_price",
         MarketField::IndexPrice => "index_price",
         MarketField::PremiumIndex => "premium_index",

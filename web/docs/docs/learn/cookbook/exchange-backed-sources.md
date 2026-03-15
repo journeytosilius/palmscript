@@ -38,7 +38,7 @@ use perp 4h
 
 plot(perp.mark_price - perp.index_price)
 plot(nz(perp.funding_rate, 0))
-plot(ema(perp.open_interest, 6))
+plot(perp.basis)
 plot(ema(perp.4h.premium_index, 4))
 ```
 
@@ -52,7 +52,7 @@ Open [https://palmscript.dev/](https://palmscript.dev/), paste the example into 
 - `use bb 1h` is required before `bb.1h.close`
 - the script still has one global base `interval`
 - the runtime resolves each required `(source, interval)` feed before execution
-- `binance.usdm` also supports historical-only `funding_rate`, `open_interest`, `mark_price`, `index_price`, `premium_index`, and `basis` source fields in `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
+- `binance.usdm` also supports historical-only `funding_rate`, `mark_price`, `index_price`, `premium_index`, and `basis` source fields in `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
 - Bybit expects venue-native symbols like `BTCUSDT`
 - Gate expects venue-native symbols like `BTC_USDT`
 - `run paper` still rejects those Binance USD-M auxiliary fields until live polling is implemented

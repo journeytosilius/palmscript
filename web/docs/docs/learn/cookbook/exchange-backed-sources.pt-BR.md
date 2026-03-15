@@ -43,7 +43,7 @@ no editor e execute-o sobre o historico BTCUSDT disponivel na app.
 - o runtime resolve cada feed `(source, interval)` necessario antes da
   execucao
 - `binance.usdm` tambem suporta os campos historicos `funding_rate`,
-  `open_interest`, `mark_price`, `index_price`, `premium_index` e `basis`
+  `mark_price`, `index_price`, `premium_index` e `basis`
 - Bybit espera simbolos nativos da venue como `BTCUSDT`
 - Gate espera simbolos nativos da venue como `BTC_USDT`
 - `run paper` continua rejeitando esses campos auxiliares da Binance USD-M ate

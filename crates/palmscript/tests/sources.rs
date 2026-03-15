@@ -77,7 +77,7 @@ fn source_interval_references_require_source_scoped_use_declarations() {
 #[test]
 fn runtime_loads_binance_usdm_auxiliary_source_fields() {
     let compiled = compile(
-        "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.mark_price + perp.funding_rate + perp.open_interest)",
+        "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.mark_price + perp.funding_rate)",
     )
     .expect("compile");
     let outputs = run_with_sources(
@@ -95,7 +95,7 @@ fn runtime_loads_binance_usdm_auxiliary_source_fields() {
                     volume: 10.0,
                     time: 1_704_067_200_000.0,
                     funding_rate: Some(0.01),
-                    open_interest: Some(200.0),
+                    open_interest: None,
                     mark_price: Some(100.25),
                     index_price: Some(100.1),
                     premium_index: Some(0.001),
@@ -107,5 +107,5 @@ fn runtime_loads_binance_usdm_auxiliary_source_fields() {
     )
     .expect("runtime");
     assert_eq!(outputs.plots[0].points.len(), 1);
-    assert_eq!(outputs.plots[0].points[0].value, Some(300.26));
+    assert_eq!(outputs.plots[0].points[0].value, Some(100.26));
 }

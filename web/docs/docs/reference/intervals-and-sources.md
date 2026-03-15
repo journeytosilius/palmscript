@@ -90,7 +90,6 @@ Rules:
 `binance.usdm("<symbol>")` also exposes these historical-only auxiliary fields:
 
 - `funding_rate`
-- `open_interest`
 - `mark_price`
 - `index_price`
 - `premium_index`
@@ -102,7 +101,7 @@ Rules:
 - auxiliary fields keep the same flat source-qualified syntax as OHLCV fields: `<alias>.<field>` and `<alias>.<interval>.<field>`
 - historical modes fetch auxiliary datasets automatically when the script references them
 - `mark_price`, `index_price`, and `premium_index` resolve to close-equivalent scalar series for the selected interval
-- `funding_rate`, `open_interest`, and `basis` are normalized as carry-forward scalar series on the selected interval and stay `na` until the first fetched event or snapshot
+- `funding_rate` and `basis` are normalized as carry-forward scalar series on the selected interval and stay `na` until the first fetched event or snapshot
 - `run paper` rejects scripts that reference these auxiliary fields until live polling is implemented
 
 ## Equal, Higher, and Lower Intervals

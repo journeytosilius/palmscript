@@ -18,7 +18,6 @@ use crate::runtime::Bar;
 
 const PAGE_LIMIT: usize = 1500;
 const FUNDING_RATE_LIMIT: usize = 1000;
-const OPEN_INTEREST_LIMIT: usize = 500;
 const BASIS_LIMIT: usize = 500;
 
 struct ScalarKlineFieldEndpoint {
@@ -191,24 +190,6 @@ pub(crate) fn fetch_funding_rate_bars(
         to_ms,
         &samples,
         MarketField::FundingRate,
-    ))
-}
-
-pub(crate) fn fetch_open_interest_bars(
-    client: &Client,
-    source: &DeclaredMarketSource,
-    interval: Interval,
-    from_ms: i64,
-    to_ms: i64,
-    base_url: &str,
-) -> Result<Vec<Bar>, ExchangeFetchError> {
-    let samples = fetch_open_interest_samples(client, source, interval, from_ms, to_ms, base_url)?;
-    Ok(densify_scalar_samples(
-        interval,
-        from_ms,
-        to_ms,
-        &samples,
-        MarketField::OpenInterest,
     ))
 }
 
@@ -431,25 +412,6 @@ struct FundingRateRow {
 }
 
 #[derive(Clone, Debug, Serialize)]
-struct OpenInterestQuery<'a> {
-    symbol: &'a str,
-    period: &'a str,
-    #[serde(rename = "startTime")]
-    start_time: i64,
-    #[serde(rename = "endTime")]
-    end_time: i64,
-    limit: usize,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct OpenInterestRow {
-    #[serde(rename = "sumOpenInterest", deserialize_with = "deserialize_f64_text")]
-    sum_open_interest: f64,
-    #[serde(rename = "timestamp", deserialize_with = "deserialize_i64_text")]
-    timestamp: i64,
-}
-
-#[derive(Clone, Debug, Serialize)]
 struct BasisQuery<'a> {
     pair: &'a str,
     #[serde(rename = "contractType")]
@@ -561,85 +523,6 @@ fn fetch_funding_rate_samples(
             });
         }
         if row_count < FUNDING_RATE_LIMIT {
-            break;
-        }
-        let Some(last_time) = last_time else {
-            break;
-        };
-        let Some(next_start) = last_time.checked_add(1) else {
-            break;
-        };
-        if next_start >= to_ms {
-            break;
-        }
-        start_time = next_start;
-    }
-    if samples.is_empty() {
-        return Err(no_data(source, interval));
-    }
-    Ok(samples)
-}
-
-fn fetch_open_interest_samples(
-    client: &Client,
-    source: &DeclaredMarketSource,
-    interval: Interval,
-    from_ms: i64,
-    to_ms: i64,
-    base_url: &str,
-) -> Result<Vec<ScalarSample>, ExchangeFetchError> {
-    let period = open_interest_period(interval);
-    let mut start_time = from_ms;
-    let mut samples = Vec::new();
-    loop {
-        let response = client
-            .get(format!(
-                "{}/futures/data/openInterestHist",
-                base_url.trim_end_matches('/')
-            ))
-            .query(&OpenInterestQuery {
-                symbol: source.symbol.as_str(),
-                period,
-                start_time,
-                end_time: to_ms.saturating_sub(1),
-                limit: OPEN_INTEREST_LIMIT,
-            })
-            .send()
-            .map_err(|err| request_failed(source, interval, err.to_string()))?;
-        if response.status() != StatusCode::OK {
-            return Err(request_failed(
-                source,
-                interval,
-                http_status_message(response),
-            ));
-        }
-        let rows: Vec<OpenInterestRow> = decode_json_response(response, source, interval)?;
-        if rows.is_empty() {
-            break;
-        }
-        let mut last_time = None;
-        let row_count = rows.len();
-        for row in rows {
-            if row.timestamp < from_ms || row.timestamp >= to_ms {
-                continue;
-            }
-            if samples
-                .last()
-                .is_some_and(|previous: &ScalarSample| previous.time_ms >= row.timestamp)
-            {
-                return Err(malformed_response(
-                    source,
-                    interval,
-                    "non-increasing open-interest response".to_string(),
-                ));
-            }
-            last_time = Some(row.timestamp);
-            samples.push(ScalarSample {
-                time_ms: row.timestamp,
-                value: row.sum_open_interest,
-            });
-        }
-        if row_count < OPEN_INTEREST_LIMIT {
             break;
         }
         let Some(last_time) = last_time else {
@@ -803,7 +686,6 @@ fn empty_bar(open_time_ms: i64) -> Bar {
 fn set_auxiliary_value(bar: &mut Bar, field: MarketField, value: Option<f64>) {
     match field {
         MarketField::FundingRate => bar.funding_rate = value,
-        MarketField::OpenInterest => bar.open_interest = value,
         MarketField::MarkPrice => bar.mark_price = value,
         MarketField::IndexPrice => bar.index_price = value,
         MarketField::PremiumIndex => bar.premium_index = value,
@@ -817,7 +699,7 @@ fn set_auxiliary_value(bar: &mut Bar, field: MarketField, value: Option<f64>) {
     }
 }
 
-fn open_interest_period(interval: Interval) -> &'static str {
+fn basis_period(interval: Interval) -> &'static str {
     match interval {
         Interval::Sec1 | Interval::Min1 | Interval::Min3 | Interval::Min5 => "5m",
         Interval::Min15 => "15m",
@@ -829,10 +711,6 @@ fn open_interest_period(interval: Interval) -> &'static str {
         Interval::Hour12 => "12h",
         Interval::Day1 | Interval::Day3 | Interval::Week1 | Interval::Month1 => "1d",
     }
-}
-
-fn basis_period(interval: Interval) -> &'static str {
-    open_interest_period(interval)
 }
 
 fn fetch_server_time(

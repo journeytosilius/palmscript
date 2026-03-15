@@ -4,14 +4,11 @@ use perp 4h
 
 let mark_basis = perp.mark_price - perp.index_price
 let funding_bias = nz(perp.funding_rate, 0)
-let oi_trend = ema(perp.open_interest, 6)
 let higher_tf_premium = ema(perp.4h.premium_index, 4)
 
 export funding = funding_bias
-export open_interest = perp.open_interest
 export basis = perp.basis
 export mark_basis_signal = mark_basis
 
 plot(mark_basis + funding_bias)
-plot(oi_trend)
 plot(higher_tf_premium)

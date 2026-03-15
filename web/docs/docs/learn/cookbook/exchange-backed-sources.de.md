@@ -44,7 +44,7 @@ in der App aus.
 - der Runtime loest jeden benoetigten `(source, interval)`-Feed vor der
   Ausfuehrung auf
 - `binance.usdm` unterstuetzt ausserdem die historischen Felder
-  `funding_rate`, `open_interest`, `mark_price`, `index_price`,
+  `funding_rate`, `mark_price`, `index_price`,
   `premium_index` und `basis`
 - Bybit erwartet venue-native Symbole wie `BTCUSDT`
 - Gate erwartet venue-native Symbole wie `BTC_USDT`

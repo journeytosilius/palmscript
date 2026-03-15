@@ -356,14 +356,6 @@ fn fetch_source_feed(
                     to_ms,
                     &endpoints.binance_usdm_base_url,
                 )?),
-                MarketField::OpenInterest => Some(binance::usdm::fetch_open_interest_bars(
-                    client,
-                    source,
-                    interval,
-                    from_ms,
-                    to_ms,
-                    &endpoints.binance_usdm_base_url,
-                )?),
                 MarketField::MarkPrice => Some(map_scalar_close_field(
                     binance::usdm::fetch_mark_price_bars(
                         client,
@@ -495,7 +487,6 @@ fn map_scalar_close_field(bars: Vec<Bar>, field: MarketField) -> Vec<Bar> {
                 MarketField::PremiumIndex => mapped.premium_index = Some(bar.close),
                 MarketField::Basis => mapped.basis = Some(bar.close),
                 MarketField::FundingRate => mapped.funding_rate = Some(bar.close),
-                MarketField::OpenInterest => mapped.open_interest = Some(bar.close),
                 MarketField::Open
                 | MarketField::High
                 | MarketField::Low
@@ -527,9 +518,6 @@ fn merge_bar(target: &mut Bar, overlay: Bar) {
     target.time = overlay.time;
     if overlay.funding_rate.is_some() {
         target.funding_rate = overlay.funding_rate;
-    }
-    if overlay.open_interest.is_some() {
-        target.open_interest = overlay.open_interest;
     }
     if overlay.mark_price.is_some() {
         target.mark_price = overlay.mark_price;
@@ -775,21 +763,6 @@ mod tests {
                 .to_string(),
             )
             .create();
-        let _open_interest = server
-            .mock("GET", "/futures/data/openInterestHist")
-            .match_query(Matcher::AllOf(vec![
-                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
-                Matcher::UrlEncoded("period".into(), "1h".into()),
-            ]))
-            .with_status(200)
-            .with_body(
-                json!([
-                    { "sumOpenInterest": "1000.0", "timestamp": 1704067200000_i64 },
-                    { "sumOpenInterest": "1010.0", "timestamp": 1704070800000_i64 }
-                ])
-                .to_string(),
-            )
-            .create();
         let _basis = server
             .mock("GET", "/futures/data/basis")
             .match_query(Matcher::AllOf(vec![
@@ -808,7 +781,7 @@ mod tests {
             .create();
 
         let compiled = compile(
-            "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.close + perp.mark_price + perp.index_price + perp.premium_index + perp.basis + perp.funding_rate + perp.open_interest)",
+            "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.close + perp.mark_price + perp.index_price + perp.premium_index + perp.basis + perp.funding_rate)",
         )
         .expect("compile");
         let endpoints = ExchangeEndpoints {
@@ -829,7 +802,6 @@ mod tests {
         assert_eq!(first.premium_index, Some(0.001));
         assert_eq!(first.basis, Some(0.25));
         assert_eq!(first.funding_rate, Some(0.0008));
-        assert_eq!(first.open_interest, Some(1000.0));
     }
 
     #[test]

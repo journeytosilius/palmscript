@@ -112,7 +112,7 @@ Exchange-backed source endpoints can be overridden with environment variables fo
 - `PALMSCRIPT_BYBIT_BASE_URL`
 - `PALMSCRIPT_GATE_BASE_URL`
 
-Historical exchange-backed runs now also expose Binance USD-M auxiliary source fields directly on `binance.usdm("<symbol>")`: `funding_rate`, `open_interest`, `mark_price`, `index_price`, `premium_index`, and `basis`. Historical modes fetch those datasets automatically when referenced, while `run paper` still rejects them until live polling is implemented.
+Historical exchange-backed runs now also expose Binance USD-M auxiliary source fields directly on `binance.usdm("<symbol>")`: `funding_rate`, `mark_price`, `index_price`, `premium_index`, and `basis`. Historical modes fetch those datasets automatically when referenced, while `run paper` still rejects them until live polling is implemented.
 
 ## Browser IDE Container
 

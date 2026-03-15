@@ -96,7 +96,7 @@ Reglas:
 - `time` es la hora de apertura de la vela en Unix milliseconds UTC
 - los campos de precio y volumen son numericos
 - `binance.usdm("<symbol>")` tambien expone campos auxiliares historicos:
-  `funding_rate`, `open_interest`, `mark_price`, `index_price`, `premium_index` y `basis`
+  `funding_rate`, `mark_price`, `index_price`, `premium_index` y `basis`
 - esos campos auxiliares solo son validos en aliases `binance.usdm`
 - los modos historicos los obtienen automaticamente cuando el script los referencia
 - `run paper` rechaza scripts que usan esos campos auxiliares hasta que exista polling live para ellos

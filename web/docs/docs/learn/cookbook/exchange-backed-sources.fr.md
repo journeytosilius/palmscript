@@ -44,7 +44,7 @@ disponible dans l'application.
 - le script conserve un seul `interval` de base global
 - le runtime resout chaque flux `(source, interval)` requis avant l'execution
 - `binance.usdm` prend aussi en charge les champs historiques `funding_rate`,
-  `open_interest`, `mark_price`, `index_price`, `premium_index` et `basis`
+  `mark_price`, `index_price`, `premium_index` et `basis`
 - Bybit attend des symboles natifs de venue comme `BTCUSDT`
 - Gate attend des symboles natifs de venue comme `BTC_USDT`
 - `run paper` continue de rejeter ces champs auxiliaires Binance USD-M tant que

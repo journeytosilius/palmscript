@@ -59,7 +59,6 @@ impl Bar {
             Value::F64(self.volume),
             Value::F64(self.time),
             optional_value(self.funding_rate),
-            optional_value(self.open_interest),
             optional_value(self.mark_price),
             optional_value(self.index_price),
             optional_value(self.premium_index),

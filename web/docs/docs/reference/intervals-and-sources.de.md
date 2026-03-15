@@ -98,7 +98,7 @@ Regeln:
 - `time` ist die Kerzen-Oeffnungszeit in Unix-Millisekunden UTC
 - Preis- und Volumenfelder sind numerisch
 - `binance.usdm("<symbol>")` stellt ausserdem historische Hilfsfelder bereit:
-  `funding_rate`, `open_interest`, `mark_price`, `index_price`, `premium_index` und `basis`
+  `funding_rate`, `mark_price`, `index_price`, `premium_index` und `basis`
 - diese Hilfsfelder sind nur fuer `binance.usdm`-Aliases gueltig
 - historische Modi laden diese Datensaetze automatisch, sobald ein Skript sie referenziert
 - `run paper` lehnt Skripte mit diesen Hilfsfeldern ab, bis Live-Polling dafuer existiert

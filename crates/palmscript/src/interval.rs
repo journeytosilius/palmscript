@@ -41,7 +41,6 @@ pub enum MarketField {
     Volume,
     Time,
     FundingRate,
-    OpenInterest,
     MarkPrice,
     IndexPrice,
     PremiumIndex,
@@ -304,7 +303,7 @@ impl Interval {
 }
 
 impl MarketField {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 11] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -312,7 +311,6 @@ impl MarketField {
         Self::Volume,
         Self::Time,
         Self::FundingRate,
-        Self::OpenInterest,
         Self::MarkPrice,
         Self::IndexPrice,
         Self::PremiumIndex,
@@ -328,7 +326,6 @@ impl MarketField {
             "volume" => Some(Self::Volume),
             "time" => Some(Self::Time),
             "funding_rate" => Some(Self::FundingRate),
-            "open_interest" => Some(Self::OpenInterest),
             "mark_price" => Some(Self::MarkPrice),
             "index_price" => Some(Self::IndexPrice),
             "premium_index" => Some(Self::PremiumIndex),
@@ -346,7 +343,6 @@ impl MarketField {
             Self::Volume => "volume",
             Self::Time => "time",
             Self::FundingRate => "funding_rate",
-            Self::OpenInterest => "open_interest",
             Self::MarkPrice => "mark_price",
             Self::IndexPrice => "index_price",
             Self::PremiumIndex => "premium_index",
@@ -363,11 +359,10 @@ impl MarketField {
             Self::Volume => 4,
             Self::Time => 5,
             Self::FundingRate => 6,
-            Self::OpenInterest => 7,
-            Self::MarkPrice => 8,
-            Self::IndexPrice => 9,
-            Self::PremiumIndex => 10,
-            Self::Basis => 11,
+            Self::MarkPrice => 7,
+            Self::IndexPrice => 8,
+            Self::PremiumIndex => 9,
+            Self::Basis => 10,
         }
     }
 
@@ -382,7 +377,6 @@ impl MarketField {
         matches!(
             self,
             Self::FundingRate
-                | Self::OpenInterest
                 | Self::MarkPrice
                 | Self::IndexPrice
                 | Self::PremiumIndex
@@ -555,7 +549,6 @@ mod tests {
             "volume",
             "time",
             "funding_rate",
-            "open_interest",
             "mark_price",
             "index_price",
             "premium_index",
