@@ -23,6 +23,7 @@ use crate::bytecode::SignalRole;
 use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
 use crate::exchange::{MarkPriceBasis, VenueRiskSnapshot};
+use crate::interval::SourceTemplate;
 use crate::order::{OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::output::{OutputValue, Outputs};
 use crate::position::PositionSide;
@@ -292,6 +293,39 @@ pub struct SpotQuoteTransfer {
     pub bar_index: usize,
     pub time: f64,
     pub amount: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AssetLedgerBalance {
+    pub asset: String,
+    pub amount: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExchangeLedgerSnapshot {
+    pub execution_alias: String,
+    pub template: SourceTemplate,
+    pub symbol: String,
+    pub balances: Vec<AssetLedgerBalance>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LedgerEventKind {
+    InitialDeposit,
+    Transfer,
+    Withdrawal,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LedgerEvent {
+    pub kind: LedgerEventKind,
+    pub execution_alias: String,
+    pub counterparty_alias: Option<String>,
+    pub asset: String,
+    pub amount: f64,
+    pub bar_index: Option<usize>,
+    pub time: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -826,6 +860,12 @@ pub struct BacktestDiagnostics {
     #[serde(default)]
     pub spot_quote_transfers: Vec<SpotQuoteTransfer>,
     #[serde(default)]
+    pub starting_ledgers: Vec<ExchangeLedgerSnapshot>,
+    #[serde(default)]
+    pub ending_ledgers: Vec<ExchangeLedgerSnapshot>,
+    #[serde(default)]
+    pub ledger_events: Vec<LedgerEvent>,
+    #[serde(default)]
     pub date_perturbation: DatePerturbationDiagnostics,
 }
 
@@ -1005,7 +1045,13 @@ pub(crate) fn run_backtest_with_sources_internal(
     let prepared =
         bridge::prepare_backtest(compiled, &config.execution_source_alias, execution.template)?;
     let stepper = RuntimeStepper::try_new(compiled, runtime, vm_limits)?;
-    let mut result = engine::simulate_backtest(stepper, execution_bars.clone(), &config, prepared)?;
+    let mut result = engine::simulate_backtest(
+        stepper,
+        execution,
+        execution_bars.clone(),
+        &config,
+        prepared,
+    )?;
     if let Some(runtime) = perturbation_runtime {
         result.diagnostics.date_perturbation = build_date_perturbation_diagnostics(
             compiled,
@@ -1055,8 +1101,15 @@ fn run_portfolio_backtest_with_sources(
         .iter()
         .zip(executions.iter())
         .map(|(alias, execution)| {
-            execution_bars(&runtime, execution.source_id, alias)
-                .map(|bars| (alias.clone(), execution.source_id, execution.template, bars))
+            execution_bars(&runtime, execution.source_id, alias).map(|bars| {
+                (
+                    alias.clone(),
+                    execution.source_id,
+                    execution.template,
+                    execution.symbol.clone(),
+                    bars,
+                )
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
     engine::simulate_portfolio_backtest(runtime_steppers, execution_bars, &config, prepared)

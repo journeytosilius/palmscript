@@ -1,3 +1,4 @@
+use palmscript::backtest::LedgerEventKind;
 use palmscript::exchange::binance::{
     UsdmRiskSnapshot as BinanceUsdmRiskSnapshot, UsdmRiskSource as BinanceUsdmRiskSource,
 };
@@ -1046,13 +1047,82 @@ plot(left.close)",
 
     assert!(result.diagnostics.portfolio_mode);
     assert!(result.diagnostics.spot_virtual_portfolio);
+    assert_eq!(result.diagnostics.starting_ledgers.len(), 2);
+    assert_eq!(result.diagnostics.ending_ledgers.len(), 2);
     assert_eq!(result.diagnostics.spot_quote_transfers.len(), 1);
     let transfer = &result.diagnostics.spot_quote_transfers[0];
     assert_eq!(transfer.from_alias, "right");
     assert_eq!(transfer.to_alias, "left");
     assert!((transfer.amount - 500.0).abs() < 1e-9);
+    assert_eq!(result.diagnostics.ledger_events.len(), 3);
+    assert_eq!(
+        result.diagnostics.ledger_events[0].kind,
+        LedgerEventKind::InitialDeposit
+    );
+    assert_eq!(
+        result.diagnostics.ledger_events[2].kind,
+        LedgerEventKind::Transfer
+    );
     assert_eq!(result.open_positions.len(), 1);
     assert_eq!(result.open_positions[0].execution_alias, "left");
+    let left_ledger = result
+        .diagnostics
+        .ending_ledgers
+        .iter()
+        .find(|ledger| ledger.execution_alias == "left")
+        .expect("left ending ledger should exist");
+    assert!(left_ledger
+        .balances
+        .iter()
+        .any(|balance| balance.asset == "USDT"));
+    assert!(left_ledger
+        .balances
+        .iter()
+        .any(|balance| balance.asset == "BTC"));
+}
+
+#[test]
+fn single_spot_backtest_reports_explicit_asset_ledgers() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+size entry long = 1.0
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("spot backtest should succeed");
+
+    assert_eq!(result.diagnostics.starting_ledgers.len(), 1);
+    assert_eq!(result.diagnostics.ledger_events.len(), 1);
+    let ending = &result.diagnostics.ending_ledgers[0];
+    assert_eq!(ending.execution_alias, "spot");
+    assert_eq!(ending.symbol, "BTCUSDT");
+    assert!(ending
+        .balances
+        .iter()
+        .any(|balance| balance.asset == "USDT"));
+    assert!(ending.balances.iter().any(|balance| balance.asset == "BTC"));
 }
 
 #[test]

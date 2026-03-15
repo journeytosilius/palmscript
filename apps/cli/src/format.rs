@@ -515,6 +515,60 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
             );
         }
     }
+    if !result.diagnostics.starting_ledgers.is_empty() {
+        out.push_str("Starting Ledgers\n");
+        for ledger in &result.diagnostics.starting_ledgers {
+            let balances = ledger
+                .balances
+                .iter()
+                .map(|balance| format!("{}={:.8}", balance.asset, balance.amount))
+                .collect::<Vec<_>>()
+                .join(",");
+            let _ = writeln!(
+                out,
+                "alias={} template={:?} symbol={} balances={}",
+                ledger.execution_alias, ledger.template, ledger.symbol, balances,
+            );
+        }
+    }
+    if !result.diagnostics.ending_ledgers.is_empty() {
+        out.push_str("Ending Ledgers\n");
+        for ledger in &result.diagnostics.ending_ledgers {
+            let balances = ledger
+                .balances
+                .iter()
+                .map(|balance| format!("{}={:.8}", balance.asset, balance.amount))
+                .collect::<Vec<_>>()
+                .join(",");
+            let _ = writeln!(
+                out,
+                "alias={} template={:?} symbol={} balances={}",
+                ledger.execution_alias, ledger.template, ledger.symbol, balances,
+            );
+        }
+    }
+    if !result.diagnostics.ledger_events.is_empty() {
+        out.push_str("Ledger Events\n");
+        for event in &result.diagnostics.ledger_events {
+            let _ = writeln!(
+                out,
+                "kind={:?} alias={} counterparty={} asset={} amount={:.8} bar_index={} time={}",
+                event.kind,
+                event.execution_alias,
+                event.counterparty_alias.as_deref().unwrap_or("none"),
+                event.asset,
+                event.amount,
+                event
+                    .bar_index
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                event
+                    .time
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+            );
+        }
+    }
     let _ = writeln!(
         out,
         "degraded_bar_count={}",
@@ -2045,6 +2099,9 @@ mod tests {
                 spot_virtual_portfolio: false,
                 blocked_portfolio_entries: vec![],
                 spot_quote_transfers: vec![],
+                starting_ledgers: vec![],
+                ending_ledgers: vec![],
+                ledger_events: vec![],
                 date_perturbation: palmscript::DatePerturbationDiagnostics {
                     offset_bars: 2,
                     scenarios: vec![palmscript::DatePerturbationScenarioSummary {

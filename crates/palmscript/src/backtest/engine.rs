@@ -16,8 +16,9 @@ use crate::backtest::orders::{
 };
 use crate::backtest::overfitting::{annualized_sharpe_ratio, build_backtest_overfitting_risk};
 use crate::backtest::{
-    BacktestCaptureSummary, BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult,
-    BacktestSummary, DecisionReason, DiagnosticsDetailMode, EquityPoint, FeatureSnapshot, Fill,
+    AssetLedgerBalance, BacktestCaptureSummary, BacktestConfig, BacktestDiagnostics, BacktestError,
+    BacktestResult, BacktestSummary, DecisionReason, DiagnosticsDetailMode, EquityPoint,
+    ExchangeLedgerSnapshot, FeatureSnapshot, Fill, LedgerEvent, LedgerEventKind,
     OpportunityEventKind, OrderDecisionTrace, OrderEndReason, OrderRecord, OrderStatus,
     PerBarDecisionTrace, PerpBacktestMetadata, PortfolioControlBlockSummary,
     PortfolioControlKind as BacktestPortfolioControlKind, PositionSnapshot, SignalDecisionTrace,
@@ -125,6 +126,10 @@ enum FillLiquidity {
 
 struct PortfolioAliasState {
     alias: String,
+    template: crate::interval::SourceTemplate,
+    symbol: String,
+    quote_asset: String,
+    base_asset: Option<String>,
     stepper: RuntimeStepper,
     execution_bars: Vec<Bar>,
     aligned_mark_bars: Vec<Bar>,
@@ -146,50 +151,32 @@ struct PortfolioAliasState {
     target_consumption: TargetConsumptionState,
     entry_progress: EntryProgressState,
     diagnostics: DiagnosticsAccumulator,
-    spot_quote_balance: Option<f64>,
+    cash_balance: f64,
+    base_balance: f64,
 }
 
-fn portfolio_cash_total(shared_cash: f64, alias_states: &[PortfolioAliasState]) -> f64 {
-    if alias_states
-        .iter()
-        .any(|state| state.spot_quote_balance.is_some())
-    {
-        alias_states
-            .iter()
-            .map(|state| state.spot_quote_balance.unwrap_or(0.0))
-            .sum()
-    } else {
-        shared_cash
-    }
+fn portfolio_cash_total(alias_states: &[PortfolioAliasState]) -> f64 {
+    alias_states.iter().map(|state| state.cash_balance).sum()
 }
 
 fn portfolio_cash_total_window(
-    shared_cash: f64,
     before_current: &[PortfolioAliasState],
     current_state: &PortfolioAliasState,
     after_current: &[PortfolioAliasState],
 ) -> f64 {
-    if current_state.spot_quote_balance.is_some()
-        || before_current
-            .iter()
-            .chain(after_current.iter())
-            .any(|state| state.spot_quote_balance.is_some())
-    {
-        before_current
-            .iter()
-            .chain(std::iter::once(current_state))
-            .chain(after_current.iter())
-            .map(|state| state.spot_quote_balance.unwrap_or(0.0))
-            .sum()
-    } else {
-        shared_cash
-    }
+    before_current
+        .iter()
+        .chain(std::iter::once(current_state))
+        .chain(after_current.iter())
+        .map(|state| state.cash_balance)
+        .sum()
 }
 
-fn local_entry_cash(state: &PortfolioAliasState, shared_cash: f64) -> f64 {
-    state.spot_quote_balance.unwrap_or(shared_cash)
+fn local_entry_cash(state: &PortfolioAliasState) -> f64 {
+    state.cash_balance
 }
 
+#[allow(clippy::too_many_arguments)]
 fn rebalance_spot_quote_for_entry(
     before_current: &mut [PortfolioAliasState],
     current_state: &mut PortfolioAliasState,
@@ -198,31 +185,39 @@ fn rebalance_spot_quote_for_entry(
     bar_index: usize,
     time: f64,
     transfers: &mut Vec<SpotQuoteTransfer>,
+    ledger_events: &mut Vec<LedgerEvent>,
 ) {
-    let Some(target_balance) = current_state.spot_quote_balance else {
+    if current_state.base_asset.is_none() {
         return;
-    };
+    }
+    let target_balance = current_state.cash_balance;
     if target_balance + crate::backtest::EPSILON >= required_quote {
         return;
     }
     let mut remaining = required_quote - target_balance;
     for donor in before_current.iter_mut().chain(after_current.iter_mut()) {
-        let Some(donor_balance) = donor.spot_quote_balance else {
-            continue;
-        };
+        let donor_balance = donor.cash_balance;
         if donor_balance <= crate::backtest::EPSILON || remaining <= crate::backtest::EPSILON {
             continue;
         }
         let transfer_amount = donor_balance.min(remaining);
-        donor.spot_quote_balance = Some(donor_balance - transfer_amount);
-        current_state.spot_quote_balance =
-            Some(current_state.spot_quote_balance.unwrap_or(0.0) + transfer_amount);
+        donor.cash_balance -= transfer_amount;
+        current_state.cash_balance += transfer_amount;
         transfers.push(SpotQuoteTransfer {
             from_alias: donor.alias.clone(),
             to_alias: current_state.alias.clone(),
             bar_index,
             time,
             amount: transfer_amount,
+        });
+        ledger_events.push(LedgerEvent {
+            kind: LedgerEventKind::Transfer,
+            execution_alias: donor.alias.clone(),
+            counterparty_alias: Some(current_state.alias.clone()),
+            asset: donor.quote_asset.clone(),
+            amount: transfer_amount,
+            bar_index: Some(bar_index),
+            time: Some(time),
         });
         remaining -= transfer_amount;
     }
@@ -232,6 +227,69 @@ fn step_is_active(open_time_ms: i64, activation_time_ms: Option<i64>) -> bool {
     match activation_time_ms {
         Some(activation_time_ms) => open_time_ms >= activation_time_ms,
         None => true,
+    }
+}
+
+fn ledger_assets_for_symbol(
+    template: crate::interval::SourceTemplate,
+    symbol: &str,
+) -> (Option<String>, String) {
+    let include_base = matches!(
+        template,
+        crate::interval::SourceTemplate::BinanceSpot
+            | crate::interval::SourceTemplate::BybitSpot
+            | crate::interval::SourceTemplate::GateSpot
+    );
+    if matches!(
+        template,
+        crate::interval::SourceTemplate::GateSpot | crate::interval::SourceTemplate::GateUsdtPerps
+    ) {
+        if let Some((base, quote)) = symbol.split_once('_') {
+            return (include_base.then(|| base.to_string()), quote.to_string());
+        }
+    }
+
+    const KNOWN_QUOTES: [&str; 8] = ["USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH", "EUR", "USD"];
+    for quote in KNOWN_QUOTES {
+        if let Some(base) = symbol.strip_suffix(quote) {
+            if !base.is_empty() {
+                return (include_base.then(|| base.to_string()), quote.to_string());
+            }
+        }
+    }
+
+    (
+        include_base.then(|| symbol.to_string()),
+        "QUOTE".to_string(),
+    )
+}
+
+fn sync_spot_base_balance(state: &mut PortfolioAliasState) {
+    if state.base_asset.is_some() {
+        state.base_balance = state
+            .position
+            .as_ref()
+            .map_or(0.0, |position| position.quantity);
+    }
+}
+
+fn ledger_snapshot(state: &PortfolioAliasState) -> ExchangeLedgerSnapshot {
+    let mut balances = Vec::with_capacity(2);
+    balances.push(AssetLedgerBalance {
+        asset: state.quote_asset.clone(),
+        amount: state.cash_balance,
+    });
+    if let Some(base_asset) = &state.base_asset {
+        balances.push(AssetLedgerBalance {
+            asset: base_asset.clone(),
+            amount: state.base_balance,
+        });
+    }
+    ExchangeLedgerSnapshot {
+        execution_alias: state.alias.clone(),
+        template: state.template,
+        symbol: state.symbol.clone(),
+        balances,
     }
 }
 
@@ -275,16 +333,19 @@ fn fill_liquidity_for_order(order: &ActiveOrder, first_eval: bool, bar_open: f64
 
 pub(crate) fn simulate_backtest(
     mut stepper: RuntimeStepper,
+    execution: crate::backtest::bridge::ExecutionSource,
     execution_bars: Vec<Bar>,
     config: &BacktestConfig,
     prepared: PreparedBacktest,
 ) -> Result<BacktestResult, BacktestError> {
     let execution_alias = config.execution_source_alias.as_str();
+    let (base_asset, quote_asset) = ledger_assets_for_symbol(execution.template, &execution.symbol);
     let fee_rates = fee_rates_for_alias(config, execution_alias);
     let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
     let accounting = accounting_mode(config);
     let aligned_mark_bars = aligned_mark_bars(config, &execution_bars)?;
     let mut cash = config.initial_capital;
+    let mut base_balance = 0.0;
     let mut position = None::<PositionState>;
     let mut open_trade = None::<OpenTrade>;
     let mut fills = Vec::<Fill>::new();
@@ -313,6 +374,24 @@ pub(crate) fn simulate_backtest(
     let mut entry_progress = EntryProgressState::default();
     let mut diagnostics = DiagnosticsAccumulator::new(&prepared.exports);
     let mut per_bar_trace = Vec::<PerBarDecisionTrace>::new();
+    let starting_ledgers = vec![ExchangeLedgerSnapshot {
+        execution_alias: execution_alias.to_string(),
+        template: execution.template,
+        symbol: execution.symbol.clone(),
+        balances: vec![AssetLedgerBalance {
+            asset: quote_asset.clone(),
+            amount: config.initial_capital,
+        }],
+    }];
+    let ledger_events = vec![LedgerEvent {
+        kind: LedgerEventKind::InitialDeposit,
+        execution_alias: execution_alias.to_string(),
+        counterparty_alias: None,
+        asset: quote_asset.clone(),
+        amount: config.initial_capital,
+        bar_index: None,
+        time: None,
+    }];
 
     while let Some(open_time) = stepper.peek_open_time() {
         let next_execution = execution_bars.get(execution_cursor).copied();
@@ -349,6 +428,9 @@ pub(crate) fn simulate_backtest(
                 last_snapshot.clone(),
                 decision_trace.as_mut(),
             ) {
+                if base_asset.is_some() {
+                    base_balance = position.as_ref().map_or(0.0, |state| state.quantity);
+                }
                 if let Some(snapshot) = timeout_outcome.snapshot {
                     set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
                     update_last_exit_snapshots(
@@ -534,6 +616,9 @@ pub(crate) fn simulate_backtest(
                                 snapshot,
                             );
                         }
+                        if base_asset.is_some() {
+                            base_balance = position.as_ref().map_or(0.0, |state| state.quantity);
+                        }
 
                         if let Some(side) = close_outcome.consumed_target_side {
                             mark_target_consumed(&mut target_consumption, side);
@@ -666,6 +751,9 @@ pub(crate) fn simulate_backtest(
                                         bar.low,
                                     );
                                     fills.push(entry_fill);
+                                    if base_asset.is_some() {
+                                        base_balance = position_state.quantity;
+                                    }
                                     match next_side {
                                         PositionSide::Long => {
                                             position_events.long_entry_fill = true
@@ -741,6 +829,9 @@ pub(crate) fn simulate_backtest(
                                 );
                                 update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
                                 fills.push(entry_fill);
+                                if base_asset.is_some() {
+                                    base_balance = next_position.quantity;
+                                }
                                 match next_side {
                                     PositionSide::Long => position_events.long_entry_fill = true,
                                     PositionSide::Short => position_events.short_entry_fill = true,
@@ -827,6 +918,9 @@ pub(crate) fn simulate_backtest(
                             &mut trade_diagnostics,
                             &mut total_realized_pnl,
                         );
+                        if base_asset.is_some() {
+                            base_balance = position.as_ref().map_or(0.0, |state| state.quantity);
+                        }
                         if let Some(snapshot) = liquidation_outcome.snapshot {
                             set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
                             update_last_exit_snapshots(
@@ -914,7 +1008,7 @@ pub(crate) fn simulate_backtest(
                 let net_exposure = quantity * mark_price;
                 max_gross_exposure = max_gross_exposure.max(gross_exposure);
                 let equity = match &accounting {
-                    AccountingMode::Spot => cash + quantity * mark_price,
+                    AccountingMode::Spot => cash + base_balance * mark_price,
                     AccountingMode::PerpIsolated { .. } => {
                         cash + position.as_ref().map_or(0.0, |state| state.isolated_margin)
                             + position
@@ -1142,6 +1236,26 @@ pub(crate) fn simulate_backtest(
             spot_virtual_portfolio: false,
             blocked_portfolio_entries: Vec::new(),
             spot_quote_transfers: Vec::new(),
+            starting_ledgers,
+            ending_ledgers: vec![ExchangeLedgerSnapshot {
+                execution_alias: execution_alias.to_string(),
+                template: execution.template,
+                symbol: execution.symbol,
+                balances: {
+                    let mut balances = vec![AssetLedgerBalance {
+                        asset: quote_asset,
+                        amount: cash,
+                    }];
+                    if let Some(base_asset) = base_asset {
+                        balances.push(AssetLedgerBalance {
+                            asset: base_asset,
+                            amount: base_balance,
+                        });
+                    }
+                    balances
+                },
+            }],
+            ledger_events,
             date_perturbation: crate::backtest::DatePerturbationDiagnostics::default(),
         },
         equity_curve,
@@ -1163,7 +1277,13 @@ pub(crate) fn simulate_backtest(
 
 pub(crate) fn simulate_portfolio_backtest(
     steppers: Vec<RuntimeStepper>,
-    executions: Vec<(String, u16, crate::interval::SourceTemplate, Vec<Bar>)>,
+    executions: Vec<(
+        String,
+        u16,
+        crate::interval::SourceTemplate,
+        String,
+        Vec<Bar>,
+    )>,
     config: &BacktestConfig,
     prepared: PreparedBacktest,
 ) -> Result<BacktestResult, BacktestError> {
@@ -1171,13 +1291,11 @@ pub(crate) fn simulate_portfolio_backtest(
     if config.spot_virtual_rebalance && executions.len() < 2 {
         return Err(BacktestError::SpotVirtualRebalanceRequiresPortfolioMode);
     }
-    let spot_virtual_quote_seed = if config.spot_virtual_rebalance {
-        Some(config.initial_capital / executions.len() as f64)
-    } else {
-        None
-    };
+    let initial_alias_balance = config.initial_capital / executions.len() as f64;
     let mut alias_states = Vec::with_capacity(executions.len());
-    for ((alias, _, template, execution_bars), stepper) in executions.into_iter().zip(steppers) {
+    for ((alias, _, template, symbol, execution_bars), stepper) in
+        executions.into_iter().zip(steppers)
+    {
         if config.spot_virtual_rebalance
             && !matches!(
                 template,
@@ -1188,16 +1306,18 @@ pub(crate) fn simulate_portfolio_backtest(
         {
             return Err(BacktestError::SpotVirtualRebalanceRequiresSpotAliases { alias, template });
         }
+        let (base_asset, quote_asset) = ledger_assets_for_symbol(template, &symbol);
         let accounting = accounting_mode_for_alias(config, &alias, template);
         let fee_rates = fee_rates_for_alias(config, &alias);
+        let aligned_mark_bars =
+            aligned_mark_bars_for_alias(config, &alias, template, &execution_bars)?;
         alias_states.push(PortfolioAliasState {
-            aligned_mark_bars: aligned_mark_bars_for_alias(
-                config,
-                &alias,
-                template,
-                &execution_bars,
-            )?,
             alias,
+            template,
+            symbol,
+            quote_asset,
+            base_asset,
+            aligned_mark_bars,
             stepper,
             execution_bars,
             execution_cursor: 0,
@@ -1218,12 +1338,24 @@ pub(crate) fn simulate_portfolio_backtest(
             target_consumption: TargetConsumptionState::default(),
             entry_progress: EntryProgressState::default(),
             diagnostics: DiagnosticsAccumulator::new(&prepared.exports),
-            spot_quote_balance: spot_virtual_quote_seed,
+            cash_balance: initial_alias_balance,
+            base_balance: 0.0,
         });
     }
-
-    let mut cash = config.initial_capital;
     let mut spot_quote_transfers = Vec::<SpotQuoteTransfer>::new();
+    let starting_ledgers = alias_states.iter().map(ledger_snapshot).collect::<Vec<_>>();
+    let mut ledger_events = alias_states
+        .iter()
+        .map(|state| LedgerEvent {
+            kind: LedgerEventKind::InitialDeposit,
+            execution_alias: state.alias.clone(),
+            counterparty_alias: None,
+            asset: state.quote_asset.clone(),
+            amount: state.cash_balance,
+            bar_index: None,
+            time: None,
+        })
+        .collect::<Vec<_>>();
     if config.spot_virtual_rebalance {
         for order in prepared.order_templates.values() {
             if order
@@ -1291,47 +1423,26 @@ pub(crate) fn simulate_portfolio_backtest(
                     update_open_trade_excursions(open_trade, bar.high, bar.low);
                 }
 
-                let timeout_outcome = if let Some(quote_balance) = state.spot_quote_balance.as_mut()
-                {
-                    maybe_force_time_exit(
-                        &state.alias,
-                        &prepared.risk_controls,
-                        state.execution_cursor,
-                        bar.time,
-                        bar.open,
-                        &state.accounting,
-                        state.fee_rates.taker,
-                        quote_balance,
-                        &mut state.position,
-                        &mut state.open_trade,
-                        &mut fills,
-                        &mut trades,
-                        &mut trade_diagnostics,
-                        &mut total_realized_pnl,
-                        state.last_snapshot.clone(),
-                        decision_trace.as_mut(),
-                    )
-                } else {
-                    maybe_force_time_exit(
-                        &state.alias,
-                        &prepared.risk_controls,
-                        state.execution_cursor,
-                        bar.time,
-                        bar.open,
-                        &state.accounting,
-                        state.fee_rates.taker,
-                        &mut cash,
-                        &mut state.position,
-                        &mut state.open_trade,
-                        &mut fills,
-                        &mut trades,
-                        &mut trade_diagnostics,
-                        &mut total_realized_pnl,
-                        state.last_snapshot.clone(),
-                        decision_trace.as_mut(),
-                    )
-                };
+                let timeout_outcome = maybe_force_time_exit(
+                    &state.alias,
+                    &prepared.risk_controls,
+                    state.execution_cursor,
+                    bar.time,
+                    bar.open,
+                    &state.accounting,
+                    state.fee_rates.taker,
+                    &mut state.cash_balance,
+                    &mut state.position,
+                    &mut state.open_trade,
+                    &mut fills,
+                    &mut trades,
+                    &mut trade_diagnostics,
+                    &mut total_realized_pnl,
+                    state.last_snapshot.clone(),
+                    decision_trace.as_mut(),
+                );
                 if let Some(timeout_outcome) = timeout_outcome {
+                    sync_spot_base_balance(state);
                     if let Some(snapshot) = timeout_outcome.snapshot {
                         set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
                         update_last_exit_snapshots(
@@ -1491,66 +1602,35 @@ pub(crate) fn simulate_portfolio_backtest(
                                     execution.price
                                 };
 
-                            let close_outcome =
-                                if let Some(quote_balance) = state.spot_quote_balance.as_mut() {
-                                    maybe_close_position_for_role(
-                                        &state.alias,
-                                        role,
-                                        active.record_index,
-                                        active.request.kind,
-                                        if matches!(
-                                            active.request.size_mode,
-                                            Some(crate::order::SizeMode::RiskPct)
-                                        ) {
-                                            None
-                                        } else {
-                                            active.request.size_value
-                                        },
-                                        state.last_snapshot.clone(),
-                                        state.execution_cursor,
-                                        bar.time,
-                                        execution.raw_price,
-                                        execution_price,
-                                        &state.accounting,
-                                        fee_rate,
-                                        quote_balance,
-                                        &mut state.position,
-                                        &mut state.open_trade,
-                                        &mut fills,
-                                        &mut trades,
-                                        &mut trade_diagnostics,
-                                        &mut total_realized_pnl,
-                                    )
+                            let close_outcome = maybe_close_position_for_role(
+                                &state.alias,
+                                role,
+                                active.record_index,
+                                active.request.kind,
+                                if matches!(
+                                    active.request.size_mode,
+                                    Some(crate::order::SizeMode::RiskPct)
+                                ) {
+                                    None
                                 } else {
-                                    maybe_close_position_for_role(
-                                        &state.alias,
-                                        role,
-                                        active.record_index,
-                                        active.request.kind,
-                                        if matches!(
-                                            active.request.size_mode,
-                                            Some(crate::order::SizeMode::RiskPct)
-                                        ) {
-                                            None
-                                        } else {
-                                            active.request.size_value
-                                        },
-                                        state.last_snapshot.clone(),
-                                        state.execution_cursor,
-                                        bar.time,
-                                        execution.raw_price,
-                                        execution_price,
-                                        &state.accounting,
-                                        fee_rate,
-                                        &mut cash,
-                                        &mut state.position,
-                                        &mut state.open_trade,
-                                        &mut fills,
-                                        &mut trades,
-                                        &mut trade_diagnostics,
-                                        &mut total_realized_pnl,
-                                    )
-                                };
+                                    active.request.size_value
+                                },
+                                state.last_snapshot.clone(),
+                                state.execution_cursor,
+                                bar.time,
+                                execution.raw_price,
+                                execution_price,
+                                &state.accounting,
+                                fee_rate,
+                                &mut state.cash_balance,
+                                &mut state.position,
+                                &mut state.open_trade,
+                                &mut fills,
+                                &mut trades,
+                                &mut trade_diagnostics,
+                                &mut total_realized_pnl,
+                            );
+                            sync_spot_base_balance(state);
 
                             if let Some(snapshot) = close_outcome.snapshot {
                                 set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
@@ -1577,14 +1657,14 @@ pub(crate) fn simulate_portfolio_backtest(
 
                             if let Some(next_side) = position_side_for_entry(role) {
                                 if next_side == PositionSide::Long
-                                    && state.spot_quote_balance.is_some()
+                                    && config.spot_virtual_rebalance
+                                    && state.base_asset.is_some()
                                 {
                                     rebalance_spot_quote_for_entry(
                                         before_current,
                                         state,
                                         after_current,
                                         portfolio_cash_total_window(
-                                            cash,
                                             before_current,
                                             state,
                                             after_current,
@@ -1592,15 +1672,15 @@ pub(crate) fn simulate_portfolio_backtest(
                                         state.execution_cursor,
                                         bar.time,
                                         &mut spot_quote_transfers,
+                                        &mut ledger_events,
                                     );
                                 }
                                 let portfolio_cash = portfolio_cash_total_window(
-                                    cash,
                                     before_current,
                                     state,
                                     after_current,
                                 );
-                                let available_cash = local_entry_cash(state, cash);
+                                let available_cash = local_entry_cash(state);
                                 let block_reason = portfolio_entry_block_reason(
                                     &prepared,
                                     PortfolioStateWindow {
@@ -1715,43 +1795,22 @@ pub(crate) fn simulate_portfolio_backtest(
                                     if let (Some(position_state), Some(open_trade_state)) =
                                         (state.position.as_mut(), state.open_trade.as_mut())
                                     {
-                                        let entry_result = if let Some(quote_balance) =
-                                            state.spot_quote_balance.as_mut()
-                                        {
-                                            add_to_position(
-                                                PositionFillContext {
-                                                    execution_alias: &state.alias,
-                                                    execution: execution_context,
-                                                    accounting: &state.accounting,
-                                                    fee_rate,
-                                                },
-                                                position_state,
-                                                open_trade_state,
-                                                EntrySizingSpec {
-                                                    size_mode: active.request.size_mode,
-                                                    size_value: active.request.size_value,
-                                                    stop_price: active.request.size_stop_price,
-                                                },
-                                                quote_balance,
-                                            )
-                                        } else {
-                                            add_to_position(
-                                                PositionFillContext {
-                                                    execution_alias: &state.alias,
-                                                    execution: execution_context,
-                                                    accounting: &state.accounting,
-                                                    fee_rate,
-                                                },
-                                                position_state,
-                                                open_trade_state,
-                                                EntrySizingSpec {
-                                                    size_mode: active.request.size_mode,
-                                                    size_value: active.request.size_value,
-                                                    stop_price: active.request.size_stop_price,
-                                                },
-                                                &mut cash,
-                                            )
-                                        };
+                                        let entry_result = add_to_position(
+                                            PositionFillContext {
+                                                execution_alias: &state.alias,
+                                                execution: execution_context,
+                                                accounting: &state.accounting,
+                                                fee_rate,
+                                            },
+                                            position_state,
+                                            open_trade_state,
+                                            EntrySizingSpec {
+                                                size_mode: active.request.size_mode,
+                                                size_value: active.request.size_value,
+                                                stop_price: active.request.size_stop_price,
+                                            },
+                                            &mut state.cash_balance,
+                                        );
                                         let (entry_fill, entry_sizing) = match entry_result {
                                             Ok(result) => result,
                                             Err(reason) => {
@@ -1785,6 +1844,7 @@ pub(crate) fn simulate_portfolio_backtest(
                                             bar.low,
                                         );
                                         fills.push(entry_fill);
+                                        sync_spot_base_balance(state);
                                         match next_side {
                                             PositionSide::Long => {
                                                 position_events.long_entry_fill = true
@@ -1818,55 +1878,28 @@ pub(crate) fn simulate_portfolio_backtest(
                                         mut next_trade,
                                         entry_fill,
                                         entry_sizing,
-                                    ) = match if let Some(quote_balance) =
-                                        state.spot_quote_balance.as_mut()
-                                    {
-                                        open_position(
-                                            PositionFillContext {
-                                                execution_alias: &state.alias,
-                                                execution: execution_context,
-                                                accounting: &state.accounting,
-                                                fee_rate,
-                                            },
-                                            next_side,
-                                            TradeEntryContext {
-                                                order_id: active.record_index,
-                                                role,
-                                                module: prepared.signal_modules.get(&role).cloned(),
-                                                kind: active.request.kind,
-                                                snapshot: state.last_snapshot.clone(),
-                                            },
-                                            EntrySizingSpec {
-                                                size_mode: active.request.size_mode,
-                                                size_value: active.request.size_value,
-                                                stop_price: active.request.size_stop_price,
-                                            },
-                                            quote_balance,
-                                        )
-                                    } else {
-                                        open_position(
-                                            PositionFillContext {
-                                                execution_alias: &state.alias,
-                                                execution: execution_context,
-                                                accounting: &state.accounting,
-                                                fee_rate,
-                                            },
-                                            next_side,
-                                            TradeEntryContext {
-                                                order_id: active.record_index,
-                                                role,
-                                                module: prepared.signal_modules.get(&role).cloned(),
-                                                kind: active.request.kind,
-                                                snapshot: state.last_snapshot.clone(),
-                                            },
-                                            EntrySizingSpec {
-                                                size_mode: active.request.size_mode,
-                                                size_value: active.request.size_value,
-                                                stop_price: active.request.size_stop_price,
-                                            },
-                                            &mut cash,
-                                        )
-                                    } {
+                                    ) = match open_position(
+                                        PositionFillContext {
+                                            execution_alias: &state.alias,
+                                            execution: execution_context,
+                                            accounting: &state.accounting,
+                                            fee_rate,
+                                        },
+                                        next_side,
+                                        TradeEntryContext {
+                                            order_id: active.record_index,
+                                            role,
+                                            module: prepared.signal_modules.get(&role).cloned(),
+                                            kind: active.request.kind,
+                                            snapshot: state.last_snapshot.clone(),
+                                        },
+                                        EntrySizingSpec {
+                                            size_mode: active.request.size_mode,
+                                            size_value: active.request.size_value,
+                                            stop_price: active.request.size_stop_price,
+                                        },
+                                        &mut state.cash_balance,
+                                    ) {
                                         Ok(result) => result,
                                         Err(reason) => {
                                             update_order_record(
@@ -1897,6 +1930,9 @@ pub(crate) fn simulate_portfolio_backtest(
                                         bar.low,
                                     );
                                     fills.push(entry_fill);
+                                    if state.base_asset.is_some() {
+                                        state.base_balance = next_position.quantity;
+                                    }
                                     match next_side {
                                         PositionSide::Long => {
                                             position_events.long_entry_fill = true
@@ -1983,7 +2019,7 @@ pub(crate) fn simulate_portfolio_backtest(
                                 bar.time,
                                 liquidation_price,
                                 state.fee_rates.taker,
-                                &mut cash,
+                                &mut state.cash_balance,
                                 &mut state.position,
                                 &mut state.open_trade,
                                 &mut fills,
@@ -1991,6 +2027,7 @@ pub(crate) fn simulate_portfolio_backtest(
                                 &mut trade_diagnostics,
                                 &mut total_realized_pnl,
                             );
+                            sync_spot_base_balance(state);
                             if let Some(snapshot) = liquidation_outcome.snapshot {
                                 set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
                                 update_last_exit_snapshots(
@@ -2139,7 +2176,6 @@ pub(crate) fn simulate_portfolio_backtest(
 
         let mut gross_exposure = 0.0;
         let mut net_exposure = 0.0;
-        let mut unrealized_total = 0.0;
         let mut long_count = 0usize;
         let mut short_count = 0usize;
         for state in &alias_states {
@@ -2150,21 +2186,34 @@ pub(crate) fn simulate_portfolio_backtest(
             let signed_notional = position.quantity * mark_price;
             gross_exposure += signed_notional.abs();
             net_exposure += signed_notional;
-            unrealized_total += unrealized_pnl_for_position(position, mark_price);
             match position.side {
                 PositionSide::Long => long_count += 1,
                 PositionSide::Short => short_count += 1,
             }
         }
         let open_position_count = long_count + short_count;
-        let portfolio_cash = portfolio_cash_total(cash, &alias_states);
-        let equity = portfolio_cash
-            + alias_states
-                .iter()
-                .filter_map(|state| state.position.as_ref())
-                .map(|position| position.isolated_margin)
-                .sum::<f64>()
-            + unrealized_total;
+        let portfolio_cash = portfolio_cash_total(&alias_states);
+        let equity = alias_states.iter().fold(0.0, |acc, state| {
+            if state.base_asset.is_some() {
+                let mark_price = state
+                    .last_mark_price
+                    .or_else(|| state.position.as_ref().map(|position| position.entry_price))
+                    .unwrap_or(0.0);
+                acc + state.cash_balance + state.base_balance * mark_price
+            } else {
+                acc + state.cash_balance
+                    + state
+                        .position
+                        .as_ref()
+                        .map_or(0.0, |position| position.isolated_margin)
+                    + state.position.as_ref().map_or(0.0, |position| {
+                        unrealized_pnl_for_position(
+                            position,
+                            state.last_mark_price.unwrap_or(position.entry_price),
+                        )
+                    })
+            }
+        });
         if config
             .activation_time_ms
             .is_none_or(|activation_time_ms| open_time >= activation_time_ms)
@@ -2205,6 +2254,7 @@ pub(crate) fn simulate_portfolio_backtest(
         }
     }
 
+    let ending_ledgers = alias_states.iter().map(ledger_snapshot).collect::<Vec<_>>();
     let mut outputs = Outputs::default();
     let mut source_alignment = crate::runtime::SourceAlignmentDiagnostics::default();
     let mut capture_summary = BacktestCaptureSummary::default();
@@ -2332,6 +2382,9 @@ pub(crate) fn simulate_portfolio_backtest(
             spot_virtual_portfolio: config.spot_virtual_rebalance,
             blocked_portfolio_entries,
             spot_quote_transfers,
+            starting_ledgers,
+            ending_ledgers,
+            ledger_events,
             date_perturbation: crate::backtest::DatePerturbationDiagnostics::default(),
         },
         equity_curve,

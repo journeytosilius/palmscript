@@ -101,7 +101,7 @@ palmscript run backtest portfolio_caps_backtest.ps \
   --slippage-bps 2
 ```
 
-Portfolio mode keeps one shared cash/equity ledger while evaluating the same compiled strategy logic for each selected execution alias by default. Pass `--spot-virtual-rebalance` when every selected execution alias is spot and you want PalmScript to split quote capital evenly across the selected aliases, transfer quote between them automatically before long entries, and value the portfolio through long/flat per-alias spot inventory instead of the shared-ledger model. That virtual-rebalance mode is spot-only and long/flat-only in v1. Entry-cap declarations such as `max_positions` and `max_gross_exposure_pct` only block new entries; they do not shrink orders or force exits after the portfolio is already open.
+Portfolio mode now seeds one explicit ledger per selected execution alias from `initial_capital`. Spot aliases keep quote/base balances per venue, while USD-M aliases keep quote-collateral balances plus isolated-margin positions. Without `--spot-virtual-rebalance`, multi-venue spot entries can only spend the local quote balance already sitting on that alias. Pass `--spot-virtual-rebalance` when every selected execution alias is spot and you want PalmScript to transfer quote between those spot venue ledgers automatically before long entries. That virtual-rebalance mode is spot-only and long/flat-only in v1. Entry-cap declarations such as `max_positions` and `max_gross_exposure_pct` only block new entries; they do not shrink orders or force exits after the portfolio is already open.
 
 Backtest results depend on the script, venue, time window, fees, and slippage.
 Treat any performance report as strategy-specific rather than a property of the

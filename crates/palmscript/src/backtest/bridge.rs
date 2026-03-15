@@ -36,6 +36,7 @@ pub(crate) struct PreparedBacktest {
 pub(crate) struct ExecutionSource {
     pub source_id: u16,
     pub template: SourceTemplate,
+    pub symbol: String,
 }
 
 pub(crate) fn resolve_execution_sources(
@@ -78,6 +79,7 @@ pub(crate) fn resolve_execution_source(
             ExecutionSource {
                 source_id: feed_source_id,
                 template: source.template,
+                symbol: source.symbol.clone(),
             }
         })
         .ok_or_else(|| BacktestError::UnknownExecutionSource {
