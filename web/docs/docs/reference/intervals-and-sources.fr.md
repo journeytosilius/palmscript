@@ -98,8 +98,11 @@ Regles :
 
 - `time` est l'heure d'ouverture de la bougie en millisecondes Unix UTC
 - les champs de prix et de volume sont numeriques
-- les champs supplementaires specifiques au venue ne sont pas exposes dans le
-  langage
+- `binance.usdm("<symbol>")` expose aussi des champs auxiliaires historiques :
+  `funding_rate`, `open_interest`, `mark_price`, `index_price`, `premium_index` et `basis`
+- ces champs auxiliaires ne sont valides que pour les alias `binance.usdm`
+- les modes historiques les recuperent automatiquement quand le script les reference
+- `run paper` rejette les scripts qui utilisent ces champs tant que le polling live n'existe pas
 
 ## Intervalles Egaux, Superieurs Et Inferieurs
 

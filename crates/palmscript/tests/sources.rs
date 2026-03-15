@@ -8,6 +8,12 @@ fn minute_bar(time: i64, close: f64) -> Bar {
         close,
         volume: 10.0,
         time: time as f64,
+        funding_rate: None,
+        open_interest: None,
+        mark_price: None,
+        index_price: None,
+        premium_index: None,
+        basis: None,
     }
 }
 
@@ -66,4 +72,40 @@ fn source_interval_references_require_source_scoped_use_declarations() {
     assert!(err.diagnostics.iter().any(|diagnostic| diagnostic
         .message
         .contains("must be declared with `use a 1h`")));
+}
+
+#[test]
+fn runtime_loads_binance_usdm_auxiliary_source_fields() {
+    let compiled = compile(
+        "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.mark_price + perp.funding_rate + perp.open_interest)",
+    )
+    .expect("compile");
+    let outputs = run_with_sources(
+        &compiled,
+        SourceRuntimeConfig {
+            base_interval: palmscript::Interval::Hour1,
+            feeds: vec![SourceFeed {
+                source_id: 0,
+                interval: palmscript::Interval::Hour1,
+                bars: vec![Bar {
+                    open: 100.0,
+                    high: 101.0,
+                    low: 99.0,
+                    close: 100.5,
+                    volume: 10.0,
+                    time: 1_704_067_200_000.0,
+                    funding_rate: Some(0.01),
+                    open_interest: Some(200.0),
+                    mark_price: Some(100.25),
+                    index_price: Some(100.1),
+                    premium_index: Some(0.001),
+                    basis: Some(0.15),
+                }],
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("runtime");
+    assert_eq!(outputs.plots[0].points.len(), 1);
+    assert_eq!(outputs.plots[0].points[0].value, Some(300.26));
 }

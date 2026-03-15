@@ -40,6 +40,12 @@ pub enum MarketField {
     Close,
     Volume,
     Time,
+    FundingRate,
+    OpenInterest,
+    MarkPrice,
+    IndexPrice,
+    PremiumIndex,
+    Basis,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -298,13 +304,19 @@ impl Interval {
 }
 
 impl MarketField {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 12] = [
         Self::Open,
         Self::High,
         Self::Low,
         Self::Close,
         Self::Volume,
         Self::Time,
+        Self::FundingRate,
+        Self::OpenInterest,
+        Self::MarkPrice,
+        Self::IndexPrice,
+        Self::PremiumIndex,
+        Self::Basis,
     ];
 
     pub fn parse(text: &str) -> Option<Self> {
@@ -315,6 +327,12 @@ impl MarketField {
             "close" => Some(Self::Close),
             "volume" => Some(Self::Volume),
             "time" => Some(Self::Time),
+            "funding_rate" => Some(Self::FundingRate),
+            "open_interest" => Some(Self::OpenInterest),
+            "mark_price" => Some(Self::MarkPrice),
+            "index_price" => Some(Self::IndexPrice),
+            "premium_index" => Some(Self::PremiumIndex),
+            "basis" => Some(Self::Basis),
             _ => None,
         }
     }
@@ -327,6 +345,12 @@ impl MarketField {
             Self::Close => "close",
             Self::Volume => "volume",
             Self::Time => "time",
+            Self::FundingRate => "funding_rate",
+            Self::OpenInterest => "open_interest",
+            Self::MarkPrice => "mark_price",
+            Self::IndexPrice => "index_price",
+            Self::PremiumIndex => "premium_index",
+            Self::Basis => "basis",
         }
     }
 
@@ -338,7 +362,32 @@ impl MarketField {
             Self::Close => 3,
             Self::Volume => 4,
             Self::Time => 5,
+            Self::FundingRate => 6,
+            Self::OpenInterest => 7,
+            Self::MarkPrice => 8,
+            Self::IndexPrice => 9,
+            Self::PremiumIndex => 10,
+            Self::Basis => 11,
         }
+    }
+
+    pub const fn is_ohlcv(self) -> bool {
+        matches!(
+            self,
+            Self::Open | Self::High | Self::Low | Self::Close | Self::Volume | Self::Time
+        )
+    }
+
+    pub const fn is_binance_usdm_auxiliary(self) -> bool {
+        matches!(
+            self,
+            Self::FundingRate
+                | Self::OpenInterest
+                | Self::MarkPrice
+                | Self::IndexPrice
+                | Self::PremiumIndex
+                | Self::Basis
+        )
     }
 }
 
@@ -430,6 +479,13 @@ impl SourceTemplate {
             ),
         }
     }
+
+    pub const fn supports_market_field(self, field: MarketField) -> bool {
+        if field.is_ohlcv() {
+            return true;
+        }
+        matches!(self, Self::BinanceUsdm) && field.is_binance_usdm_auxiliary()
+    }
 }
 
 fn split_days(open_time_ms: i64) -> (i64, i64) {
@@ -491,10 +547,32 @@ mod tests {
 
     #[test]
     fn parses_market_fields() {
-        for value in ["open", "high", "low", "close", "volume", "time"] {
+        for value in [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "time",
+            "funding_rate",
+            "open_interest",
+            "mark_price",
+            "index_price",
+            "premium_index",
+            "basis",
+        ] {
             assert_eq!(MarketField::parse(value).unwrap().as_str(), value);
         }
         assert!(MarketField::parse("foo").is_none());
+    }
+
+    #[test]
+    fn binance_usdm_auxiliary_fields_are_template_scoped() {
+        assert!(SourceTemplate::BinanceUsdm.supports_market_field(MarketField::FundingRate));
+        assert!(SourceTemplate::BinanceUsdm.supports_market_field(MarketField::Basis));
+        assert!(!SourceTemplate::BinanceSpot.supports_market_field(MarketField::FundingRate));
+        assert!(!SourceTemplate::BybitUsdtPerps.supports_market_field(MarketField::MarkPrice));
+        assert!(SourceTemplate::GateSpot.supports_market_field(MarketField::Close));
     }
 
     #[test]

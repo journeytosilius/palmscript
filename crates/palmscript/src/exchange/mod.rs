@@ -5,7 +5,7 @@ pub mod bybit;
 mod common;
 pub mod gate;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 
 use reqwest::blocking::Client;
@@ -14,8 +14,10 @@ use thiserror::Error;
 
 use crate::backtest::PerpBacktestContext;
 use crate::compiler::CompiledProgram;
-use crate::interval::{DeclaredMarketSource, Interval, SourceIntervalRef, SourceTemplate};
-use crate::runtime::{SourceFeed, SourceRuntimeConfig};
+use crate::interval::{
+    DeclaredMarketSource, Interval, MarketField, SourceIntervalRef, SourceTemplate,
+};
+use crate::runtime::{Bar, SourceFeed, SourceRuntimeConfig};
 
 const BINANCE_SPOT_URL: &str = "https://api.binance.com";
 const BINANCE_USDM_URL: &str = "https://fapi.binance.com";
@@ -139,6 +141,8 @@ pub enum ExchangeFetchError {
     },
 }
 
+type SourceFieldRequirements = BTreeMap<SourceIntervalRef, BTreeSet<MarketField>>;
+
 pub fn fetch_source_runtime_config(
     compiled: &CompiledProgram,
     from_ms: i64,
@@ -166,23 +170,10 @@ pub fn fetch_source_runtime_config(
             message: err.to_string(),
         })?;
 
-    let mut required = BTreeSet::<SourceIntervalRef>::new();
-    for source in &compiled.program.declared_sources {
-        required.insert(SourceIntervalRef {
-            source_id: source.id,
-            interval: base_interval,
-        });
-    }
-    for execution in &compiled.program.declared_executions {
-        required.insert(SourceIntervalRef {
-            source_id: execution.id,
-            interval: base_interval,
-        });
-    }
-    required.extend(compiled.program.source_intervals.iter().copied());
+    let required = collect_required_source_fields(compiled, base_interval);
 
     let mut feeds = Vec::new();
-    for requirement in required {
+    for (requirement, fields) in required {
         let source = compiled
             .program
             .declared_sources
@@ -197,13 +188,14 @@ pub fn fetch_source_runtime_config(
                 interval: requirement.interval.as_str(),
             });
         }
-        let bars = fetch_source_bars(
+        let bars = fetch_source_feed(
             &client,
             source,
             requirement.interval,
             from_ms,
             to_ms,
             endpoints,
+            &fields,
         )?;
         feeds.push(SourceFeed {
             source_id: source.id,
@@ -216,6 +208,54 @@ pub fn fetch_source_runtime_config(
         base_interval,
         feeds,
     })
+}
+
+fn collect_required_source_fields(
+    compiled: &CompiledProgram,
+    base_interval: Interval,
+) -> SourceFieldRequirements {
+    let mut required = SourceFieldRequirements::new();
+    for source in &compiled.program.declared_sources {
+        insert_ohlcv_requirement(&mut required, source.id, base_interval);
+    }
+    for execution in &compiled.program.declared_executions {
+        insert_ohlcv_requirement(&mut required, execution.id, base_interval);
+    }
+    for local in &compiled.program.locals {
+        let Some(binding) = local.market_binding else {
+            continue;
+        };
+        let crate::interval::MarketSource::Named {
+            source_id,
+            interval,
+        } = binding.source;
+        required
+            .entry(SourceIntervalRef {
+                source_id,
+                interval: interval.unwrap_or(base_interval),
+            })
+            .or_default()
+            .insert(binding.field);
+    }
+    required
+}
+
+fn insert_ohlcv_requirement(
+    required: &mut SourceFieldRequirements,
+    source_id: u16,
+    interval: Interval,
+) {
+    let fields = required
+        .entry(SourceIntervalRef {
+            source_id,
+            interval,
+        })
+        .or_default();
+    for field in MarketField::ALL {
+        if field.is_ohlcv() {
+            fields.insert(field);
+        }
+    }
 }
 
 pub fn fetch_perp_backtest_context(
@@ -289,6 +329,92 @@ pub fn fetch_perp_backtest_context(
     }
 }
 
+fn fetch_source_feed(
+    client: &Client,
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+    endpoints: &ExchangeEndpoints,
+    fields: &BTreeSet<MarketField>,
+) -> Result<Vec<Bar>, ExchangeFetchError> {
+    let mut merged = BTreeMap::<i64, Bar>::new();
+
+    if fields.iter().any(|field| field.is_ohlcv()) {
+        let bars = fetch_source_bars(client, source, interval, from_ms, to_ms, endpoints)?;
+        merge_bars(&mut merged, bars);
+    }
+
+    if matches!(source.template, SourceTemplate::BinanceUsdm) {
+        for field in fields {
+            let bars = match field {
+                MarketField::FundingRate => Some(binance::usdm::fetch_funding_rate_bars(
+                    client,
+                    source,
+                    interval,
+                    from_ms,
+                    to_ms,
+                    &endpoints.binance_usdm_base_url,
+                )?),
+                MarketField::OpenInterest => Some(binance::usdm::fetch_open_interest_bars(
+                    client,
+                    source,
+                    interval,
+                    from_ms,
+                    to_ms,
+                    &endpoints.binance_usdm_base_url,
+                )?),
+                MarketField::MarkPrice => Some(map_scalar_close_field(
+                    binance::usdm::fetch_mark_price_bars(
+                        client,
+                        source,
+                        interval,
+                        from_ms,
+                        to_ms,
+                        &endpoints.binance_usdm_base_url,
+                    )?,
+                    MarketField::MarkPrice,
+                )),
+                MarketField::IndexPrice => Some(binance::usdm::fetch_index_price_bars(
+                    client,
+                    source,
+                    interval,
+                    from_ms,
+                    to_ms,
+                    &endpoints.binance_usdm_base_url,
+                )?),
+                MarketField::PremiumIndex => Some(binance::usdm::fetch_premium_index_bars(
+                    client,
+                    source,
+                    interval,
+                    from_ms,
+                    to_ms,
+                    &endpoints.binance_usdm_base_url,
+                )?),
+                MarketField::Basis => Some(binance::usdm::fetch_basis_bars(
+                    client,
+                    source,
+                    interval,
+                    from_ms,
+                    to_ms,
+                    &endpoints.binance_usdm_base_url,
+                )?),
+                MarketField::Open
+                | MarketField::High
+                | MarketField::Low
+                | MarketField::Close
+                | MarketField::Volume
+                | MarketField::Time => None,
+            };
+            if let Some(bars) = bars {
+                merge_bars(&mut merged, bars);
+            }
+        }
+    }
+
+    Ok(merged.into_values().collect())
+}
+
 fn fetch_source_bars(
     client: &Client,
     source: &DeclaredMarketSource,
@@ -296,7 +422,7 @@ fn fetch_source_bars(
     from_ms: i64,
     to_ms: i64,
     endpoints: &ExchangeEndpoints,
-) -> Result<Vec<crate::runtime::Bar>, ExchangeFetchError> {
+) -> Result<Vec<Bar>, ExchangeFetchError> {
     match source.template {
         SourceTemplate::BinanceSpot => binance::spot::fetch_bars(
             client,
@@ -346,6 +472,93 @@ fn fetch_source_bars(
             to_ms,
             &endpoints.gate_base_url,
         ),
+    }
+}
+
+fn merge_bars(merged: &mut BTreeMap<i64, Bar>, bars: Vec<Bar>) {
+    for bar in bars {
+        let open_time = bar.time as i64;
+        let entry = merged
+            .entry(open_time)
+            .or_insert_with(|| empty_bar(open_time));
+        merge_bar(entry, bar);
+    }
+}
+
+fn map_scalar_close_field(bars: Vec<Bar>, field: MarketField) -> Vec<Bar> {
+    bars.into_iter()
+        .map(|bar| {
+            let mut mapped = empty_bar(bar.time as i64);
+            match field {
+                MarketField::MarkPrice => mapped.mark_price = Some(bar.close),
+                MarketField::IndexPrice => mapped.index_price = Some(bar.close),
+                MarketField::PremiumIndex => mapped.premium_index = Some(bar.close),
+                MarketField::Basis => mapped.basis = Some(bar.close),
+                MarketField::FundingRate => mapped.funding_rate = Some(bar.close),
+                MarketField::OpenInterest => mapped.open_interest = Some(bar.close),
+                MarketField::Open
+                | MarketField::High
+                | MarketField::Low
+                | MarketField::Close
+                | MarketField::Volume
+                | MarketField::Time => {}
+            }
+            mapped
+        })
+        .collect()
+}
+
+fn merge_bar(target: &mut Bar, overlay: Bar) {
+    if overlay.open.is_finite() {
+        target.open = overlay.open;
+    }
+    if overlay.high.is_finite() {
+        target.high = overlay.high;
+    }
+    if overlay.low.is_finite() {
+        target.low = overlay.low;
+    }
+    if overlay.close.is_finite() {
+        target.close = overlay.close;
+    }
+    if overlay.volume.is_finite() {
+        target.volume = overlay.volume;
+    }
+    target.time = overlay.time;
+    if overlay.funding_rate.is_some() {
+        target.funding_rate = overlay.funding_rate;
+    }
+    if overlay.open_interest.is_some() {
+        target.open_interest = overlay.open_interest;
+    }
+    if overlay.mark_price.is_some() {
+        target.mark_price = overlay.mark_price;
+    }
+    if overlay.index_price.is_some() {
+        target.index_price = overlay.index_price;
+    }
+    if overlay.premium_index.is_some() {
+        target.premium_index = overlay.premium_index;
+    }
+    if overlay.basis.is_some() {
+        target.basis = overlay.basis;
+    }
+}
+
+fn empty_bar(open_time_ms: i64) -> Bar {
+    Bar {
+        open: f64::NAN,
+        high: f64::NAN,
+        low: f64::NAN,
+        close: f64::NAN,
+        volume: f64::NAN,
+        time: open_time_ms as f64,
+        funding_rate: None,
+        open_interest: None,
+        mark_price: None,
+        index_price: None,
+        premium_index: None,
+        basis: None,
     }
 }
 
@@ -478,6 +691,145 @@ mod tests {
                 .expect("config");
         assert_eq!(config.base_interval, Interval::Min1);
         assert_eq!(config.feeds.len(), 3);
+    }
+
+    #[test]
+    fn fetch_source_runtime_config_merges_binance_usdm_auxiliary_fields() {
+        let mut server = Server::new();
+        let _klines = server
+            .mock("GET", "/fapi/v1/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "100.0", "101.0", "99.0", "100.5", "10.0"],
+                    [
+                        1704070800000_i64,
+                        "101.0",
+                        "102.0",
+                        "100.0",
+                        "101.5",
+                        "11.0"
+                    ]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _mark = server
+            .mock("GET", "/fapi/v1/markPriceKlines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "100.0", "100.6", "99.9", "100.25", "0"],
+                    [1704070800000_i64, "101.0", "101.6", "100.9", "101.25", "0"]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _index = server
+            .mock("GET", "/fapi/v1/indexPriceKlines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "99.8", "100.3", "99.7", "100.0", "0"],
+                    [1704070800000_i64, "100.8", "101.3", "100.7", "101.0", "0"]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _premium = server
+            .mock("GET", "/fapi/v1/premiumIndexKlines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "0.0", "0.0", "0.0", "0.0010", "0"],
+                    [1704070800000_i64, "0.0", "0.0", "0.0", "0.0015", "0"]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _funding = server
+            .mock("GET", "/fapi/v1/fundingRate")
+            .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+            .with_status(200)
+            .with_body(
+                json!([
+                    { "fundingRate": "0.0008", "fundingTime": 1704067200000_i64 },
+                    { "fundingRate": "0.0009", "fundingTime": 1704070800000_i64 }
+                ])
+                .to_string(),
+            )
+            .create();
+        let _open_interest = server
+            .mock("GET", "/futures/data/openInterestHist")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("period".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    { "sumOpenInterest": "1000.0", "timestamp": 1704067200000_i64 },
+                    { "sumOpenInterest": "1010.0", "timestamp": 1704070800000_i64 }
+                ])
+                .to_string(),
+            )
+            .create();
+        let _basis = server
+            .mock("GET", "/futures/data/basis")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("pair".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("contractType".into(), "PERPETUAL".into()),
+                Matcher::UrlEncoded("period".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    { "basis": "0.25", "timestamp": 1704067200000_i64 },
+                    { "basis": "0.30", "timestamp": 1704070800000_i64 }
+                ])
+                .to_string(),
+            )
+            .create();
+
+        let compiled = compile(
+            "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.close + perp.mark_price + perp.index_price + perp.premium_index + perp.basis + perp.funding_rate + perp.open_interest)",
+        )
+        .expect("compile");
+        let endpoints = ExchangeEndpoints {
+            binance_spot_base_url: server.url(),
+            binance_usdm_base_url: server.url(),
+            bybit_base_url: server.url(),
+            gate_base_url: server.url(),
+        };
+
+        let config =
+            fetch_source_runtime_config(&compiled, 1704067200000, 1704074400000, &endpoints)
+                .expect("config");
+        assert_eq!(config.feeds.len(), 1);
+        let first = &config.feeds[0].bars[0];
+        assert_eq!(first.close, 100.5);
+        assert_eq!(first.mark_price, Some(100.25));
+        assert_eq!(first.index_price, Some(100.0));
+        assert_eq!(first.premium_index, Some(0.001));
+        assert_eq!(first.basis, Some(0.25));
+        assert_eq!(first.funding_rate, Some(0.0008));
+        assert_eq!(first.open_interest, Some(1000.0));
     }
 
     #[test]

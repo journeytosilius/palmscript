@@ -73,7 +73,7 @@ Operational fetch constraints are also template-specific:
 
 ## Source Field Set
 
-All source templates are normalized into the same canonical market fields:
+All source templates expose the canonical OHLCV field set:
 
 - `time`
 - `open`
@@ -86,7 +86,24 @@ Rules:
 
 - `time` is the candle open time in Unix milliseconds UTC
 - price and volume fields are numeric
-- venue-specific extra fields are not exposed in the language
+
+`binance.usdm("<symbol>")` also exposes these historical-only auxiliary fields:
+
+- `funding_rate`
+- `open_interest`
+- `mark_price`
+- `index_price`
+- `premium_index`
+- `basis`
+
+Rules:
+
+- auxiliary fields are only valid on `binance.usdm` source aliases
+- auxiliary fields keep the same flat source-qualified syntax as OHLCV fields: `<alias>.<field>` and `<alias>.<interval>.<field>`
+- historical modes fetch auxiliary datasets automatically when the script references them
+- `mark_price`, `index_price`, and `premium_index` resolve to close-equivalent scalar series for the selected interval
+- `funding_rate`, `open_interest`, and `basis` are normalized as carry-forward scalar series on the selected interval and stay `na` until the first fetched event or snapshot
+- `run paper` rejects scripts that reference these auxiliary fields until live polling is implemented
 
 ## Equal, Higher, and Lower Intervals
 
@@ -100,7 +117,7 @@ PalmScript distinguishes three cases for a referenced interval relative to the b
 
 In market mode:
 
-- PalmScript fetches the required `(source, interval)` feeds directly from the venues
+- PalmScript fetches the required `(source, interval, field-family)` data directly from the venues
 - the base execution timeline is the union of all declared-source base-interval bar open times
 - if one source has no base bar at a timeline step, that source contributes `na` for that step
 - slower source intervals retain their last fully closed value until their next close boundary

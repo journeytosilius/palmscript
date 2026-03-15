@@ -7,7 +7,7 @@ use crate::compiler::CompiledProgram;
 use crate::exchange::{
     fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints,
 };
-use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
+use crate::interval::{DeclaredMarketSource, Interval, MarketField, SourceTemplate};
 use crate::runtime::SourceRuntimeConfig;
 
 use super::venue::fetch_quote_feed;
@@ -184,6 +184,14 @@ pub(crate) fn bootstrap_runtime(
     now_ms: i64,
     endpoints: &ExchangeEndpoints,
 ) -> Result<MarketDataBootstrap, ExecutionError> {
+    if let Some(field) = referenced_historical_only_field(compiled) {
+        return Err(ExecutionError::InvalidConfig {
+            message: format!(
+                "paper execution does not support historical-only source field `{}` yet",
+                field.as_str()
+            ),
+        });
+    }
     let base_interval = compiled
         .program
         .base_interval
@@ -211,6 +219,17 @@ pub(crate) fn bootstrap_runtime(
         perp,
         perp_context,
         portfolio_perp_contexts,
+    })
+}
+
+fn referenced_historical_only_field(compiled: &CompiledProgram) -> Option<MarketField> {
+    compiled.program.locals.iter().find_map(|local| {
+        local.market_binding.and_then(|binding| {
+            binding
+                .field
+                .is_binance_usdm_auxiliary()
+                .then_some(binding.field)
+        })
     })
 }
 
@@ -362,4 +381,34 @@ pub(crate) fn resolve_execution_sources<'a>(
                 })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bootstrap_runtime;
+    use crate::backtest::PerpMarginMode;
+    use crate::compile;
+    use crate::exchange::ExchangeEndpoints;
+
+    #[test]
+    fn bootstrap_runtime_rejects_historical_only_auxiliary_fields_for_paper() {
+        let compiled = compile(
+            "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nexecution perp = binance.usdm(\"BTCUSDT\")\nplot(perp.funding_rate)",
+        )
+        .expect("compile");
+        let err = bootstrap_runtime(
+            &compiled,
+            &["perp".to_string()],
+            None,
+            Some(PerpMarginMode::Isolated),
+            1_704_067_200_000,
+            1_704_070_800_000,
+            &ExchangeEndpoints::default(),
+        )
+        .err()
+        .expect("paper bootstrap should reject historical-only fields");
+        assert!(err.to_string().contains(
+            "paper execution does not support historical-only source field `funding_rate` yet"
+        ));
+    }
 }

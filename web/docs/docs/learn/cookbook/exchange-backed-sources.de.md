@@ -23,6 +23,7 @@ PalmScript unterstuetzt ausserdem Bybit- und Gate-Quell-Templates:
 
 Relevante mit eingecheckte Beispiele:
 
+- `crates/palmscript/examples/strategies/binance_usdm_auxiliary_fields.ps`
 - `crates/palmscript/examples/strategies/bybit_spot.ps`
 - `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`
 - `crates/palmscript/examples/strategies/gate_spot.ps`
@@ -42,8 +43,13 @@ in der App aus.
 - das Skript hat weiterhin genau ein globales Basis-`interval`
 - der Runtime loest jeden benoetigten `(source, interval)`-Feed vor der
   Ausfuehrung auf
+- `binance.usdm` unterstuetzt ausserdem die historischen Felder
+  `funding_rate`, `open_interest`, `mark_price`, `index_price`,
+  `premium_index` und `basis`
 - Bybit erwartet venue-native Symbole wie `BTCUSDT`
 - Gate erwartet venue-native Symbole wie `BTC_USDT`
+- `run paper` lehnt diese Binance-USD-M-Hilfsfelder weiter ab, bis Live-Polling
+  dafuer implementiert ist
 - `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`
   und `run optimize` loesen dieselben exchangegestuetzten Quell-Deklarationen
   auf

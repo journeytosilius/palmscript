@@ -31,6 +31,12 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
                 close,
                 volume: 1_000.0 + index as f64,
                 time: (start_ms + spacing_ms * index as i64) as f64,
+                funding_rate: None,
+                open_interest: None,
+                mark_price: None,
+                index_price: None,
+                premium_index: None,
+                basis: None,
             }
         })
         .collect()
@@ -47,6 +53,7 @@ fn referenced_docs_examples_compile() {
         "examples/strategies/event_memory.ps",
         "examples/strategies/macd_tuple.ps",
         "examples/strategies/indicator_showcase.ps",
+        "examples/strategies/binance_usdm_auxiliary_fields.ps",
         "examples/strategies/weekly_bias.ps",
         "examples/strategies/cross_source_spread.ps",
         "examples/strategies/exchange_backed_sources.ps",

@@ -26,6 +26,12 @@ pub fn rising_bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64)
                 close,
                 volume: 1_000.0 + index as f64,
                 time: (start_ms + spacing_ms * index as i64) as f64,
+                funding_rate: None,
+                open_interest: None,
+                mark_price: None,
+                index_price: None,
+                premium_index: None,
+                basis: None,
             }
         })
         .collect()
@@ -42,6 +48,12 @@ pub fn flat_bars(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar> {
             close: *close,
             volume: 1_000.0 + index as f64,
             time: (start_ms + spacing_ms * index as i64) as f64,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
         })
         .collect()
 }
@@ -79,6 +91,12 @@ pub fn monthly_feed(source_id: u16, closes: &[f64]) -> SourceFeed {
             close,
             volume: 10_000.0,
             time: open_time as f64,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
         });
     }
     source_feed(source_id, palmscript::Interval::Month1, bars)

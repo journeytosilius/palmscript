@@ -90,7 +90,12 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 
 - `time` は UTC の Unix ミリ秒で表したローソク足の始値時刻
 - 価格と出来高フィールドは数値
-- venue 固有の追加フィールドは言語には公開されない
+- `binance.usdm("<symbol>")` は履歴専用の補助フィールド `funding_rate`,
+  `open_interest`, `mark_price`, `index_price`, `premium_index`, `basis`
+  も公開する
+- これらの補助フィールドは `binance.usdm` エイリアスでのみ有効
+- 履歴モードは、スクリプトが参照したときにそれらを自動取得する
+- `run paper` は live polling が実装されるまでこれらの補助フィールドを拒否する
 
 ## 等しい / 上位 / 下位インターバル
 

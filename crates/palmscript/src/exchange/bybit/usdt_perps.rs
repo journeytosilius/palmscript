@@ -66,6 +66,12 @@ impl BybitMarkPriceKlineRow {
             low: parse_text_f64(&self.low, source, interval, "low")?,
             close: parse_text_f64(&self.close, source, interval, "close")?,
             volume: 0.0,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
         })
     }
 }

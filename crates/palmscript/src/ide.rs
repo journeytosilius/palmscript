@@ -87,6 +87,21 @@ const MARKET_FIELDS: [(&str, &str); 6] = [
     ("time", "Candle open time"),
 ];
 
+const BINANCE_USDM_AUXILIARY_FIELDS: [(&str, &str); 6] = [
+    (
+        "funding_rate",
+        "Latest historical Binance USD-M funding rate",
+    ),
+    (
+        "open_interest",
+        "Historical Binance USD-M open interest snapshot",
+    ),
+    ("mark_price", "Binance USD-M mark-price close value"),
+    ("index_price", "Binance USD-M index-price close value"),
+    ("premium_index", "Binance USD-M premium-index close value"),
+    ("basis", "Historical Binance USD-M basis snapshot"),
+];
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SymbolKind {
     Interval,
@@ -1050,8 +1065,8 @@ fn completions_for_source(
 ) -> Vec<CompletionEntry> {
     let mut items = BTreeMap::new();
     match completion_context_for(source, offset, definitions) {
-        CompletionContext::Field => {
-            for (label, detail) in MARKET_FIELDS {
+        CompletionContext::Field { source_alias } => {
+            for (label, detail) in market_fields_for_alias(source, source_alias, definitions) {
                 items.insert(
                     label.to_string(),
                     plain_completion(label, CompletionKind::Field, detail),
@@ -1446,11 +1461,11 @@ fn span_contains(span: Span, offset: usize) -> bool {
     span.start.offset <= offset && offset < span.end.offset.max(span.start.offset + 1)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum CompletionContext {
     General,
     Interval,
-    Field,
+    Field { source_alias: Option<String> },
 }
 
 fn completion_context_for(
@@ -1476,7 +1491,10 @@ fn completion_context_for(
         let segment = &before[interval_start..token_start - 1];
         if Interval::parse(segment).is_some() || source_alias_segment(source, segment, definitions)
         {
-            return CompletionContext::Field;
+            let alias = source_alias_for_field_context(before, token_start - 1);
+            return CompletionContext::Field {
+                source_alias: alias,
+            };
         }
     }
 
@@ -1485,6 +1503,61 @@ fn completion_context_for(
     }
 
     CompletionContext::General
+}
+
+fn market_fields_for_alias(
+    source: &str,
+    source_alias: Option<String>,
+    definitions: Option<&[DefinitionTarget]>,
+) -> Vec<(&'static str, &'static str)> {
+    let mut fields = MARKET_FIELDS.to_vec();
+    if source_alias
+        .as_deref()
+        .is_some_and(|alias| source_alias_uses_binance_usdm(source, alias, definitions))
+    {
+        fields.extend(BINANCE_USDM_AUXILIARY_FIELDS);
+    }
+    fields
+}
+
+fn source_alias_for_field_context(before: &str, dot_index: usize) -> Option<String> {
+    let before_dot = &before[..dot_index];
+    let segment_start = before_dot
+        .rfind(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let segment = &before_dot[segment_start..];
+    if Interval::parse(segment).is_some() {
+        let alias_before_interval = &before_dot[..segment_start.saturating_sub(1)];
+        let alias_end = alias_before_interval.len();
+        let alias_start = alias_before_interval
+            .rfind(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let alias = &alias_before_interval[alias_start..alias_end];
+        (!alias.is_empty()).then(|| alias.to_string())
+    } else {
+        (!segment.is_empty()).then(|| segment.to_string())
+    }
+}
+
+fn source_alias_uses_binance_usdm(
+    source: &str,
+    alias: &str,
+    definitions: Option<&[DefinitionTarget]>,
+) -> bool {
+    definitions
+        .and_then(|definitions| {
+            definitions.iter().find(|definition| {
+                definition.name == alias && matches!(definition.kind, SymbolKind::Source)
+            })
+        })
+        .and_then(|definition| definition.detail.as_deref())
+        .is_some_and(|detail| detail.starts_with("binance.usdm("))
+        || source.lines().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with(&format!("source {alias} = binance.usdm("))
+        })
 }
 
 fn source_alias_segment(
@@ -2196,6 +2269,12 @@ fn render_market_field(field: MarketField) -> &'static str {
         MarketField::Close => "close",
         MarketField::Volume => "volume",
         MarketField::Time => "time",
+        MarketField::FundingRate => "funding_rate",
+        MarketField::OpenInterest => "open_interest",
+        MarketField::MarkPrice => "mark_price",
+        MarketField::IndexPrice => "index_price",
+        MarketField::PremiumIndex => "premium_index",
+        MarketField::Basis => "basis",
     }
 }
 
@@ -2266,6 +2345,25 @@ mod tests {
             crossover.insert_text_format,
             CompletionInsertTextFormat::Snippet
         );
+    }
+
+    #[test]
+    fn auxiliary_field_completions_are_scoped_to_binance_usdm_sources() {
+        let usdm = "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(perp.mark_price)";
+        let usdm_fields = analyze_document(usdm)
+            .expect("semantic")
+            .completions_at(usdm.find("mark_price").expect("field"));
+        assert!(usdm_fields
+            .iter()
+            .any(|entry| entry.label == "funding_rate"));
+
+        let spot = "interval 1h\nsource spot = binance.spot(\"BTCUSDT\")\nplot(spot.close)";
+        let spot_fields = analyze_document(spot)
+            .expect("semantic")
+            .completions_at(spot.find("close").expect("field"));
+        assert!(!spot_fields
+            .iter()
+            .any(|entry| entry.label == "funding_rate"));
     }
 
     #[test]

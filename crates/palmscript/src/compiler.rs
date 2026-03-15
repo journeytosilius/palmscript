@@ -569,13 +569,13 @@ impl<'a> Analyzer<'a> {
         for stmt in &ast.statements {
             collect_source_series_stmt(stmt, &mut refs);
         }
-        for (source, interval, _field) in refs {
-            let Some(source_id) = self
+        for (source, interval, field) in refs {
+            let Some((source_id, template)) = self
                 .analysis
                 .declared_sources
                 .iter()
                 .find(|decl| decl.alias == source)
-                .map(|decl| decl.id)
+                .map(|decl| (decl.id, decl.template))
             else {
                 let span = source_ref_span(ast, &source, interval).unwrap_or_default();
                 self.diagnostics.push(Diagnostic::new(
@@ -585,6 +585,20 @@ impl<'a> Analyzer<'a> {
                 ));
                 continue;
             };
+            if !template.supports_market_field(field) {
+                let span = source_ref_span(ast, &source, interval).unwrap_or_default();
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "source field `{}` is only available on `binance.usdm` sources; `{}` is `{}`",
+                        field.as_str(),
+                        source,
+                        template.as_str()
+                    ),
+                    span,
+                ));
+                continue;
+            }
             if let Some(interval) = interval {
                 if interval < base_interval {
                     let span = source_ref_span(ast, &source, Some(interval)).unwrap_or_default();

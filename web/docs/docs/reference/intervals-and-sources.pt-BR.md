@@ -93,7 +93,11 @@ Regras:
 
 - `time` e o horario de abertura do candle em milissegundos Unix UTC
 - campos de preco e volume sao numericos
-- campos extras especificos do venue nao sao expostos na linguagem
+- `binance.usdm("<symbol>")` tambem expoe campos auxiliares historicos:
+  `funding_rate`, `open_interest`, `mark_price`, `index_price`, `premium_index` e `basis`
+- esses campos auxiliares so sao validos em aliases `binance.usdm`
+- os modos historicos buscam esses dados automaticamente quando o script os referencia
+- `run paper` rejeita scripts que usam esses campos auxiliares ate existir polling live para eles
 
 ## Intervalos Iguais, Superiores E Inferiores
 

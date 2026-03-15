@@ -260,6 +260,19 @@ fn compile_with_input_overrides_rejects_unknown_inputs() {
 }
 
 #[test]
+fn auxiliary_binance_usdm_fields_reject_non_usdm_templates() {
+    let err =
+        compile("interval 1h\nsource spot = binance.spot(\"BTCUSDT\")\nplot(spot.funding_rate)")
+            .expect_err("non-usdm auxiliary field should fail");
+    assert!(err.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == DiagnosticKind::Type
+            && diagnostic
+                .message
+                .contains("source field `funding_rate` is only available on `binance.usdm` sources")
+    }));
+}
+
+#[test]
 fn input_optimization_metadata_rejects_non_numeric_inputs() {
     let diagnostics = compile_diagnostics(&with_interval(
         "input enabled = true optimize(int, 0, 1)\nplot(close)",

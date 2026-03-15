@@ -26,6 +26,12 @@ fn fixture_bars() -> Vec<Bar> {
                 close,
                 volume: 1_000.0 + index as f64,
                 time: JAN_1_2024_UTC_MS as f64 + index as f64 * 60_000.0,
+                funding_rate: None,
+                open_interest: None,
+                mark_price: None,
+                index_price: None,
+                premium_index: None,
+                basis: None,
             }
         })
         .collect()
@@ -50,6 +56,12 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
             close: *close,
             volume: 1_000.0 + index as f64,
             time: (start_ms + spacing_ms * index as i64) as f64,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
         })
         .collect()
 }

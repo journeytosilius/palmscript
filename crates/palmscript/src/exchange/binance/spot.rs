@@ -57,6 +57,12 @@ impl BinanceKlineRow {
             low: parse_text_f64(&self.low, source, interval, "low")?,
             close: parse_text_f64(&self.close, source, interval, "close")?,
             volume: parse_text_f64(&self.volume, source, interval, "volume")?,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
         })
     }
 }
@@ -262,6 +268,12 @@ mod tests {
                 low: 0.5,
                 close: 1.5,
                 volume: 10.0,
+                funding_rate: None,
+                open_interest: None,
+                mark_price: None,
+                index_price: None,
+                premium_index: None,
+                basis: None,
             }
         );
     }

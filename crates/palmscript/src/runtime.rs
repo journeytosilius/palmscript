@@ -20,7 +20,9 @@ use crate::output::{
 use crate::types::{SlotKind, Value};
 use crate::vm::{SeriesBuffer, Vm, VmEngine};
 
-type SlotMap = [Option<u16>; 6];
+const MARKET_FIELD_COUNT: usize = MarketField::ALL.len();
+
+type SlotMap = [Option<u16>; MARKET_FIELD_COUNT];
 type OutputCollections = (
     Vec<OutputSample>,
     Vec<OutputSample>,
@@ -39,10 +41,16 @@ pub struct Bar {
     pub volume: f64,
     /// Candle open time in Unix milliseconds UTC.
     pub time: f64,
+    pub funding_rate: Option<f64>,
+    pub open_interest: Option<f64>,
+    pub mark_price: Option<f64>,
+    pub index_price: Option<f64>,
+    pub premium_index: Option<f64>,
+    pub basis: Option<f64>,
 }
 
 impl Bar {
-    pub fn fields(self) -> [Value; 6] {
+    pub fn fields(self) -> [Value; MARKET_FIELD_COUNT] {
         [
             Value::F64(self.open),
             Value::F64(self.high),
@@ -50,6 +58,12 @@ impl Bar {
             Value::F64(self.close),
             Value::F64(self.volume),
             Value::F64(self.time),
+            optional_value(self.funding_rate),
+            optional_value(self.open_interest),
+            optional_value(self.mark_price),
+            optional_value(self.index_price),
+            optional_value(self.premium_index),
+            optional_value(self.basis),
         ]
     }
 }
@@ -369,6 +383,12 @@ impl Engine {
             close: f64::NAN,
             volume: f64::NAN,
             time: open_time as f64,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
         };
 
         for cursor in base_cursors {
@@ -488,7 +508,7 @@ impl Engine {
     fn commit_values(
         &mut self,
         slot_map: &SlotMap,
-        values: [Value; 6],
+        values: [Value; MARKET_FIELD_COUNT],
         mask: u32,
     ) -> Result<(), RuntimeError> {
         let mut committed = false;
@@ -697,7 +717,9 @@ fn build_source_feed_cursors(
         } = binding.source;
         match interval {
             None => {
-                base_slot_maps.entry(source_id).or_insert([None; 6])[field_index(binding.field)] =
+                base_slot_maps
+                    .entry(source_id)
+                    .or_insert([None; MARKET_FIELD_COUNT])[field_index(binding.field)] =
                     Some(slot_for_local(compiled, local)?);
             }
             Some(interval) if interval < base_interval => {
@@ -707,12 +729,16 @@ fn build_source_feed_cursors(
                 });
             }
             Some(interval) if interval == base_interval => {
-                equal_slot_maps.entry(source_id).or_insert([None; 6])[field_index(binding.field)] =
+                equal_slot_maps
+                    .entry(source_id)
+                    .or_insert([None; MARKET_FIELD_COUNT])[field_index(binding.field)] =
                     Some(slot_for_local(compiled, local)?);
             }
             Some(interval) => {
-                referenced.entry((source_id, interval)).or_insert([None; 6])
-                    [field_index(binding.field)] = Some(slot_for_local(compiled, local)?);
+                referenced
+                    .entry((source_id, interval))
+                    .or_insert([None; MARKET_FIELD_COUNT])[field_index(binding.field)] =
+                    Some(slot_for_local(compiled, local)?);
             }
         }
     }
@@ -761,8 +787,12 @@ fn build_source_feed_cursors(
             source_alias: source.alias.clone(),
             bars,
             next_index: 0,
-            base_slot_map: base_slot_maps.remove(&source.id).unwrap_or([None; 6]),
-            equal_interval_slot_map: equal_slot_maps.remove(&source.id).unwrap_or([None; 6]),
+            base_slot_map: base_slot_maps
+                .remove(&source.id)
+                .unwrap_or([None; MARKET_FIELD_COUNT]),
+            equal_interval_slot_map: equal_slot_maps
+                .remove(&source.id)
+                .unwrap_or([None; MARKET_FIELD_COUNT]),
         });
     }
 
@@ -933,15 +963,12 @@ fn field_index(field: MarketField) -> usize {
     field.ordinal() as usize
 }
 
-fn synthetic_values() -> [Value; 6] {
-    [
-        Value::NA,
-        Value::NA,
-        Value::NA,
-        Value::NA,
-        Value::NA,
-        Value::NA,
-    ]
+fn synthetic_values() -> [Value; MARKET_FIELD_COUNT] {
+    std::array::from_fn(|_| Value::NA)
+}
+
+fn optional_value(value: Option<f64>) -> Value {
+    value.map_or(Value::NA, Value::F64)
 }
 
 fn output_value_for_decl(
@@ -1007,6 +1034,12 @@ mod tests {
                         close: 1.0,
                         volume: 1.0,
                         time: 0.0,
+                        funding_rate: None,
+                        open_interest: None,
+                        mark_price: None,
+                        index_price: None,
+                        premium_index: None,
+                        basis: None,
                     },
                     Bar {
                         open: 2.0,
@@ -1015,6 +1048,12 @@ mod tests {
                         close: 2.0,
                         volume: 2.0,
                         time: 100.0,
+                        funding_rate: None,
+                        open_interest: None,
+                        mark_price: None,
+                        index_price: None,
+                        premium_index: None,
+                        basis: None,
                     },
                     Bar {
                         open: 3.0,
@@ -1023,6 +1062,12 @@ mod tests {
                         close: 3.0,
                         volume: 3.0,
                         time: 200.0,
+                        funding_rate: None,
+                        open_interest: None,
+                        mark_price: None,
+                        index_price: None,
+                        premium_index: None,
+                        basis: None,
                     },
                 ],
             }],
