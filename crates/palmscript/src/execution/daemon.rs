@@ -100,7 +100,7 @@ async fn serve_execution_daemon_async(
         runners.retain(|session_id, _| active_sessions.iter().any(|active| active == session_id));
         for manifest in &active_manifests {
             if !runners.contains_key(&manifest.session_id) {
-                let runner = LoadedPaperSession::load(manifest, now_ms())?;
+                let runner = LoadedPaperSession::load(manifest, now_ms()).await?;
                 runners.insert(manifest.session_id.clone(), runner);
             }
         }
@@ -139,7 +139,7 @@ async fn serve_execution_daemon_async(
                     session_id: manifest.session_id.clone(),
                 }
             })?;
-            let _ = process_paper_session(runner, manifest, &feed_hub, now_ms())?;
+            let _ = process_paper_session(runner, manifest, &feed_hub, now_ms()).await?;
         }
 
         if config.once {

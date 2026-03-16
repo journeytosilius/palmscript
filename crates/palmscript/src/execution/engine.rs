@@ -27,10 +27,7 @@ pub(crate) struct LoadedPaperSession {
 }
 
 impl LoadedPaperSession {
-    pub(crate) fn load(
-        manifest: &PaperSessionManifest,
-        now_ms: i64,
-    ) -> Result<Self, ExecutionError> {
+    fn load_blocking(manifest: &PaperSessionManifest, now_ms: i64) -> Result<Self, ExecutionError> {
         let source = load_paper_session_script(&manifest.session_id)?;
         let compiled = compile(&source).map_err(|err| ExecutionError::Compile(err.to_string()))?;
         let execution_sources =
@@ -86,7 +83,19 @@ impl LoadedPaperSession {
         &self.feed_plan
     }
 
-    fn refresh_perp_contexts_if_needed(
+    pub(crate) async fn load(
+        manifest: &PaperSessionManifest,
+        now_ms: i64,
+    ) -> Result<Self, ExecutionError> {
+        let manifest = manifest.clone();
+        tokio::task::spawn_blocking(move || Self::load_blocking(&manifest, now_ms))
+            .await
+            .map_err(|err| {
+                ExecutionError::Runtime(format!("paper session load task failed: {err}"))
+            })?
+    }
+
+    async fn refresh_perp_contexts_if_needed(
         &mut self,
         manifest: &PaperSessionManifest,
         runtime_to_ms: i64,
@@ -97,21 +106,27 @@ impl LoadedPaperSession {
             return Ok(());
         }
 
-        let (perp, perp_context, portfolio_perp_contexts) = resolve_perp_contexts(
-            &self.compiled,
-            &manifest.config.execution_source_aliases,
-            PerpBootstrapOptions {
-                leverage: manifest.config.leverage,
-                margin_mode: manifest
-                    .config
-                    .margin_mode
-                    .unwrap_or(PerpMarginMode::Isolated),
-                base_interval: self.feed_plan.base_interval,
-                from_ms: self.feed_plan.warmup_from_ms,
-                to_ms: runtime_to_ms,
-            },
-            &manifest.endpoints,
-        )?;
+        let compiled = self.compiled.clone();
+        let execution_aliases = manifest.config.execution_source_aliases.clone();
+        let endpoints = manifest.endpoints.clone();
+        let options = PerpBootstrapOptions {
+            leverage: manifest.config.leverage,
+            margin_mode: manifest
+                .config
+                .margin_mode
+                .unwrap_or(PerpMarginMode::Isolated),
+            base_interval: self.feed_plan.base_interval,
+            from_ms: self.feed_plan.warmup_from_ms,
+            to_ms: runtime_to_ms,
+        };
+        let (perp, perp_context, portfolio_perp_contexts) =
+            tokio::task::spawn_blocking(move || {
+                resolve_perp_contexts(&compiled, &execution_aliases, options, &endpoints)
+            })
+            .await
+            .map_err(|err| {
+                ExecutionError::Runtime(format!("perp context refresh task failed: {err}"))
+            })??;
         self.perp = perp;
         self.perp_context = perp_context;
         self.portfolio_perp_contexts = portfolio_perp_contexts;
@@ -120,7 +135,7 @@ impl LoadedPaperSession {
     }
 }
 
-pub(crate) fn process_paper_session(
+pub(crate) async fn process_paper_session(
     session: &mut LoadedPaperSession,
     manifest: &PaperSessionManifest,
     hub: &FeedHub,
@@ -172,7 +187,9 @@ pub(crate) fn process_paper_session(
         return Ok(manifest);
     };
 
-    session.refresh_perp_contexts_if_needed(&manifest, runtime_to_ms)?;
+    session
+        .refresh_perp_contexts_if_needed(&manifest, runtime_to_ms)
+        .await?;
 
     let live_health = infer_health(&feed_snapshots);
     if manifest.latest_runtime_to_ms == Some(runtime_to_ms)
@@ -506,8 +523,12 @@ plot(perp.close)";
             perp_context_to_ms: initial_runtime_to_ms,
         };
 
-        session
-            .refresh_perp_contexts_if_needed(&manifest, 1_704_078_000_000)
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        runtime
+            .block_on(session.refresh_perp_contexts_if_needed(&manifest, 1_704_078_000_000))
             .expect("refresh contexts");
 
         let refreshed = session.perp_context.expect("refreshed perp context");
