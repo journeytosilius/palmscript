@@ -11,12 +11,12 @@ once = false
 
 [[session]]
 enabled = true
-script = "strategy.ps"
+script = "paper_trigger_happy.ps"
 
-# Current validated paper target from /mnt/4tbscratch/projects/palmscript-build-futures:
+# Default bundled paper smoke-test target:
 # - execution alias: exec
 # - symbol / segment: Binance USD-M BTCUSDT
-# - exact validation artifact: opt_probe_iter52_cooldown1_exact.json
+# - strategy goal: frequent fills plus tight stop/target churn
 
 initial_capital = 10000.0
 maker_fee_bps = 2.0

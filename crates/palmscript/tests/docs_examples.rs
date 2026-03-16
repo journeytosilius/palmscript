@@ -45,6 +45,7 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
 #[test]
 fn referenced_docs_examples_compile() {
     let examples = [
+        "examples/strategies/paper_trigger_happy.ps",
         "examples/strategies/adaptive_trend_backtest.ps",
         "examples/strategies/portfolio_caps_backtest.ps",
         "examples/strategies/sma_cross.ps",
@@ -324,6 +325,48 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
         },
     )
     .expect("venue_orders_backtest should backtest");
+    assert!(!result.orders.is_empty(), "{path} should emit orders");
+    assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
+}
+
+#[test]
+fn paper_trigger_happy_example_runs_with_local_feeds() {
+    let path = "examples/strategies/paper_trigger_happy.ps";
+    let compiled = compile(&read_strategy(path)).expect("paper_trigger_happy should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: palmscript::Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: palmscript::Interval::Min1,
+            bars: bars(JAN_1_2024_UTC_MS, MINUTE_MS, 240, 100.0),
+        }],
+    };
+
+    let outputs = run_with_sources(&compiled, runtime.clone(), VmLimits::default())
+        .expect("paper_trigger_happy should run");
+    assert!(!outputs.plots.is_empty(), "{path} should emit plots");
+
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        BacktestConfig {
+            execution_source_alias: "exec".to_string(),
+            portfolio_execution_aliases: Vec::new(),
+            spot_virtual_rebalance: false,
+            activation_time_ms: None,
+            initial_capital: 10_000.0,
+            maker_fee_bps: 0.0,
+            taker_fee_bps: 0.0,
+            execution_fee_schedules: std::collections::BTreeMap::new(),
+            slippage_bps: 0.0,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            perp: None,
+            perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
+        },
+    )
+    .expect("paper_trigger_happy should backtest");
     assert!(!result.orders.is_empty(), "{path} should emit orders");
     assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
 }
