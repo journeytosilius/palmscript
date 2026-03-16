@@ -103,7 +103,7 @@ Rules:
 - historical modes fetch auxiliary datasets automatically when the script references them
 - `mark_price`, `index_price`, and `premium_index` resolve to close-equivalent scalar series for the selected interval
 - `funding_rate` and `basis` are normalized as carry-forward scalar series on the selected interval and stay `na` until the first fetched event or snapshot
-- `run paper` rejects scripts that reference these auxiliary fields until live polling is implemented
+- `run paper` bootstraps these auxiliary datasets into the shared paper feed cache and keeps them available for armed paper sessions
 
 ## Equal, Higher, and Lower Intervals
 

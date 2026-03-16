@@ -48,8 +48,8 @@ in der App aus.
   `premium_index` und `basis`
 - Bybit erwartet venue-native Symbole wie `BTCUSDT`
 - Gate erwartet venue-native Symbole wie `BTC_USDT`
-- `run paper` lehnt diese Binance-USD-M-Hilfsfelder weiter ab, bis Live-Polling
-  dafuer implementiert ist
+- `run paper` bootstrappt diese Binance-USD-M-Hilfsfelder jetzt ueber denselben
+  historischen Feed-Pfad und uebernimmt sie in bewaffnete Paper-Sessions
 - `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`
   und `run optimize` loesen dieselben exchangegestuetzten Quell-Deklarationen
   auf

@@ -96,7 +96,7 @@ PalmScript は現在、次の第一級テンプレートをサポートします
   も公開する
 - これらの補助フィールドは `binance.usdm` エイリアスでのみ有効
 - 履歴モードは、スクリプトが参照したときにそれらを自動取得する
-- `run paper` は live polling が実装されるまでこれらの補助フィールドを拒否する
+- `run paper` はこれらの補助データセットも共有 paper feed cache に初期化し、armed paper session で使える状態を維持する
 
 ## 等しい / 上位 / 下位インターバル
 

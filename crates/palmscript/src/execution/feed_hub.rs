@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use reqwest::blocking::Client;
 
 use crate::compiler::CompiledProgram;
-use crate::exchange::{fetch_source_bars, ExchangeEndpoints};
-use crate::interval::{DeclaredMarketSource, Interval, MarketField, MarketSource, SourceTemplate};
+use crate::exchange::{collect_required_source_fields, fetch_source_feed, ExchangeEndpoints};
+use crate::interval::{DeclaredMarketSource, Interval, MarketField, SourceTemplate};
 use crate::runtime::{Bar, SourceFeed, SourceRuntimeConfig};
 
 use super::market_data::resolve_execution_sources;
@@ -33,6 +33,7 @@ pub(crate) struct SessionFeedSubscription {
     pub endpoints: ExchangeEndpoints,
     pub canonical_interval: Interval,
     pub requested_intervals: BTreeSet<Interval>,
+    pub required_fields: BTreeSet<MarketField>,
     pub warmup_from_ms: i64,
     pub quote_required: bool,
     pub execution_alias: Option<String>,
@@ -83,6 +84,7 @@ struct ManagedFeed {
     canonical_interval: Interval,
     warmup_from_ms: i64,
     quote_required: bool,
+    required_fields: BTreeSet<MarketField>,
     state: FeedState,
 }
 
@@ -113,6 +115,9 @@ impl FeedHub {
                             .requested_intervals
                             .extend(subscription.requested_intervals.iter().copied());
                         existing.quote_required |= subscription.quote_required;
+                        existing
+                            .required_fields
+                            .extend(subscription.required_fields.iter().copied());
                         existing.warmup_from_ms =
                             existing.warmup_from_ms.min(subscription.warmup_from_ms);
                         existing.execution_alias = existing
@@ -136,10 +141,12 @@ impl FeedHub {
                 canonical_interval: subscription.canonical_interval,
                 warmup_from_ms: i64::MAX,
                 quote_required: subscription.quote_required,
+                required_fields: BTreeSet::new(),
                 state: FeedState::default(),
             });
             managed.warmup_from_ms = managed.warmup_from_ms.min(subscription.warmup_from_ms);
             managed.quote_required |= subscription.quote_required;
+            managed.required_fields = subscription.required_fields.clone();
             managed.endpoints = subscription.endpoints.clone();
             refresh_feed(managed, now_ms).await?;
         }
@@ -163,10 +170,19 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         let source = managed.source.clone();
         let endpoints = managed.endpoints.clone();
         let from_ms = managed.warmup_from_ms;
+        let required_fields = managed.required_fields.clone();
         let bars = tokio::task::spawn_blocking(move || {
             let client = blocking_client()?;
-            fetch_source_bars(&client, &source, interval, from_ms, to_ms, &endpoints)
-                .map_err(|err| ExecutionError::Fetch(err.to_string()))
+            fetch_source_feed(
+                &client,
+                &source,
+                interval,
+                from_ms,
+                to_ms,
+                &endpoints,
+                &required_fields,
+            )
+            .map_err(|err| ExecutionError::Fetch(err.to_string()))
         })
         .await
         .map_err(|err| ExecutionError::Runtime(format!("feed bootstrap task failed: {err}")))??;
@@ -178,10 +194,19 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
     } else if let Some(from_ms) = next_open_time.filter(|from_ms| *from_ms < to_ms) {
         let source = managed.source.clone();
         let endpoints = managed.endpoints.clone();
+        let required_fields = managed.required_fields.clone();
         let bars = tokio::task::spawn_blocking(move || {
             let client = blocking_client()?;
-            fetch_source_bars(&client, &source, interval, from_ms, to_ms, &endpoints)
-                .map_err(|err| ExecutionError::Fetch(err.to_string()))
+            fetch_source_feed(
+                &client,
+                &source,
+                interval,
+                from_ms,
+                to_ms,
+                &endpoints,
+                &required_fields,
+            )
+            .map_err(|err| ExecutionError::Fetch(err.to_string()))
         })
         .await
         .map_err(|err| ExecutionError::Runtime(format!("feed append task failed: {err}")))??;
@@ -453,15 +478,6 @@ pub(crate) fn build_session_feed_plan(
     start_time_ms: i64,
     endpoints: &ExchangeEndpoints,
 ) -> Result<SessionFeedPlan, ExecutionError> {
-    if let Some(field) = referenced_historical_only_field(compiled) {
-        return Err(ExecutionError::InvalidConfig {
-            message: format!(
-                "paper execution does not support historical-only source field `{}` yet",
-                field.as_str()
-            ),
-        });
-    }
-
     let base_interval = compiled
         .program
         .base_interval
@@ -473,32 +489,18 @@ pub(crate) fn build_session_feed_plan(
         .map(|source| (source.id, source.alias.clone()))
         .collect::<BTreeMap<_, _>>();
 
-    let mut required = BTreeMap::<u16, BTreeSet<Interval>>::new();
-    for source in &compiled.program.declared_sources {
-        required.entry(source.id).or_default().insert(base_interval);
-    }
-    for execution in &compiled.program.declared_executions {
-        required
-            .entry(execution.id)
-            .or_default()
-            .insert(base_interval);
-    }
-    for local in &compiled.program.locals {
-        let Some(binding) = local.market_binding else {
-            continue;
-        };
-        let MarketSource::Named {
-            source_id,
-            interval,
-        } = binding.source;
-        required
-            .entry(source_id)
-            .or_default()
-            .insert(interval.unwrap_or(base_interval));
+    let required = collect_required_source_fields(compiled, base_interval);
+    let mut source_requirements = BTreeMap::<u16, SourceRequirement>::new();
+    for (requirement, fields) in required {
+        let entry = source_requirements
+            .entry(requirement.source_id)
+            .or_default();
+        entry.intervals.insert(requirement.interval);
+        entry.required_fields.extend(fields);
     }
 
     let mut subscriptions = Vec::new();
-    for (source_id, intervals) in required {
+    for (source_id, requirement) in source_requirements {
         let source = compiled
             .program
             .declared_sources
@@ -508,7 +510,8 @@ pub(crate) fn build_session_feed_plan(
             .ok_or_else(|| ExecutionError::InvalidConfig {
                 message: format!("unknown source id {source_id} in paper feed plan"),
             })?;
-        let canonical_interval = intervals
+        let canonical_interval = requirement
+            .intervals
             .iter()
             .copied()
             .min_by_key(|interval| interval.ordinal())
@@ -520,7 +523,8 @@ pub(crate) fn build_session_feed_plan(
             symbol: source.symbol.clone(),
             endpoints: endpoints.clone(),
             canonical_interval,
-            requested_intervals: intervals,
+            requested_intervals: requirement.intervals,
+            required_fields: requirement.required_fields,
             warmup_from_ms,
             quote_required: execution_ids.contains_key(&source_id),
             execution_alias: execution_ids.get(&source_id).cloned(),
@@ -532,17 +536,6 @@ pub(crate) fn build_session_feed_plan(
         base_interval,
         warmup_from_ms,
         subscriptions,
-    })
-}
-
-fn referenced_historical_only_field(compiled: &CompiledProgram) -> Option<MarketField> {
-    compiled.program.locals.iter().find_map(|local| {
-        local.market_binding.and_then(|binding| {
-            binding
-                .field
-                .is_binance_usdm_auxiliary()
-                .then_some(binding.field)
-        })
     })
 }
 
@@ -622,6 +615,7 @@ fn aggregate_bars(interval: Interval, bars: &[Bar]) -> Vec<Bar> {
                     aggregate.low = aggregate.low.min(bar.low);
                     aggregate.close = bar.close;
                     aggregate.volume += bar.volume;
+                    merge_scalar_fields(aggregate, *bar);
                 }
             }
             Some(_) => {
@@ -646,19 +640,36 @@ fn aggregate_bars(interval: Interval, bars: &[Bar]) -> Vec<Bar> {
 
 fn bar_for_bucket(bar: Bar, open_time: i64) -> Bar {
     Bar {
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-        volume: bar.volume,
         time: open_time as f64,
-        funding_rate: None,
-        open_interest: None,
-        mark_price: None,
-        index_price: None,
-        premium_index: None,
-        basis: None,
+        ..bar
     }
+}
+
+fn merge_scalar_fields(target: &mut Bar, overlay: Bar) {
+    if overlay.funding_rate.is_some() {
+        target.funding_rate = overlay.funding_rate;
+    }
+    if overlay.open_interest.is_some() {
+        target.open_interest = overlay.open_interest;
+    }
+    if overlay.mark_price.is_some() {
+        target.mark_price = overlay.mark_price;
+    }
+    if overlay.index_price.is_some() {
+        target.index_price = overlay.index_price;
+    }
+    if overlay.premium_index.is_some() {
+        target.premium_index = overlay.premium_index;
+    }
+    if overlay.basis.is_some() {
+        target.basis = overlay.basis;
+    }
+}
+
+#[derive(Default)]
+struct SourceRequirement {
+    intervals: BTreeSet<Interval>,
+    required_fields: BTreeSet<MarketField>,
 }
 
 fn snapshot_with_state(snapshot: &TopOfBookSnapshot, now_ms: i64) -> TopOfBookSnapshot {
@@ -682,8 +693,10 @@ mod tests {
     use super::{aggregate_bars, build_session_feed_plan, FeedHub};
     use crate::compile;
     use crate::exchange::ExchangeEndpoints;
-    use crate::interval::Interval;
+    use crate::interval::{Interval, MarketField};
     use crate::runtime::Bar;
+    use mockito::{Matcher, Server};
+    use serde_json::json;
 
     fn bar(time: i64, open: f64, high: f64, low: f64, close: f64, volume: f64) -> Bar {
         Bar {
@@ -720,6 +733,33 @@ mod tests {
     }
 
     #[test]
+    fn aggregate_bars_preserves_latest_scalar_source_fields() {
+        let mut first = bar(0, 100.0, 101.0, 99.0, 100.5, 10.0);
+        first.mark_price = Some(100.25);
+        first.premium_index = Some(0.001);
+        let mut second = bar(3_600_000, 100.5, 102.0, 100.0, 101.5, 12.0);
+        second.funding_rate = Some(0.0008);
+        second.mark_price = Some(101.25);
+        second.index_price = Some(101.0);
+        second.premium_index = Some(0.0015);
+        second.basis = Some(0.25);
+
+        let aggregated = aggregate_bars(Interval::Hour2, &[first, second]);
+        assert_eq!(aggregated.len(), 1);
+        assert_eq!(aggregated[0].time as i64, 0);
+        assert_eq!(aggregated[0].open, 100.0);
+        assert_eq!(aggregated[0].high, 102.0);
+        assert_eq!(aggregated[0].low, 99.0);
+        assert_eq!(aggregated[0].close, 101.5);
+        assert_eq!(aggregated[0].volume, 22.0);
+        assert_eq!(aggregated[0].funding_rate, Some(0.0008));
+        assert_eq!(aggregated[0].mark_price, Some(101.25));
+        assert_eq!(aggregated[0].index_price, Some(101.0));
+        assert_eq!(aggregated[0].premium_index, Some(0.0015));
+        assert_eq!(aggregated[0].basis, Some(0.25));
+    }
+
+    #[test]
     fn build_session_feed_plan_uses_shared_canonical_feed() {
         let compiled = compile(
             "interval 1m
@@ -745,6 +785,156 @@ plot(spot.5m.close)",
         assert_eq!(spot.canonical_interval, Interval::Min1);
         assert!(spot.requested_intervals.contains(&Interval::Min1));
         assert!(spot.requested_intervals.contains(&Interval::Min5));
+    }
+
+    #[test]
+    fn build_session_feed_plan_tracks_auxiliary_field_requirements() {
+        let compiled = compile(
+            "interval 1h
+source perp = binance.usdm(\"BTCUSDT\")
+execution exec = binance.usdm(\"BTCUSDT\")
+use perp 4h
+plot(perp.funding_rate)
+plot(perp.4h.premium_index)",
+        )
+        .expect("compile");
+        let plan = build_session_feed_plan(
+            &compiled,
+            &["exec".to_string()],
+            1_704_067_200_000,
+            &ExchangeEndpoints::default(),
+        )
+        .expect("plan");
+        let perp = plan
+            .subscriptions
+            .iter()
+            .find(|subscription| subscription.source_alias == "perp")
+            .expect("perp feed");
+        assert!(perp.required_fields.contains(&MarketField::FundingRate));
+        assert!(perp.required_fields.contains(&MarketField::PremiumIndex));
+        assert!(perp.requested_intervals.contains(&Interval::Hour4));
+    }
+
+    #[tokio::test]
+    async fn feed_hub_bootstraps_auxiliary_fields_for_paper_runtime() {
+        let mut server = Server::new_async().await;
+        server
+            .mock("GET", "/fapi/v1/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "100.0", "101.0", "99.0", "100.5", "10.0"],
+                    [
+                        1704070800000_i64,
+                        "101.0",
+                        "102.0",
+                        "100.0",
+                        "101.5",
+                        "11.0"
+                    ],
+                    [
+                        1704074400000_i64,
+                        "102.0",
+                        "103.0",
+                        "101.0",
+                        "102.5",
+                        "12.0"
+                    ],
+                    [
+                        1704078000000_i64,
+                        "103.0",
+                        "104.0",
+                        "102.0",
+                        "103.5",
+                        "13.0"
+                    ]
+                ])
+                .to_string(),
+            )
+            .create();
+        server
+            .mock("GET", "/fapi/v1/premiumIndexKlines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "0.0", "0.0", "0.0", "0.0010", "0"],
+                    [1704070800000_i64, "0.0", "0.0", "0.0", "0.0015", "0"],
+                    [1704074400000_i64, "0.0", "0.0", "0.0", "0.0020", "0"],
+                    [1704078000000_i64, "0.0", "0.0", "0.0", "0.0025", "0"]
+                ])
+                .to_string(),
+            )
+            .create();
+        server
+            .mock("GET", "/fapi/v1/fundingRate")
+            .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+            .with_status(200)
+            .with_body(
+                json!([
+                    { "fundingRate": "0.0008", "fundingTime": 1704067200000_i64 },
+                    { "fundingRate": "0.0009", "fundingTime": 1704078000000_i64 }
+                ])
+                .to_string(),
+            )
+            .create();
+
+        let compiled = compile(
+            "interval 1h
+source perp = binance.usdm(\"BTCUSDT\")
+execution exec = binance.usdm(\"BTCUSDT\")
+use perp 4h
+plot(perp.funding_rate)
+plot(perp.4h.premium_index)",
+        )
+        .expect("compile");
+        let plan = build_session_feed_plan(
+            &compiled,
+            &["exec".to_string()],
+            1_704_067_200_000,
+            &ExchangeEndpoints {
+                binance_usdm_base_url: server.url(),
+                ..ExchangeEndpoints::default()
+            },
+        )
+        .expect("plan");
+        let mut hub = FeedHub::new().expect("hub");
+        hub.sync(std::slice::from_ref(&plan), 1_704_082_400_000)
+            .await
+            .expect("sync");
+        let (runtime, _) = hub
+            .build_runtime(&compiled, &plan, 1_704_082_400_000)
+            .expect("runtime")
+            .expect("armed runtime");
+        let base = runtime
+            .feeds
+            .iter()
+            .find(|feed| feed.source_id == 0 && feed.interval == Interval::Hour1)
+            .expect("base feed");
+        assert!(base
+            .bars
+            .iter()
+            .any(|bar| matches!(bar.funding_rate, Some(0.0008 | 0.0009))));
+        let higher = runtime
+            .feeds
+            .iter()
+            .find(|feed| feed.source_id == 0 && feed.interval == Interval::Hour4)
+            .expect("higher feed");
+        assert!(higher
+            .bars
+            .iter()
+            .any(|bar| bar.premium_index == Some(0.0025)));
+        assert!(higher
+            .bars
+            .iter()
+            .any(|bar| bar.funding_rate == Some(0.0009)));
     }
 
     #[tokio::test]

@@ -55,7 +55,7 @@ Open [https://palmscript.dev/](https://palmscript.dev/), paste the example into 
 - `binance.usdm` also supports historical-only `funding_rate`, `mark_price`, `index_price`, `premium_index`, and `basis` source fields in `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
 - Bybit expects venue-native symbols like `BTCUSDT`
 - Gate expects venue-native symbols like `BTC_USDT`
-- `run paper` still rejects those Binance USD-M auxiliary fields until live polling is implemented
+- `run paper` now bootstraps those Binance USD-M auxiliary fields from the same historical feed path and carries them into armed paper sessions
 - `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize` all resolve the same exchange-backed source declarations
 
 Reference:

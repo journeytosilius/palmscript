@@ -270,7 +270,7 @@ Notes:
 
 - `run paper` submits a persistent local paper session; it does not start the daemon itself
 - trading scripts submitted to `run paper` require at least one declared `execution` target and matching explicit `order ...` templates for every declared `entry` / `exit` signal role
-- scripts that reference `binance.usdm` auxiliary historical source fields such as `funding_rate`, `mark_price`, `index_price`, `premium_index`, or `basis` are rejected by `run paper` until live polling for those fields exists
+- scripts that reference `binance.usdm` auxiliary historical source fields such as `funding_rate`, `mark_price`, `index_price`, `premium_index`, or `basis` now bootstrap those datasets into the shared paper feed cache before the session becomes `live`
 - the session snapshots the script source and queues it under the local execution state root
 - v1 paper mode uses the existing VM and deterministic order simulator with closed-bar strategy evaluation, not real live order placement
 - queued sessions now transition through `queued -> arming_history -> arming_live -> live`

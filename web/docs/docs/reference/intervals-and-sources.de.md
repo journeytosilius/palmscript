@@ -102,7 +102,8 @@ Regeln:
   `funding_rate`, `mark_price`, `index_price`, `premium_index` und `basis`
 - diese Hilfsfelder sind nur fuer `binance.usdm`-Aliases gueltig
 - historische Modi laden diese Datensaetze automatisch, sobald ein Skript sie referenziert
-- `run paper` lehnt Skripte mit diesen Hilfsfeldern ab, bis Live-Polling dafuer existiert
+- `run paper` bootstrappt diese Hilfsdatensaetze in den gemeinsamen Paper-Feed-Cache
+  und haelt sie fuer bewaffnete Paper-Sessions verfuegbar
 
 ## Gleiche, Hoehere Und Niedrigere Intervalle
 

@@ -171,7 +171,7 @@ pub enum ExchangeFetchError {
     },
 }
 
-type SourceFieldRequirements = BTreeMap<SourceIntervalRef, BTreeSet<MarketField>>;
+pub(crate) type SourceFieldRequirements = BTreeMap<SourceIntervalRef, BTreeSet<MarketField>>;
 
 pub fn fetch_source_runtime_config(
     compiled: &CompiledProgram,
@@ -240,7 +240,7 @@ pub fn fetch_source_runtime_config(
     })
 }
 
-fn collect_required_source_fields(
+pub(crate) fn collect_required_source_fields(
     compiled: &CompiledProgram,
     base_interval: Interval,
 ) -> SourceFieldRequirements {
@@ -359,7 +359,7 @@ pub fn fetch_perp_backtest_context(
     }
 }
 
-fn fetch_source_feed(
+pub(crate) fn fetch_source_feed(
     client: &Client,
     source: &DeclaredMarketSource,
     interval: Interval,

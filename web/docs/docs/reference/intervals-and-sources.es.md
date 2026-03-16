@@ -100,7 +100,8 @@ Reglas:
   `funding_rate`, `mark_price`, `index_price`, `premium_index` y `basis`
 - esos campos auxiliares solo son validos en aliases `binance.usdm`
 - los modos historicos los obtienen automaticamente cuando el script los referencia
-- `run paper` rechaza scripts que usan esos campos auxiliares hasta que exista polling live para ellos
+- `run paper` inicializa esos datos auxiliares en el cache compartido de feeds
+  paper y los mantiene disponibles para las sesiones paper armadas
 
 ## Intervalos Iguales, Superiores E Inferiores
 

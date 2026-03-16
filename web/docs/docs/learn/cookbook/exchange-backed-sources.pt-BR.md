@@ -46,8 +46,8 @@ no editor e execute-o sobre o historico BTCUSDT disponivel na app.
   `mark_price`, `index_price`, `premium_index` e `basis`
 - Bybit espera simbolos nativos da venue como `BTCUSDT`
 - Gate espera simbolos nativos da venue como `BTC_USDT`
-- `run paper` continua rejeitando esses campos auxiliares da Binance USD-M ate
-  existir polling live para eles
+- `run paper` agora inicializa esses campos auxiliares da Binance USD-M pelo
+  mesmo caminho historico e os mantem nas sessoes paper armadas
 - `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep` e
   `run optimize` resolvem as mesmas declaracoes de source ligadas a exchanges
 
