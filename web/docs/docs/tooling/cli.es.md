@@ -219,7 +219,9 @@ container start. The same container also starts `palmscript-ide-server` and
 serves a live paper dashboard at `http://localhost:8080/paper` so you can
 elegir una estrategia de forma explicita, cambiar entre las ejecuciones
 seguidas de esa estrategia e inspeccionar equity, PnL, trades, drawdown, salud
-de feeds y logs en tiempo real.
+de feeds y logs en tiempo real. Las sesiones fallidas siguen mostrando el
+mensaje de fallo del manifiesto y el flujo de logs incluso si nunca llegan a
+producir un primer snapshot.
 
 Example:
 

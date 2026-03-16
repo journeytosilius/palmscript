@@ -1,6 +1,6 @@
 interval 1m
-source perp = binance.usdm("BTCUSDT")
-execution exec = binance.usdm("BTCUSDT")
+source spot = binance.spot("BTCUSDT")
+execution exec = binance.spot("BTCUSDT")
 
 // High-churn paper-trading example intended to stress the execution loop.
 input fast_len = 3
@@ -12,15 +12,15 @@ input scalp_target_atr = 0.35
 input scalp_stop_atr = 0.25
 input max_hold_bars = 6
 
-let fast = ema(perp.close, fast_len)
-let slow = ema(perp.close, slow_len)
-let pulse = rsi(perp.close, pulse_len)
-let risk_unit = nz(atr(perp.high, perp.low, perp.close, atr_len), perp.close * 0.0015)
+let fast = ema(spot.close, fast_len)
+let slow = ema(spot.close, slow_len)
+let pulse = rsi(spot.close, pulse_len)
+let risk_unit = nz(atr(spot.high, spot.low, spot.close, atr_len), spot.close * 0.0015)
 let trend_up = above(fast, slow)
 let trend_down = below(fast, slow)
-let up_bar = perp.close > perp.close[1]
-let down_bar = perp.close < perp.close[1]
-let stretch = zscore(perp.close - slow, slow_len)
+let up_bar = spot.close > spot.close[1]
+let down_bar = spot.close < spot.close[1]
+let stretch = zscore(spot.close - slow, slow_len)
 
 cooldown long = 0
 cooldown short = 0
@@ -80,6 +80,6 @@ export pulse_state = pulse
 export trigger_bias = trend_up ? 1 : (trend_down ? -1 : 0)
 export stretch_state = stretch
 
-plot(perp.close)
+plot(spot.close)
 plot(fast)
 plot(slow)

@@ -204,10 +204,20 @@ export function PaperDashboard() {
   const selectedSession =
     strategySessions.find((session) => session.manifest.session_id === selectedSessionId) ?? null;
   const exportData = detail?.export ?? null;
+  const manifest = exportData?.manifest ?? selectedSession?.manifest ?? null;
   const snapshot = exportData?.snapshot ?? selectedSession?.snapshot ?? null;
   const result = exportData?.latest_result ?? null;
   const summary = snapshot?.summary ?? result?.summary ?? null;
   const diagnostics = result?.diagnostics ?? null;
+  const displayedStatus = snapshot?.status ?? manifest?.status ?? null;
+  const displayedHealth = snapshot?.health ?? manifest?.health ?? null;
+  const displayedFailureMessage =
+    snapshot?.failure_message ?? manifest?.failure_message ?? null;
+  const displayedFeedSummary = snapshot?.feed_summary ?? manifest?.feed_summary ?? null;
+  const displayedFeedSnapshots = snapshot?.feed_snapshots ?? manifest?.required_feeds ?? [];
+  const displayedOpenPositions = snapshot?.open_positions ?? [];
+  const displayedTradeCount = snapshot?.trade_count ?? 0;
+  const displayedOpenOrderCount = snapshot?.open_order_count ?? 0;
 
   return (
     <div className="app-shell app-shell--paper">
@@ -346,7 +356,7 @@ export function PaperDashboard() {
         </aside>
 
         <section className="paper-main">
-          {selectedSession && snapshot ? (
+          {selectedSession ? (
             <>
               <section className="panel">
                 <div className="panel__titlebar">
@@ -358,15 +368,24 @@ export function PaperDashboard() {
                     </span>
                   </div>
                   <div className="paper-status-row">
-                    <span className={`status-pill status-pill--${toneForStatus(snapshot.health)}`}>
-                      {snapshot.health}
-                    </span>
-                    <span className={`status-pill status-pill--${toneForStatus(snapshot.status)}`}>
-                      {snapshot.status}
-                    </span>
+                    {displayedHealth ? (
+                      <span className={`status-pill status-pill--${toneForStatus(displayedHealth)}`}>
+                        {displayedHealth}
+                      </span>
+                    ) : null}
+                    {displayedStatus ? (
+                      <span className={`status-pill status-pill--${toneForStatus(displayedStatus)}`}>
+                        {displayedStatus}
+                      </span>
+                    ) : null}
                     {detailLoading ? <span className="panel__meta">Updating…</span> : null}
                   </div>
                 </div>
+                {displayedFailureMessage ? (
+                  <div className="empty-state empty-state--paper-failure">
+                    {displayedFailureMessage}
+                  </div>
+                ) : null}
                 <div className="summary-grid summary-grid--paper">
                   <MetricCard label="Ending Equity" value={summary ? formatNumber(summary.ending_equity) : "NA"} />
                   <MetricCard
@@ -395,8 +414,8 @@ export function PaperDashboard() {
                     value={summary ? formatNumber(summary.max_drawdown) : "NA"}
                     tone="negative"
                   />
-                  <MetricCard label="Open Positions" value={String(snapshot.open_positions.length)} />
-                  <MetricCard label="Open Orders" value={String(snapshot.open_order_count)} />
+                  <MetricCard label="Open Positions" value={String(displayedOpenPositions.length)} />
+                  <MetricCard label="Open Orders" value={String(displayedOpenOrderCount)} />
                   <MetricCard
                     label="Fill Rate"
                     value={
@@ -476,13 +495,25 @@ export function PaperDashboard() {
                   <div className="panel__titlebar">
                     <h2 className="panel__title">Feed Health</h2>
                     <span className="panel__meta">
-                      {snapshot.feed_summary.live_ready_feeds}/{snapshot.feed_summary.total_feeds} live
+                      {displayedFeedSummary
+                        ? `${displayedFeedSummary.live_ready_feeds}/${displayedFeedSummary.total_feeds} live`
+                        : "NA"}
                     </span>
                   </div>
                   <div className="summary-grid">
-                    <MetricCard label="History Ready" value={String(snapshot.feed_summary.history_ready_feeds)} />
-                    <MetricCard label="Live Ready" value={String(snapshot.feed_summary.live_ready_feeds)} />
-                    <MetricCard label="Failed" value={String(snapshot.feed_summary.failed_feeds)} tone={snapshot.feed_summary.failed_feeds > 0 ? "negative" : "neutral"} />
+                    <MetricCard
+                      label="History Ready"
+                      value={displayedFeedSummary ? String(displayedFeedSummary.history_ready_feeds) : "NA"}
+                    />
+                    <MetricCard
+                      label="Live Ready"
+                      value={displayedFeedSummary ? String(displayedFeedSummary.live_ready_feeds) : "NA"}
+                    />
+                    <MetricCard
+                      label="Failed"
+                      value={displayedFeedSummary ? String(displayedFeedSummary.failed_feeds) : "NA"}
+                      tone={displayedFeedSummary && displayedFeedSummary.failed_feeds > 0 ? "negative" : "neutral"}
+                    />
                     <MetricCard
                       label="Latest Closed Bar"
                       value={
@@ -493,8 +524,8 @@ export function PaperDashboard() {
                     />
                   </div>
                   <div className="list">
-                    {snapshot.feed_snapshots.length ? (
-                      snapshot.feed_snapshots.map((feed, index) => (
+                    {displayedFeedSnapshots.length ? (
+                      displayedFeedSnapshots.map((feed, index) => (
                         <article className="list-card" key={`${feed.execution_alias}-${index}`}>
                           <strong>
                             {feed.execution_alias} · {feed.symbol}
@@ -519,11 +550,11 @@ export function PaperDashboard() {
                 <section className="panel">
                   <div className="panel__titlebar">
                     <h2 className="panel__title">Open Positions</h2>
-                    <span className="panel__meta">{snapshot.open_positions.length}</span>
+                    <span className="panel__meta">{displayedOpenPositions.length}</span>
                   </div>
                   <div className="list">
-                    {snapshot.open_positions.length ? (
-                      snapshot.open_positions.map((position, index) => (
+                    {displayedOpenPositions.length ? (
+                      displayedOpenPositions.map((position, index) => (
                         <article className="list-card" key={`${position.execution_alias}-${index}`}>
                           <strong>
                             {position.execution_alias} · {position.side} · {formatNumber(position.quantity, 4)}
@@ -546,7 +577,7 @@ export function PaperDashboard() {
                 <section className="panel">
                   <div className="panel__titlebar">
                     <h2 className="panel__title">Recent Trades</h2>
-                    <span className="panel__meta">{result?.trades.length ?? 0}</span>
+                    <span className="panel__meta">{result?.trades.length ?? displayedTradeCount}</span>
                   </div>
                   <div className="list">
                     {result?.trades?.length ? (
@@ -576,7 +607,7 @@ export function PaperDashboard() {
                 <section className="panel">
                   <div className="panel__titlebar">
                     <h2 className="panel__title">Orders</h2>
-                    <span className="panel__meta">{result?.orders.length ?? snapshot.open_order_count}</span>
+                    <span className="panel__meta">{result?.orders.length ?? displayedOpenOrderCount}</span>
                   </div>
                   <div className="list">
                     {result?.orders?.length ? (

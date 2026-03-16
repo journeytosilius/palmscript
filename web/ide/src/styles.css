@@ -541,6 +541,13 @@ input {
   gap: 1rem;
 }
 
+.empty-state--paper-failure {
+  border: 1px solid rgba(181, 72, 61, 0.18);
+  color: var(--negative);
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
 .diagnostic-table {
   border: 1px solid var(--panel-border);
   border-radius: 1rem;

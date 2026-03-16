@@ -143,7 +143,8 @@ The paper container now also serves a live monitoring UI at `/paper` on port
 `8080`. It lists all persisted paper sessions, shows an explicit strategy
 picker plus per-strategy run selection, and polls real-time paper metrics such
 as equity, PnL, open positions, trades, orders, drawdown, feed health, and
-session logs.
+session logs. Failed sessions now keep their failure message and log stream
+visible even when the session never produced a first snapshot.
 
 Build and run:
 
