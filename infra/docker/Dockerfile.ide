@@ -8,7 +8,7 @@ RUN npm ci
 COPY web/ide ./
 RUN npm run build
 
-FROM rust:1.88-bookworm AS builder
+FROM rust:1.92-bookworm AS builder
 
 WORKDIR /app
 
