@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use reqwest::blocking::Client;
 
 use crate::compiler::CompiledProgram;
-use crate::exchange::{collect_required_source_fields, fetch_source_feed, ExchangeEndpoints};
+use crate::exchange::{
+    collect_required_source_fields, fetch_source_feed, ExchangeEndpoints, ExchangeFetchError,
+};
 use crate::interval::{DeclaredMarketSource, Interval, MarketField, SourceTemplate};
 use crate::runtime::{Bar, SourceFeed, SourceRuntimeConfig};
 
@@ -171,10 +173,9 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         let endpoints = managed.endpoints.clone();
         let from_ms = managed.warmup_from_ms;
         let required_fields = managed.required_fields.clone();
-        let field_list = format_required_fields(&required_fields);
-        let bars = tokio::task::spawn_blocking(move || {
+        let bars = tokio::task::spawn_blocking(move || -> Result<_, ExecutionError> {
             let client = blocking_client()?;
-            fetch_source_feed(
+            Ok(fetch_source_feed(
                 &client,
                 &source,
                 interval,
@@ -182,19 +183,7 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
                 to_ms,
                 &endpoints,
                 &required_fields,
-            )
-            .map_err(|err| {
-                ExecutionError::Fetch(format!(
-                    "feed bootstrap failed for source `{}` ({}) `{}` {} window=[{}, {}) required_fields=[{}]: {err}",
-                    source.alias,
-                    source.template.as_str(),
-                    source.symbol,
-                    interval.as_str(),
-                    from_ms,
-                    to_ms,
-                    field_list,
-                ))
-            })
+            ))
         })
         .await
         .map_err(|err| {
@@ -206,6 +195,17 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
                 interval.as_str(),
             ))
         })??;
+        let bars = bars.map_err(|err| {
+            feed_fetch_error(
+                "bootstrap",
+                &managed.source,
+                interval,
+                from_ms,
+                to_ms,
+                &managed.required_fields,
+                err,
+            )
+        })?;
         managed.state.history = bars;
         managed.state.history_ready = true;
         managed.state.latest_closed_bar_time_ms =
@@ -215,10 +215,9 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         let source = managed.source.clone();
         let endpoints = managed.endpoints.clone();
         let required_fields = managed.required_fields.clone();
-        let field_list = format_required_fields(&required_fields);
-        let bars = tokio::task::spawn_blocking(move || {
+        let bars = tokio::task::spawn_blocking(move || -> Result<_, ExecutionError> {
             let client = blocking_client()?;
-            fetch_source_feed(
+            Ok(fetch_source_feed(
                 &client,
                 &source,
                 interval,
@@ -226,19 +225,7 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
                 to_ms,
                 &endpoints,
                 &required_fields,
-            )
-            .map_err(|err| {
-                ExecutionError::Fetch(format!(
-                    "feed append failed for source `{}` ({}) `{}` {} window=[{}, {}) required_fields=[{}]: {err}",
-                    source.alias,
-                    source.template.as_str(),
-                    source.symbol,
-                    interval.as_str(),
-                    from_ms,
-                    to_ms,
-                    field_list,
-                ))
-            })
+            ))
         })
         .await
         .map_err(|err| {
@@ -250,9 +237,25 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
                 interval.as_str(),
             ))
         })??;
-        append_unique_bars(&mut managed.state.history, bars);
-        managed.state.latest_closed_bar_time_ms =
-            managed.state.history.last().map(|bar| bar.time as i64);
+        match bars {
+            Ok(bars) => {
+                append_unique_bars(&mut managed.state.history, bars);
+                managed.state.latest_closed_bar_time_ms =
+                    managed.state.history.last().map(|bar| bar.time as i64);
+            }
+            Err(ExchangeFetchError::NoData { .. }) => {}
+            Err(err) => {
+                return Err(feed_fetch_error(
+                    "append",
+                    &managed.source,
+                    interval,
+                    from_ms,
+                    to_ms,
+                    &managed.required_fields,
+                    err,
+                ));
+            }
+        }
     }
 
     let endpoints = managed.endpoints.clone();
@@ -308,6 +311,27 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         FeedArmingState::BootstrappingHistory
     };
     Ok(())
+}
+
+fn feed_fetch_error(
+    phase: &str,
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+    required_fields: &BTreeSet<MarketField>,
+    err: ExchangeFetchError,
+) -> ExecutionError {
+    ExecutionError::Fetch(format!(
+        "feed {phase} failed for source `{}` ({}) `{}` {} window=[{}, {}) required_fields=[{}]: {err}",
+        source.alias,
+        source.template.as_str(),
+        source.symbol,
+        interval.as_str(),
+        from_ms,
+        to_ms,
+        format_required_fields(required_fields),
+    ))
 }
 
 fn blocking_client() -> Result<Client, ExecutionError> {
@@ -751,9 +775,10 @@ fn price_with_state(snapshot: &PriceSnapshot, now_ms: i64) -> PriceSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::{aggregate_bars, build_session_feed_plan, FeedHub};
+    use super::{aggregate_bars, build_session_feed_plan, feed_key, FeedHub};
     use crate::compile;
     use crate::exchange::ExchangeEndpoints;
+    use crate::execution::FeedArmingState;
     use crate::interval::{Interval, MarketField};
     use crate::runtime::Bar;
     use mockito::{Matcher, Server};
@@ -1018,5 +1043,131 @@ plot(spot.close)",
         let summary = hub.feed_summary_for_plan(&plan);
         assert_eq!(summary.total_feeds, plan.subscriptions.len());
         assert_eq!(summary.history_ready_feeds, 0);
+    }
+
+    #[tokio::test]
+    async fn feed_hub_tolerates_empty_live_append_windows() {
+        let mut server = Server::new_async().await;
+        let compiled = compile(
+            "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+plot(spot.close)",
+        )
+        .expect("compile");
+        let plan = build_session_feed_plan(
+            &compiled,
+            &["spot".to_string()],
+            1_704_067_320_000,
+            &ExchangeEndpoints {
+                binance_spot_base_url: server.url(),
+                ..ExchangeEndpoints::default()
+            },
+        )
+        .expect("plan");
+        let bootstrap_now = 1_704_067_440_000;
+        let bootstrap_to_ms = Interval::Min1
+            .bucket_open_time(bootstrap_now)
+            .expect("bucket")
+            + Interval::Min1.fixed_duration_ms().expect("duration");
+        server
+            .mock("GET", "/api/v3/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+                Matcher::UrlEncoded("startTime".into(), plan.warmup_from_ms.to_string()),
+                Matcher::UrlEncoded(
+                    "endTime".into(),
+                    bootstrap_to_ms.saturating_sub(1).to_string(),
+                ),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "10", "10", "10", "10", "1000"],
+                    [1704067260000_i64, "11", "11", "11", "11", "1000"],
+                    [1704067320000_i64, "12", "12", "12", "12", "1000"],
+                    [1704067380000_i64, "13", "13", "13", "13", "1000"]
+                ])
+                .to_string(),
+            )
+            .create();
+        server
+            .mock("GET", "/api/v3/ticker/bookTicker")
+            .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "symbol": "BTCUSDT",
+                    "bidPrice": "12.50",
+                    "askPrice": "13.50"
+                })
+                .to_string(),
+            )
+            .create();
+        server
+            .mock("GET", "/api/v3/ticker/price")
+            .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "symbol": "BTCUSDT",
+                    "price": "13.00"
+                })
+                .to_string(),
+            )
+            .create();
+
+        let mut hub = FeedHub::new().expect("hub");
+        hub.sync(std::slice::from_ref(&plan), bootstrap_now)
+            .await
+            .expect("bootstrap sync");
+
+        let append_now = 1_704_067_470_000;
+        let append_to_ms = Interval::Min1.bucket_open_time(append_now).expect("bucket")
+            + Interval::Min1.fixed_duration_ms().expect("duration");
+        server
+            .mock("GET", "/api/v3/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+                Matcher::UrlEncoded("startTime".into(), "1704067440000".into()),
+                Matcher::UrlEncoded("endTime".into(), append_to_ms.saturating_sub(1).to_string()),
+            ]))
+            .with_status(200)
+            .with_body("[]")
+            .create();
+
+        hub.sync(std::slice::from_ref(&plan), append_now)
+            .await
+            .expect("append sync should tolerate missing live bar");
+
+        let key = feed_key(
+            plan.subscriptions
+                .iter()
+                .find(|subscription| subscription.source_alias == "spot")
+                .expect("spot subscription"),
+        );
+        let state = &hub.feeds.get(&key).expect("managed feed").state;
+        assert_eq!(state.latest_closed_bar_time_ms, Some(1_704_067_380_000));
+        assert!(state.history_ready);
+        assert!(state.live_ready);
+        assert_eq!(state.arming_state, FeedArmingState::Live);
+        assert_eq!(state.failure_message, None);
+
+        let (runtime, runtime_to_ms) = hub
+            .build_runtime(&compiled, &plan, append_now)
+            .expect("build runtime")
+            .expect("runtime should remain armed");
+        let base = runtime
+            .feeds
+            .iter()
+            .find(|feed| feed.interval == Interval::Min1)
+            .expect("base feed");
+        assert_eq!(runtime_to_ms, 1_704_067_440_000);
+        assert_eq!(
+            base.bars.last().map(|bar| bar.time as i64),
+            Some(1_704_067_380_000)
+        );
     }
 }

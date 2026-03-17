@@ -148,7 +148,9 @@ Failed sessions now keep their failure message and log stream visible even
 when the session never produced a first snapshot. The bundled
 `paper-sessions.toml` now starts both `strategy.ps` and `triiger_happy.ps` so
 the canonical multi-source strategy and the trigger-happy smoke test run side
-by side.
+by side. The paper daemon keeps the last closed candle armed when an exchange
+temporarily returns no fresh bar for the current live append window, then
+resumes once the next closed candle appears.
 
 The CLI, IDE server, and LSP now also emit structured JSON logs on `stderr`.
 Set `PALMSCRIPT_LOG_LEVEL=debug` or `trace` when you need more detail, and set
