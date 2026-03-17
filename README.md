@@ -141,11 +141,11 @@ The intended layout is:
 
 The paper container now also serves a live monitoring UI at `/paper` on port
 `8080`. It lists all persisted paper sessions, shows a simplified top strategy
-accordion with per-strategy run selection, and keeps the selected run in one
-unified detail panel with real-time equity, PnL, open positions, trades,
-orders, drawdown, feed health, and session logs. Failed sessions now keep
-their failure message and log stream visible even when the session never
-produced a first snapshot.
+accordion with collapsible strategy sections and per-strategy run selection,
+and keeps the selected run in one unified detail panel with real-time equity,
+PnL, open positions, trades, orders, drawdown, feed health, and session logs.
+Failed sessions now keep their failure message and log stream visible even
+when the session never produced a first snapshot.
 
 The CLI, IDE server, and LSP now also emit structured JSON logs on `stderr`.
 Set `PALMSCRIPT_LOG_LEVEL=debug` or `trace` when you need more detail, and set

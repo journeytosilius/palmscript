@@ -33,6 +33,7 @@ import { LineChart, MetricCard } from "./ui";
 const POLL_MS = 3_000;
 const STRATEGY_STORAGE_KEY = "palmscript.paper.strategy";
 const SESSION_STORAGE_KEY = "palmscript.paper.session";
+const EXPANDED_STRATEGY_STORAGE_KEY = "palmscript.paper.strategy.expanded";
 
 interface StrategyGroup {
   key: string;
@@ -48,6 +49,10 @@ export function PaperDashboard() {
   const [overview, setOverview] = useState<PaperDashboardOverview | null>(null);
   const [selectedStrategyKey, setSelectedStrategyKey] = useState<string | null>(() =>
     window.localStorage.getItem(STRATEGY_STORAGE_KEY),
+  );
+  const [expandedStrategyKey, setExpandedStrategyKey] = useState<string | null>(() =>
+    window.localStorage.getItem(EXPANDED_STRATEGY_STORAGE_KEY) ??
+      window.localStorage.getItem(STRATEGY_STORAGE_KEY),
   );
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PaperSessionDetailResponse | null>(null);
@@ -104,11 +109,21 @@ export function PaperDashboard() {
   useEffect(() => {
     if (!strategyGroups.length) {
       setSelectedStrategyKey(null);
+      setExpandedStrategyKey(null);
       setSelectedSessionId(null);
       return;
     }
     setSelectedStrategyKey((current) => {
       if (current && strategyGroups.some((strategy) => strategy.key === current)) {
+        return current;
+      }
+      return strategyGroups[0].key;
+    });
+    setExpandedStrategyKey((current) => {
+      if (current === null) {
+        return null;
+      }
+      if (strategyGroups.some((strategy) => strategy.key === current)) {
         return current;
       }
       return strategyGroups[0].key;
@@ -147,6 +162,14 @@ export function PaperDashboard() {
       window.localStorage.removeItem(STRATEGY_STORAGE_KEY);
     }
   }, [selectedStrategyKey]);
+
+  useEffect(() => {
+    if (expandedStrategyKey) {
+      window.localStorage.setItem(EXPANDED_STRATEGY_STORAGE_KEY, expandedStrategyKey);
+    } else {
+      window.localStorage.removeItem(EXPANDED_STRATEGY_STORAGE_KEY);
+    }
+  }, [expandedStrategyKey]);
 
   useEffect(() => {
     if (selectedSessionId) {
@@ -304,26 +327,49 @@ export function PaperDashboard() {
             <div className="paper-strategy-accordion">
               {strategyGroups.map((strategy) => {
                 const active = strategy.key === selectedStrategyKey;
+                const expanded = strategy.key === expandedStrategyKey;
                 return (
-                  <details
+                  <section
                     key={strategy.key}
-                    className={`paper-strategy-disclosure${active ? " paper-strategy-disclosure--active" : ""}`}
-                    open={active}
+                    className={`paper-strategy-item${active ? " paper-strategy-item--active" : ""}${expanded ? " paper-strategy-item--open" : ""}`}
                   >
-                    <summary
+                    <button
                       className="paper-strategy-summary"
-                      onClick={(event) => {
-                        event.preventDefault();
+                      type="button"
+                      onClick={() => {
+                        const nextExpanded = expanded ? null : strategy.key;
+                        const nextSessionId =
+                          strategy.sessions[0]?.manifest.session_id ?? null;
+
+                        setExpandedStrategyKey(nextExpanded);
                         setSelectedStrategyKey(strategy.key);
-                        setSelectedSessionId(strategy.sessions[0]?.manifest.session_id ?? null);
+                        setSelectedSessionId((current) => {
+                          if (
+                            current &&
+                            strategy.sessions.some(
+                              (session) => session.manifest.session_id === current,
+                            )
+                          ) {
+                            return current;
+                          }
+                          return nextSessionId;
+                        });
                       }}
                     >
-                      <div className="paper-strategy-summary__copy">
-                        <strong>{strategy.label}</strong>
-                        <span className="paper-session-card__meta">
-                          {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
-                          {formatTimeLabel(strategy.updatedAtMs)}
+                      <div className="paper-strategy-summary__lead">
+                        <span
+                          className={`paper-strategy-summary__chevron${expanded ? " paper-strategy-summary__chevron--open" : ""}`}
+                          aria-hidden="true"
+                        >
+                          ▾
                         </span>
+                        <div className="paper-strategy-summary__copy">
+                          <strong>{strategy.label}</strong>
+                          <span className="paper-session-card__meta">
+                            {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
+                            {formatTimeLabel(strategy.updatedAtMs)}
+                          </span>
+                        </div>
                       </div>
                       <div className="paper-strategy-summary__meta">
                         <span className="paper-session-card__stats">
@@ -334,40 +380,43 @@ export function PaperDashboard() {
                           {strategy.health}
                         </span>
                       </div>
-                    </summary>
-                    <div className="paper-strategy-disclosure__body">
-                      <div className="paper-run-list">
-                        {strategy.sessions.map((session) => {
-                          const activeRun = session.manifest.session_id === selectedSessionId;
-                          const sessionSummary = session.snapshot?.summary ?? null;
-                          return (
-                            <button
-                              key={session.manifest.session_id}
-                              className={`paper-run-button${activeRun ? " paper-run-button--active" : ""}`}
-                              type="button"
-                              onClick={() => {
-                                setSelectedStrategyKey(strategy.key);
-                                setSelectedSessionId(session.manifest.session_id);
-                              }}
-                            >
-                              <span className="paper-run-button__name">{runLabel(session)}</span>
-                              <span className="paper-run-button__meta">
-                                {formatTimeLabel(session.manifest.start_time_ms)}
-                              </span>
-                              <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
-                                {session.manifest.health}
-                              </span>
-                              <span className="paper-run-button__metric">
-                                {sessionSummary
-                                  ? formatPercent(sessionSummary.total_return * 100)
-                                  : "No snapshot"}
-                              </span>
-                            </button>
-                          );
-                        })}
+                    </button>
+                    {expanded ? (
+                      <div className="paper-strategy-item__body">
+                        <div className="paper-run-list">
+                          {strategy.sessions.map((session) => {
+                            const activeRun = session.manifest.session_id === selectedSessionId;
+                            const sessionSummary = session.snapshot?.summary ?? null;
+                            return (
+                              <button
+                                key={session.manifest.session_id}
+                                className={`paper-run-button${activeRun ? " paper-run-button--active" : ""}`}
+                                type="button"
+                                onClick={() => {
+                                  setExpandedStrategyKey(strategy.key);
+                                  setSelectedStrategyKey(strategy.key);
+                                  setSelectedSessionId(session.manifest.session_id);
+                                }}
+                              >
+                                <span className="paper-run-button__name">{runLabel(session)}</span>
+                                <span className="paper-run-button__meta">
+                                  {formatTimeLabel(session.manifest.start_time_ms)}
+                                </span>
+                                <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
+                                  {session.manifest.health}
+                                </span>
+                                <span className="paper-run-button__metric">
+                                  {sessionSummary
+                                    ? formatPercent(sessionSummary.total_return * 100)
+                                    : "No snapshot"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  </details>
+                    ) : null}
+                  </section>
                 );
               })}
             </div>

@@ -220,9 +220,9 @@ directory is empty, then starts `palmscript execution serve`. Set
 `PALMSCRIPT_FORCE_SUBMIT=1` if you want to resubmit the configured sessions on
 container start. The same container also starts `palmscript-ide-server` and
 serves a live paper dashboard at `http://localhost:8080/paper` so you can
-pick a strategy from a top accordion, switch between that strategy's tracked
-runs, and inspect equity, PnL, trades, drawdown, feed health, and logs in one
-unified detail panel in real time.
+pick a strategy from a collapsible top accordion, switch between that
+strategy's tracked runs, and inspect equity, PnL, trades, drawdown, feed
+health, and logs in one unified detail panel in real time.
 Failed sessions still surface their manifest failure message and log stream
 even if they never produce a first snapshot.
 
