@@ -236,34 +236,60 @@ export function PaperDashboard() {
             <h1 className="paper-heading__title">Live strategy dashboard</h1>
           </div>
         </div>
-        <div className="paper-header__stats">
-          <MetricCard
-            label="Daemon"
-            value={daemonHeadline(overview?.daemon ?? null)}
-            detail={overview?.daemon ? `poll ${overview.daemon.poll_interval_ms} ms` : "idle"}
-            tone={overview?.daemon?.running ? "positive" : "negative"}
-          />
-          <MetricCard
-            label="Strategies"
-            value={String(strategyGroups.length)}
-            detail={selectedStrategy?.label ?? "no selection"}
-          />
-          <MetricCard
-            label="Runs"
-            value={String(overview?.sessions.length ?? 0)}
-            detail={selectedStrategy ? `${strategySessions.length} for selected` : "no strategy"}
-          />
-          <MetricCard
-            label="Feed Hub"
-            value={overview?.daemon ? String(overview.daemon.subscription_count) : "0"}
-            detail={overview?.daemon ? `${overview.daemon.armed_feed_count} armed` : "no daemon"}
-          />
-        </div>
         <div className="app__status">{status}</div>
       </header>
 
-      <main className="paper-layout">
-        <aside className="paper-sidebar panel">
+      <main className="paper-dashboard">
+        <section className="panel paper-overview-panel">
+          <div className="panel__titlebar">
+            <h2 className="panel__title">Overview</h2>
+            <span className="panel__meta">
+              {overviewLoading
+                ? "Refreshing"
+                : overview?.daemon
+                  ? `updated ${formatTimeLabel(overview.daemon.updated_at_ms)}`
+                  : "No daemon status"}
+            </span>
+          </div>
+          <div className="paper-overview-grid">
+            <article className="paper-overview-item">
+              <span className="paper-overview-item__label">Daemon</span>
+              <strong
+                className={`paper-overview-item__value paper-overview-item__value--${overview?.daemon?.running ? "positive" : "negative"}`}
+              >
+                {daemonHeadline(overview?.daemon ?? null)}
+              </strong>
+              <span className="paper-overview-item__detail">
+                {overview?.daemon ? `poll ${overview.daemon.poll_interval_ms} ms` : "idle"}
+              </span>
+            </article>
+            <article className="paper-overview-item">
+              <span className="paper-overview-item__label">Strategies</span>
+              <strong className="paper-overview-item__value">{strategyGroups.length}</strong>
+              <span className="paper-overview-item__detail">
+                {selectedStrategy?.label ?? "no selection"}
+              </span>
+            </article>
+            <article className="paper-overview-item">
+              <span className="paper-overview-item__label">Runs</span>
+              <strong className="paper-overview-item__value">{overview?.sessions.length ?? 0}</strong>
+              <span className="paper-overview-item__detail">
+                {selectedStrategy ? `${strategySessions.length} for selected` : "no strategy"}
+              </span>
+            </article>
+            <article className="paper-overview-item">
+              <span className="paper-overview-item__label">Feed Hub</span>
+              <strong className="paper-overview-item__value">
+                {overview?.daemon?.subscription_count ?? 0}
+              </strong>
+              <span className="paper-overview-item__detail">
+                {overview?.daemon ? `${overview.daemon.armed_feed_count} armed` : "no daemon"}
+              </span>
+            </article>
+          </div>
+        </section>
+
+        <section className="panel paper-strategy-panel">
           <div className="panel__titlebar">
             <h2 className="panel__title">Strategies</h2>
             <span className="panel__meta">
@@ -274,124 +300,118 @@ export function PaperDashboard() {
                   : "No configured strategies"}
             </span>
           </div>
-          <div className="paper-sidebar-sections">
-            <section className="paper-sidebar-section">
-              <div className="paper-strategy-list paper-strategy-list--sidebar">
-                {strategyGroups.length ? (
-                  strategyGroups.map((strategy) => {
-                    const active = strategy.key === selectedStrategyKey;
-                    return (
-                      <button
-                        key={strategy.key}
-                        className={`paper-strategy-card${active ? " paper-strategy-card--active" : ""}`}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStrategyKey(strategy.key);
-                          setSelectedSessionId(strategy.sessions[0]?.manifest.session_id ?? null);
-                        }}
-                      >
-                        <div className="paper-session-card__header">
-                          <strong>{strategy.label}</strong>
-                          <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
-                            {strategy.health}
-                          </span>
-                        </div>
+          {strategyGroups.length ? (
+            <div className="paper-strategy-accordion">
+              {strategyGroups.map((strategy) => {
+                const active = strategy.key === selectedStrategyKey;
+                return (
+                  <details
+                    key={strategy.key}
+                    className={`paper-strategy-disclosure${active ? " paper-strategy-disclosure--active" : ""}`}
+                    open={active}
+                  >
+                    <summary
+                      className="paper-strategy-summary"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setSelectedStrategyKey(strategy.key);
+                        setSelectedSessionId(strategy.sessions[0]?.manifest.session_id ?? null);
+                      }}
+                    >
+                      <div className="paper-strategy-summary__copy">
+                        <strong>{strategy.label}</strong>
                         <span className="paper-session-card__meta">
                           {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
                           {formatTimeLabel(strategy.updatedAtMs)}
                         </span>
-                        <div className="paper-session-card__stats">
+                      </div>
+                      <div className="paper-strategy-summary__meta">
+                        <span className="paper-session-card__stats">
                           <span>{strategy.liveCount} live</span>
                           <span>{strategy.failedCount} failed</span>
-                        </div>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="empty-state">No paper sessions have been submitted.</div>
-                )}
-              </div>
-            </section>
-
-            <section className="paper-sidebar-section">
-              <div className="panel__titlebar panel__titlebar--compact">
-                <h3 className="panel__title">Runs</h3>
-                <span className="panel__meta">
-                  {selectedStrategy
-                    ? `${strategySessions.length} for ${selectedStrategy.label}`
-                    : "No strategy selected"}
-                </span>
-              </div>
-              <div className="paper-session-list">
-                {strategySessions.length ? (
-                  strategySessions.map((session) => {
-                    const active = session.manifest.session_id === selectedSessionId;
-                    const sessionSummary = session.snapshot?.summary ?? null;
-                    return (
-                      <button
-                        key={session.manifest.session_id}
-                        className={`paper-session-card${active ? " paper-session-card--active" : ""}`}
-                        type="button"
-                        onClick={() => setSelectedSessionId(session.manifest.session_id)}
-                      >
-                        <div className="paper-session-card__header">
-                          <strong>{runLabel(session)}</strong>
-                          <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
-                            {session.manifest.health}
-                          </span>
-                        </div>
-                        <span className="paper-session-card__meta">
-                          started {formatTimeLabel(session.manifest.start_time_ms)} ·{" "}
-                          {session.manifest.execution_sources
-                            .map((source) => `${source.alias}:${source.template}`)
-                            .join(" · ")}
                         </span>
-                        <div className="paper-session-card__stats">
-                          <span>{sessionSummary ? formatPercent(sessionSummary.total_return * 100) : "NA"}</span>
-                          <span>{sessionSummary ? formatNumber(sessionSummary.ending_equity) : "No snapshot"}</span>
-                        </div>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="empty-state">Select a strategy to inspect its tracked runs.</div>
-                )}
-              </div>
-            </section>
-          </div>
-        </aside>
+                        <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
+                          {strategy.health}
+                        </span>
+                      </div>
+                    </summary>
+                    <div className="paper-strategy-disclosure__body">
+                      <div className="paper-run-list">
+                        {strategy.sessions.map((session) => {
+                          const activeRun = session.manifest.session_id === selectedSessionId;
+                          const sessionSummary = session.snapshot?.summary ?? null;
+                          return (
+                            <button
+                              key={session.manifest.session_id}
+                              className={`paper-run-button${activeRun ? " paper-run-button--active" : ""}`}
+                              type="button"
+                              onClick={() => {
+                                setSelectedStrategyKey(strategy.key);
+                                setSelectedSessionId(session.manifest.session_id);
+                              }}
+                            >
+                              <span className="paper-run-button__name">{runLabel(session)}</span>
+                              <span className="paper-run-button__meta">
+                                {formatTimeLabel(session.manifest.start_time_ms)}
+                              </span>
+                              <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
+                                {session.manifest.health}
+                              </span>
+                              <span className="paper-run-button__metric">
+                                {sessionSummary
+                                  ? formatPercent(sessionSummary.total_return * 100)
+                                  : "No snapshot"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">No paper sessions have been submitted.</div>
+          )}
+        </section>
 
-        <section className="paper-main">
+        <section className="panel paper-detail-panel">
           {selectedSession ? (
             <>
-              <section className="panel">
-                <div className="panel__titlebar">
-                  <div>
-                    <h2 className="panel__title">{selectedStrategy?.label ?? sessionLabel(selectedSession)}</h2>
-                    <span className="panel__meta">
-                      {runLabel(selectedSession)} · {selectedSession.manifest.base_interval} · started{" "}
-                      {formatTimeLabel(selectedSession.manifest.start_time_ms)}
-                    </span>
-                  </div>
-                  <div className="paper-status-row">
-                    {displayedHealth ? (
-                      <span className={`status-pill status-pill--${toneForStatus(displayedHealth)}`}>
-                        {displayedHealth}
-                      </span>
-                    ) : null}
-                    {displayedStatus ? (
-                      <span className={`status-pill status-pill--${toneForStatus(displayedStatus)}`}>
-                        {displayedStatus}
-                      </span>
-                    ) : null}
-                    {detailLoading ? <span className="panel__meta">Updating…</span> : null}
-                  </div>
+              <div className="panel__titlebar">
+                <div>
+                  <h2 className="panel__title">{selectedStrategy?.label ?? sessionLabel(selectedSession)}</h2>
+                  <span className="panel__meta">
+                    {runLabel(selectedSession)} · {selectedSession.manifest.base_interval} · started{" "}
+                    {formatTimeLabel(selectedSession.manifest.start_time_ms)}
+                  </span>
                 </div>
-                {displayedFailureMessage ? (
-                  <div className="empty-state empty-state--paper-failure">
-                    {displayedFailureMessage}
+                <div className="paper-status-row">
+                  {displayedHealth ? (
+                    <span className={`status-pill status-pill--${toneForStatus(displayedHealth)}`}>
+                      {displayedHealth}
+                    </span>
+                  ) : null}
+                  {displayedStatus ? (
+                    <span className={`status-pill status-pill--${toneForStatus(displayedStatus)}`}>
+                      {displayedStatus}
+                    </span>
+                  ) : null}
+                  {detailLoading ? <span className="panel__meta">Updating…</span> : null}
+                </div>
+              </div>
+              {displayedFailureMessage ? (
+                <div className="empty-state empty-state--paper-failure">
+                  {displayedFailureMessage}
+                </div>
+              ) : null}
+              <div className="paper-detail-stack">
+                <section className="paper-detail-section">
+                  <div className="paper-detail-section__header">
+                    <h3 className="panel__title">Summary</h3>
+                    <span className="panel__meta">live session snapshot</span>
                   </div>
-                ) : null}
                 <div className="summary-grid summary-grid--paper">
                   <MetricCard label="Ending Equity" value={summary ? formatNumber(summary.ending_equity) : "NA"} />
                   <MetricCard
@@ -409,7 +429,7 @@ export function PaperDashboard() {
                     value={summary?.unrealized_pnl !== undefined ? formatSigned(summary.unrealized_pnl) : "NA"}
                     tone={summary?.unrealized_pnl !== undefined && summary.unrealized_pnl >= 0 ? "positive" : "negative"}
                   />
-                  <MetricCard label="Trades" value={String(snapshot.trade_count)} />
+                  <MetricCard label="Trades" value={String(displayedTradeCount)} />
                   <MetricCard label="Win Rate" value={summary ? formatPercent(summary.win_rate * 100) : "NA"} />
                   <MetricCard
                     label="Sharpe"
@@ -439,355 +459,349 @@ export function PaperDashboard() {
                     }
                   />
                 </div>
-              </section>
-
-              <section className="paper-grid paper-grid--hero">
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Equity Curve</h2>
-                    <span className="panel__meta">
-                      {result?.equity_curve.length ?? 0} points
-                    </span>
-                  </div>
-                  {result?.equity_curve && result.equity_curve.length > 1 ? (
-                    <LineChart
-                      series={[
-                        {
-                          values: result.equity_curve.map((point) => point.equity),
-                          stroke: "#1f8de1",
-                          fill: "rgba(31, 141, 225, 0.14)",
-                        },
-                      ]}
-                    />
-                  ) : (
-                    <div className="empty-state">No equity curve yet.</div>
-                  )}
                 </section>
 
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Exposure</h2>
-                    <span className="panel__meta">
-                      max gross {summary?.max_gross_exposure !== undefined ? formatNumber(summary.max_gross_exposure) : "NA"}
-                    </span>
-                  </div>
-                  {result?.equity_curve && result.equity_curve.length > 1 ? (
-                    <>
+                <section className="paper-detail-section paper-detail-section--split">
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Equity Curve</h3>
+                      <span className="panel__meta">
+                        {result?.equity_curve.length ?? 0} points
+                      </span>
+                    </div>
+                    {result?.equity_curve && result.equity_curve.length > 1 ? (
                       <LineChart
                         series={[
                           {
-                            values: result.equity_curve.map((point) => point.gross_exposure ?? 0),
-                            stroke: "#f59e0b",
-                          },
-                          {
-                            values: result.equity_curve.map((point) => Math.abs(point.net_exposure ?? 0)),
-                            stroke: "#ef4444",
+                            values: result.equity_curve.map((point) => point.equity),
+                            stroke: "#1f8de1",
+                            fill: "rgba(31, 141, 225, 0.14)",
                           },
                         ]}
                       />
-                      <div className="legend-row">
-                        <span><i className="legend-swatch legend-swatch--amber" /> Gross</span>
-                        <span><i className="legend-swatch legend-swatch--red" /> Net</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="empty-state">No exposure curve yet.</div>
-                  )}
-                </section>
-              </section>
-
-              <section className="paper-grid">
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Feed Health</h2>
-                    <span className="panel__meta">
-                      {displayedFeedSummary
-                        ? `${displayedFeedSummary.live_ready_feeds}/${displayedFeedSummary.total_feeds} live`
-                        : "NA"}
-                    </span>
-                  </div>
-                  <div className="summary-grid">
-                    <MetricCard
-                      label="History Ready"
-                      value={displayedFeedSummary ? String(displayedFeedSummary.history_ready_feeds) : "NA"}
-                    />
-                    <MetricCard
-                      label="Live Ready"
-                      value={displayedFeedSummary ? String(displayedFeedSummary.live_ready_feeds) : "NA"}
-                    />
-                    <MetricCard
-                      label="Failed"
-                      value={displayedFeedSummary ? String(displayedFeedSummary.failed_feeds) : "NA"}
-                      tone={displayedFeedSummary && displayedFeedSummary.failed_feeds > 0 ? "negative" : "neutral"}
-                    />
-                    <MetricCard
-                      label="Latest Closed Bar"
-                      value={
-                        snapshot.latest_closed_bar_time_ms
-                          ? formatTimeLabel(snapshot.latest_closed_bar_time_ms)
-                          : "NA"
-                      }
-                    />
-                  </div>
-                  <div className="list">
-                    {displayedFeedSnapshots.length ? (
-                      displayedFeedSnapshots.map((feed, index) => (
-                        <article className="list-card" key={`${feed.execution_alias}-${index}`}>
-                          <strong>
-                            {feed.execution_alias} · {feed.symbol}
-                          </strong>
-                          <span>
-                            {feed.template} · {feed.interval ?? selectedSession.manifest.base_interval} · {feed.arming_state ?? "n/a"}
-                          </span>
-                          <span>
-                            top {feed.top_of_book ? formatNumber(feed.top_of_book.mid_price, 4) : "NA"} · last{" "}
-                            {feed.last_price ? formatNumber(feed.last_price.price, 4) : "NA"} · mark{" "}
-                            {feed.mark_price ? formatNumber(feed.mark_price.price, 4) : "NA"}
-                          </span>
-                          {feed.failure_message ? <span>{feed.failure_message}</span> : null}
-                        </article>
-                      ))
                     ) : (
-                      <div className="empty-state">No feed snapshots yet.</div>
+                      <div className="empty-state">No equity curve yet.</div>
+                    )}
+                  </div>
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Exposure</h3>
+                      <span className="panel__meta">
+                        max gross {summary?.max_gross_exposure !== undefined ? formatNumber(summary.max_gross_exposure) : "NA"}
+                      </span>
+                    </div>
+                    {result?.equity_curve && result.equity_curve.length > 1 ? (
+                      <>
+                        <LineChart
+                          series={[
+                            {
+                              values: result.equity_curve.map((point) => point.gross_exposure ?? 0),
+                              stroke: "#f59e0b",
+                            },
+                            {
+                              values: result.equity_curve.map((point) => Math.abs(point.net_exposure ?? 0)),
+                              stroke: "#ef4444",
+                            },
+                          ]}
+                        />
+                        <div className="legend-row">
+                          <span><i className="legend-swatch legend-swatch--amber" /> Gross</span>
+                          <span><i className="legend-swatch legend-swatch--red" /> Net</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="empty-state">No exposure curve yet.</div>
                     )}
                   </div>
                 </section>
 
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Open Positions</h2>
-                    <span className="panel__meta">{displayedOpenPositions.length}</span>
-                  </div>
-                  <div className="list">
-                    {displayedOpenPositions.length ? (
-                      displayedOpenPositions.map((position, index) => (
-                        <article className="list-card" key={`${position.execution_alias}-${index}`}>
-                          <strong>
-                            {position.execution_alias} · {position.side} · {formatNumber(position.quantity, 4)}
-                          </strong>
-                          <span>
-                            entry {formatNumber(position.entry_price)} · mark {formatNumber(position.market_price)}
-                          </span>
-                          <span>unrealized {formatSigned(position.unrealized_pnl)}</span>
-                          {renderMarginLine(position)}
-                        </article>
-                      ))
-                    ) : (
-                      <div className="empty-state">No open positions.</div>
-                    )}
-                  </div>
-                </section>
-              </section>
-
-              <section className="paper-grid">
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Recent Trades</h2>
-                    <span className="panel__meta">{result?.trades.length ?? displayedTradeCount}</span>
-                  </div>
-                  <div className="list">
-                    {result?.trades?.length ? (
-                      [...result.trades]
-                        .slice(-50)
-                        .reverse()
-                        .map((trade, index) => (
-                          <article className="list-card" key={index}>
-                            <strong>
-                              {trade.execution_alias ?? "session"} · {trade.side} · {trade.entry_module ?? "entry"}
-                            </strong>
-                            <span>
-                              {formatTimeLabel(trade.entry.time)} → {formatTimeLabel(trade.exit.time)}
-                            </span>
-                            <span>
-                              entry {formatNumber(trade.entry.price)} · exit {formatNumber(trade.exit.price)} · pnl{" "}
-                              {formatSigned(trade.realized_pnl)}
-                            </span>
-                          </article>
-                        ))
-                    ) : (
-                      <div className="empty-state">No trades yet.</div>
-                    )}
-                  </div>
-                </section>
-
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Orders</h2>
-                    <span className="panel__meta">{result?.orders.length ?? displayedOpenOrderCount}</span>
-                  </div>
-                  <div className="list">
-                    {result?.orders?.length ? (
-                      [...result.orders]
-                        .slice(-50)
-                        .reverse()
-                        .map((order, index) => (
-                          <article className="list-card" key={index}>
-                            <strong>
-                              {order.execution_alias ?? "session"} · {order.role} · {order.kind}
-                            </strong>
-                            <span>
-                              {order.status}
-                              {order.end_reason ? ` · ${order.end_reason}` : ""}
-                            </span>
-                            <span>
-                              placed {formatTimeLabel(order.placed_time)} · fill{" "}
-                              {order.fill_time ? formatTimeLabel(order.fill_time) : "NA"} · px{" "}
-                              {order.fill_price === null ? "NA" : formatNumber(order.fill_price)}
-                            </span>
-                          </article>
-                        ))
-                    ) : (
-                      <div className="empty-state">No order history yet.</div>
-                    )}
-                  </div>
-                </section>
-              </section>
-
-              <section className="paper-grid">
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Diagnostics</h2>
-                    <span className="panel__meta">cohorts and risk</span>
-                  </div>
-                  {diagnostics ? (
-                    <div className="paper-diagnostics">
-                      <div className="summary-grid">
-                        <MetricCard label="Average Bars To Fill" value={formatMetric(diagnostics.summary.average_bars_to_fill)} />
-                        <MetricCard label="Average MAE %" value={formatMetric(diagnostics.summary.average_mae_pct)} />
-                        <MetricCard label="Average MFE %" value={formatMetric(diagnostics.summary.average_mfe_pct)} />
-                        <MetricCard label="Signal Exits" value={String(diagnostics.summary.signal_exit_count ?? 0)} />
-                      </div>
-                      <DiagnosticTable
-                        title="By Side"
-                        rows={(diagnostics.cohorts?.by_side ?? []).map((entry) => [
-                          entry.side,
-                          String(entry.trade_count),
-                          formatPercent(entry.win_rate * 100),
-                          formatNumber(entry.average_realized_pnl),
-                        ])}
-                        headers={["Side", "Trades", "Win", "Avg PnL"]}
+                <section className="paper-detail-section paper-detail-section--split">
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Feed Health</h3>
+                      <span className="panel__meta">
+                        {displayedFeedSummary
+                          ? `${displayedFeedSummary.live_ready_feeds}/${displayedFeedSummary.total_feeds} live`
+                          : "NA"}
+                      </span>
+                    </div>
+                    <div className="summary-grid">
+                      <MetricCard
+                        label="History Ready"
+                        value={displayedFeedSummary ? String(displayedFeedSummary.history_ready_feeds) : "NA"}
                       />
-                      <DiagnosticTable
-                        title="Exit Classes"
-                        rows={(diagnostics.cohorts?.by_exit_classification ?? []).map((entry) => [
-                          entry.classification,
-                          String(entry.trade_count),
-                          formatPercent(entry.win_rate * 100),
-                          formatNumber(entry.average_realized_pnl),
-                        ])}
-                        headers={["Exit", "Trades", "Win", "Avg PnL"]}
+                      <MetricCard
+                        label="Live Ready"
+                        value={displayedFeedSummary ? String(displayedFeedSummary.live_ready_feeds) : "NA"}
                       />
-                      <DiagnosticTable
-                        title="Weekday"
-                        rows={(diagnostics.cohorts?.by_weekday_utc ?? []).map((entry) => [
-                          `UTC ${entry.weekday_utc}`,
-                          String(entry.trade_count),
-                          formatPercent(entry.win_rate * 100),
-                          formatNumber(entry.total_realized_pnl),
-                        ])}
-                        headers={["Bucket", "Trades", "Win", "Total PnL"]}
+                      <MetricCard
+                        label="Failed"
+                        value={displayedFeedSummary ? String(displayedFeedSummary.failed_feeds) : "NA"}
+                        tone={displayedFeedSummary && displayedFeedSummary.failed_feeds > 0 ? "negative" : "neutral"}
+                      />
+                      <MetricCard
+                        label="Latest Closed Bar"
+                        value={
+                          snapshot?.latest_closed_bar_time_ms
+                            ? formatTimeLabel(snapshot.latest_closed_bar_time_ms)
+                            : "NA"
+                        }
                       />
                     </div>
-                  ) : (
-                    <div className="empty-state">Detailed diagnostics are not available yet.</div>
-                  )}
+                    <div className="list">
+                      {displayedFeedSnapshots.length ? (
+                        displayedFeedSnapshots.map((feed, index) => (
+                          <article className="list-card" key={`${feed.execution_alias}-${index}`}>
+                            <strong>
+                              {feed.execution_alias} · {feed.symbol}
+                            </strong>
+                            <span>
+                              {feed.template} · {feed.interval ?? selectedSession.manifest.base_interval} · {feed.arming_state ?? "n/a"}
+                            </span>
+                            <span>
+                              top {feed.top_of_book ? formatNumber(feed.top_of_book.mid_price, 4) : "NA"} · last{" "}
+                              {feed.last_price ? formatNumber(feed.last_price.price, 4) : "NA"} · mark{" "}
+                              {feed.mark_price ? formatNumber(feed.mark_price.price, 4) : "NA"}
+                            </span>
+                            {feed.failure_message ? <span>{feed.failure_message}</span> : null}
+                          </article>
+                        ))
+                      ) : (
+                        <div className="empty-state">No feed snapshots yet.</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Open Positions</h3>
+                      <span className="panel__meta">{displayedOpenPositions.length}</span>
+                    </div>
+                    <div className="list">
+                      {displayedOpenPositions.length ? (
+                        displayedOpenPositions.map((position, index) => (
+                          <article className="list-card" key={`${position.execution_alias}-${index}`}>
+                            <strong>
+                              {position.execution_alias} · {position.side} · {formatNumber(position.quantity, 4)}
+                            </strong>
+                            <span>
+                              entry {formatNumber(position.entry_price)} · mark {formatNumber(position.market_price)}
+                            </span>
+                            <span>unrealized {formatSigned(position.unrealized_pnl)}</span>
+                            {renderMarginLine(position)}
+                          </article>
+                        ))
+                      ) : (
+                        <div className="empty-state">No open positions.</div>
+                      )}
+                    </div>
+                  </div>
                 </section>
 
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Drawdown and Hints</h2>
-                    <span className="panel__meta">
-                      {diagnostics?.overfitting_risk?.level ?? "unknown"} risk
-                    </span>
-                  </div>
-                  {diagnostics ? (
-                    <div className="paper-diagnostics">
-                      <div className="summary-grid">
-                        <MetricCard label="Longest Drawdown" value={formatBars(diagnostics.drawdown?.longest_drawdown_bars)} />
-                        <MetricCard label="Current Drawdown" value={formatBars(diagnostics.drawdown?.current_drawdown_bars)} />
-                        <MetricCard label="Stagnation" value={formatBars(diagnostics.drawdown?.longest_stagnation_bars)} />
-                        <MetricCard label="Recovery" value={formatBarsFloat(diagnostics.drawdown?.average_recovery_bars)} />
-                      </div>
-                      <div className="list">
-                        {(diagnostics.hints ?? []).length ? (
-                          diagnostics.hints?.map((hint, index) => (
+                <section className="paper-detail-section paper-detail-section--split">
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Recent Trades</h3>
+                      <span className="panel__meta">{result?.trades.length ?? displayedTradeCount}</span>
+                    </div>
+                    <div className="list">
+                      {result?.trades?.length ? (
+                        [...result.trades]
+                          .slice(-50)
+                          .reverse()
+                          .map((trade, index) => (
                             <article className="list-card" key={index}>
-                              <strong>{hint.kind}</strong>
+                              <strong>
+                                {trade.execution_alias ?? "session"} · {trade.side} · {trade.entry_module ?? "entry"}
+                              </strong>
                               <span>
-                                {hint.metric ?? "metric"} {hint.value !== null && hint.value !== undefined ? formatNumber(hint.value) : "NA"}
+                                {formatTimeLabel(trade.entry.time)} → {formatTimeLabel(trade.exit.time)}
+                              </span>
+                              <span>
+                                entry {formatNumber(trade.entry.price)} · exit {formatNumber(trade.exit.price)} · pnl{" "}
+                                {formatSigned(trade.realized_pnl)}
                               </span>
                             </article>
                           ))
-                        ) : (
-                          <div className="empty-state">No improvement hints.</div>
-                        )}
+                      ) : (
+                        <div className="empty-state">No trades yet.</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Orders</h3>
+                      <span className="panel__meta">{result?.orders.length ?? displayedOpenOrderCount}</span>
+                    </div>
+                    <div className="list">
+                      {result?.orders?.length ? (
+                        [...result.orders]
+                          .slice(-50)
+                          .reverse()
+                          .map((order, index) => (
+                            <article className="list-card" key={index}>
+                              <strong>
+                                {order.execution_alias ?? "session"} · {order.role} · {order.kind}
+                              </strong>
+                              <span>
+                                {order.status}
+                                {order.end_reason ? ` · ${order.end_reason}` : ""}
+                              </span>
+                              <span>
+                                placed {formatTimeLabel(order.placed_time)} · fill{" "}
+                                {order.fill_time ? formatTimeLabel(order.fill_time) : "NA"} · px{" "}
+                                {order.fill_price === null ? "NA" : formatNumber(order.fill_price)}
+                              </span>
+                            </article>
+                          ))
+                      ) : (
+                        <div className="empty-state">No order history yet.</div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="paper-detail-section paper-detail-section--split">
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Diagnostics</h3>
+                      <span className="panel__meta">cohorts and risk</span>
+                    </div>
+                    {diagnostics ? (
+                      <div className="paper-diagnostics">
+                        <div className="summary-grid">
+                          <MetricCard label="Average Bars To Fill" value={formatMetric(diagnostics.summary.average_bars_to_fill)} />
+                          <MetricCard label="Average MAE %" value={formatMetric(diagnostics.summary.average_mae_pct)} />
+                          <MetricCard label="Average MFE %" value={formatMetric(diagnostics.summary.average_mfe_pct)} />
+                          <MetricCard label="Signal Exits" value={String(diagnostics.summary.signal_exit_count ?? 0)} />
+                        </div>
+                        <DiagnosticTable
+                          title="By Side"
+                          rows={(diagnostics.cohorts?.by_side ?? []).map((entry) => [
+                            entry.side,
+                            String(entry.trade_count),
+                            formatPercent(entry.win_rate * 100),
+                            formatNumber(entry.average_realized_pnl),
+                          ])}
+                          headers={["Side", "Trades", "Win", "Avg PnL"]}
+                        />
+                        <DiagnosticTable
+                          title="Exit Classes"
+                          rows={(diagnostics.cohorts?.by_exit_classification ?? []).map((entry) => [
+                            entry.classification,
+                            String(entry.trade_count),
+                            formatPercent(entry.win_rate * 100),
+                            formatNumber(entry.average_realized_pnl),
+                          ])}
+                          headers={["Exit", "Trades", "Win", "Avg PnL"]}
+                        />
+                        <DiagnosticTable
+                          title="Weekday"
+                          rows={(diagnostics.cohorts?.by_weekday_utc ?? []).map((entry) => [
+                            `UTC ${entry.weekday_utc}`,
+                            String(entry.trade_count),
+                            formatPercent(entry.win_rate * 100),
+                            formatNumber(entry.total_realized_pnl),
+                          ])}
+                          headers={["Bucket", "Trades", "Win", "Total PnL"]}
+                        />
                       </div>
-                    </div>
-                  ) : (
-                    <div className="empty-state">No drawdown diagnostics yet.</div>
-                  )}
-                </section>
-              </section>
-
-              <section className="paper-grid">
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Transfer and Arbitrage</h2>
-                    <span className="panel__meta">portfolio extras</span>
-                  </div>
-                  {diagnostics ? (
-                    <div className="paper-diagnostics">
-                      <DiagnosticTable
-                        title="Transfers"
-                        rows={(diagnostics.transfer_summary?.by_route ?? []).map((route) =>
-                          transferRouteRow(route),
-                        )}
-                        headers={["Route", "Count", "Completed", "Fee"]}
-                      />
-                      <DiagnosticTable
-                        title="Arbitrage"
-                        rows={(diagnostics.arbitrage?.by_pair ?? []).map((pair) =>
-                          arbitragePairRow(pair),
-                        )}
-                        headers={["Pair", "Baskets", "Completed", "PnL"]}
-                      />
-                    </div>
-                  ) : (
-                    <div className="empty-state">No transfer or arbitrage diagnostics.</div>
-                  )}
-                </section>
-
-                <section className="panel">
-                  <div className="panel__titlebar">
-                    <h2 className="panel__title">Session Log</h2>
-                    <span className="panel__meta">{activeLogs?.logs.length ?? 0} events</span>
-                  </div>
-                  <div className="list">
-                    {activeLogs?.logs.length ? (
-                      [...activeLogs.logs]
-                        .slice(-40)
-                        .reverse()
-                        .map((event: PaperSessionLogEvent, index) => (
-                          <article className="list-card" key={index}>
-                            <strong>{event.message}</strong>
-                            <span>
-                              {formatTimeLabel(event.time_ms)} · {event.status} · {event.health}
-                            </span>
-                          </article>
-                        ))
                     ) : (
-                      <div className="empty-state">No log events yet.</div>
+                      <div className="empty-state">Detailed diagnostics are not available yet.</div>
+                    )}
+                  </div>
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Drawdown and Hints</h3>
+                      <span className="panel__meta">
+                        {diagnostics?.overfitting_risk?.level ?? "unknown"} risk
+                      </span>
+                    </div>
+                    {diagnostics ? (
+                      <div className="paper-diagnostics">
+                        <div className="summary-grid">
+                          <MetricCard label="Longest Drawdown" value={formatBars(diagnostics.drawdown?.longest_drawdown_bars)} />
+                          <MetricCard label="Current Drawdown" value={formatBars(diagnostics.drawdown?.current_drawdown_bars)} />
+                          <MetricCard label="Stagnation" value={formatBars(diagnostics.drawdown?.longest_stagnation_bars)} />
+                          <MetricCard label="Recovery" value={formatBarsFloat(diagnostics.drawdown?.average_recovery_bars)} />
+                        </div>
+                        <div className="list">
+                          {(diagnostics.hints ?? []).length ? (
+                            diagnostics.hints?.map((hint, index) => (
+                              <article className="list-card" key={index}>
+                                <strong>{hint.kind}</strong>
+                                <span>
+                                  {hint.metric ?? "metric"} {hint.value !== null && hint.value !== undefined ? formatNumber(hint.value) : "NA"}
+                                </span>
+                              </article>
+                            ))
+                          ) : (
+                            <div className="empty-state">No improvement hints.</div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="empty-state">No drawdown diagnostics yet.</div>
                     )}
                   </div>
                 </section>
-              </section>
+
+                <section className="paper-detail-section paper-detail-section--split">
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Transfer and Arbitrage</h3>
+                      <span className="panel__meta">portfolio extras</span>
+                    </div>
+                    {diagnostics ? (
+                      <div className="paper-diagnostics">
+                        <DiagnosticTable
+                          title="Transfers"
+                          rows={(diagnostics.transfer_summary?.by_route ?? []).map((route) =>
+                            transferRouteRow(route),
+                          )}
+                          headers={["Route", "Count", "Completed", "Fee"]}
+                        />
+                        <DiagnosticTable
+                          title="Arbitrage"
+                          rows={(diagnostics.arbitrage?.by_pair ?? []).map((pair) =>
+                            arbitragePairRow(pair),
+                          )}
+                          headers={["Pair", "Baskets", "Completed", "PnL"]}
+                        />
+                      </div>
+                    ) : (
+                      <div className="empty-state">No transfer or arbitrage diagnostics.</div>
+                    )}
+                  </div>
+                  <div className="paper-detail-column">
+                    <div className="paper-detail-section__header">
+                      <h3 className="panel__title">Session Log</h3>
+                      <span className="panel__meta">{activeLogs?.logs.length ?? 0} events</span>
+                    </div>
+                    <div className="list">
+                      {activeLogs?.logs.length ? (
+                        [...activeLogs.logs]
+                          .slice(-40)
+                          .reverse()
+                          .map((event: PaperSessionLogEvent, index) => (
+                            <article className="list-card" key={index}>
+                              <strong>{event.message}</strong>
+                              <span>
+                                {formatTimeLabel(event.time_ms)} · {event.status} · {event.health}
+                              </span>
+                            </article>
+                          ))
+                      ) : (
+                        <div className="empty-state">No log events yet.</div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              </div>
             </>
           ) : (
-            <section className="panel">
-              <div className="empty-state empty-state--large">
-                Select a running strategy to inspect live paper metrics.
-              </div>
-            </section>
+            <div className="empty-state empty-state--large">
+              Select a running strategy to inspect live paper metrics.
+            </div>
           )}
         </section>
       </main>
