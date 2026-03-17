@@ -140,10 +140,10 @@ The intended layout is:
 - paper-session config mounted at `/etc/palmscript/paper-sessions.toml`
 
 The paper container now also serves a live monitoring UI at `/paper` on port
-`8080`. It lists all persisted paper sessions, shows a simplified top strategy
-accordion with collapsible strategy sections and per-strategy run selection,
-and keeps the selected run in one unified detail panel with real-time equity,
-PnL, open positions, trades, orders, drawdown, feed health, and session logs.
+`8080`. It lists all persisted paper sessions, shows a single top strategy
+accordion for selecting a strategy and its runs, and keeps the selected run in
+one unified detail panel with real-time equity, PnL, open positions, trades,
+orders, drawdown, feed health, and session logs.
 Failed sessions now keep their failure message and log stream visible even
 when the session never produced a first snapshot. The bundled
 `paper-sessions.toml` now starts both `strategy.ps` and `triiger_happy.ps` so

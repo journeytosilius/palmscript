@@ -227,8 +227,8 @@ directory is empty, then starts `palmscript execution serve`. Set
 `PALMSCRIPT_FORCE_SUBMIT=1` if you want to resubmit the configured sessions on
 container start. The same container also starts `palmscript-ide-server` and
 serves a live paper dashboard at `http://localhost:8080/paper` so you can
-escolher uma estrategia em um acordeao recolhivel no topo, alternar entre as
-execucoes rastreadas dessa estrategia e inspecionar equity, PnL, trades,
+escolher uma estrategia no unico acordeao recolhivel no topo, alternar entre
+as execucoes rastreadas dessa estrategia e inspecionar equity, PnL, trades,
 drawdown, saude dos feeds e logs em um painel unificado em tempo real.
 A `paper-sessions.toml` empacotada passa a iniciar `strategy.ps` e
 `triiger_happy.ps`, para que a estrategia avancada com multiplas fontes e o

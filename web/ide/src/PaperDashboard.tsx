@@ -33,7 +33,7 @@ import { LineChart, MetricCard } from "./ui";
 const POLL_MS = 3_000;
 const STRATEGY_STORAGE_KEY = "palmscript.paper.strategy";
 const SESSION_STORAGE_KEY = "palmscript.paper.session";
-const EXPANDED_STRATEGY_STORAGE_KEY = "palmscript.paper.strategy.expanded";
+const STRATEGY_ACCORDION_STORAGE_KEY = "palmscript.paper.strategy.accordion";
 
 interface StrategyGroup {
   key: string;
@@ -50,9 +50,8 @@ export function PaperDashboard() {
   const [selectedStrategyKey, setSelectedStrategyKey] = useState<string | null>(() =>
     window.localStorage.getItem(STRATEGY_STORAGE_KEY),
   );
-  const [expandedStrategyKey, setExpandedStrategyKey] = useState<string | null>(() =>
-    window.localStorage.getItem(EXPANDED_STRATEGY_STORAGE_KEY) ??
-      window.localStorage.getItem(STRATEGY_STORAGE_KEY),
+  const [strategyAccordionOpen, setStrategyAccordionOpen] = useState<boolean>(() =>
+    window.localStorage.getItem(STRATEGY_ACCORDION_STORAGE_KEY) !== "closed",
   );
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PaperSessionDetailResponse | null>(null);
@@ -65,6 +64,8 @@ export function PaperDashboard() {
   const selectedStrategy =
     strategyGroups.find((strategy) => strategy.key === selectedStrategyKey) ?? null;
   const strategySessions = selectedStrategy?.sessions ?? [];
+  const totalLiveCount = strategyGroups.reduce((sum, strategy) => sum + strategy.liveCount, 0);
+  const totalFailedCount = strategyGroups.reduce((sum, strategy) => sum + strategy.failedCount, 0);
 
   useEffect(() => {
     document.title = "PalmScript Paper Dashboard";
@@ -109,21 +110,11 @@ export function PaperDashboard() {
   useEffect(() => {
     if (!strategyGroups.length) {
       setSelectedStrategyKey(null);
-      setExpandedStrategyKey(null);
       setSelectedSessionId(null);
       return;
     }
     setSelectedStrategyKey((current) => {
       if (current && strategyGroups.some((strategy) => strategy.key === current)) {
-        return current;
-      }
-      return strategyGroups[0].key;
-    });
-    setExpandedStrategyKey((current) => {
-      if (current === null) {
-        return null;
-      }
-      if (strategyGroups.some((strategy) => strategy.key === current)) {
         return current;
       }
       return strategyGroups[0].key;
@@ -164,12 +155,11 @@ export function PaperDashboard() {
   }, [selectedStrategyKey]);
 
   useEffect(() => {
-    if (expandedStrategyKey) {
-      window.localStorage.setItem(EXPANDED_STRATEGY_STORAGE_KEY, expandedStrategyKey);
-    } else {
-      window.localStorage.removeItem(EXPANDED_STRATEGY_STORAGE_KEY);
-    }
-  }, [expandedStrategyKey]);
+    window.localStorage.setItem(
+      STRATEGY_ACCORDION_STORAGE_KEY,
+      strategyAccordionOpen ? "open" : "closed",
+    );
+  }, [strategyAccordionOpen]);
 
   useEffect(() => {
     if (selectedSessionId) {
@@ -325,66 +315,102 @@ export function PaperDashboard() {
           </div>
           {strategyGroups.length ? (
             <div className="paper-strategy-accordion">
-              {strategyGroups.map((strategy) => {
-                const active = strategy.key === selectedStrategyKey;
-                const expanded = strategy.key === expandedStrategyKey;
-                return (
-                  <section
-                    key={strategy.key}
-                    className={`paper-strategy-item${active ? " paper-strategy-item--active" : ""}${expanded ? " paper-strategy-item--open" : ""}`}
-                  >
-                    <button
-                      className="paper-strategy-summary"
-                      type="button"
-                      onClick={() => {
-                        const nextExpanded = expanded ? null : strategy.key;
-                        const nextSessionId =
-                          strategy.sessions[0]?.manifest.session_id ?? null;
-
-                        setExpandedStrategyKey(nextExpanded);
-                        setSelectedStrategyKey(strategy.key);
-                        setSelectedSessionId((current) => {
-                          if (
-                            current &&
-                            strategy.sessions.some(
-                              (session) => session.manifest.session_id === current,
-                            )
-                          ) {
-                            return current;
-                          }
-                          return nextSessionId;
-                        });
-                      }}
+              <section className={`paper-strategy-item${strategyAccordionOpen ? " paper-strategy-item--open" : ""}`}>
+                <button
+                  className="paper-strategy-summary"
+                  type="button"
+                  onClick={() => {
+                    setStrategyAccordionOpen((current) => !current);
+                  }}
+                >
+                  <div className="paper-strategy-summary__lead">
+                    <span
+                      className={`paper-strategy-summary__chevron${strategyAccordionOpen ? " paper-strategy-summary__chevron--open" : ""}`}
+                      aria-hidden="true"
                     >
-                      <div className="paper-strategy-summary__lead">
-                        <span
-                          className={`paper-strategy-summary__chevron${expanded ? " paper-strategy-summary__chevron--open" : ""}`}
-                          aria-hidden="true"
-                        >
-                          ▾
-                        </span>
-                        <div className="paper-strategy-summary__copy">
-                          <strong>{strategy.label}</strong>
-                          <span className="paper-session-card__meta">
-                            {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
-                            {formatTimeLabel(strategy.updatedAtMs)}
+                      ▾
+                    </span>
+                    <div className="paper-strategy-summary__copy">
+                      <strong>{selectedStrategy?.label ?? "Select strategy"}</strong>
+                      <span className="paper-session-card__meta">
+                        {strategyGroups.length} configured ·{" "}
+                        {selectedStrategy
+                          ? `${strategySessions.length} run${strategySessions.length === 1 ? "" : "s"} selected`
+                          : "no strategy selected"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="paper-strategy-summary__meta">
+                    <span className="paper-session-card__stats">
+                      <span>{totalLiveCount} live</span>
+                      <span>{totalFailedCount} failed</span>
+                    </span>
+                    <span className={`status-pill status-pill--${toneForStatus(selectedStrategy?.health ?? "configured")}`}>
+                      {selectedStrategy?.health ?? "configured"}
+                    </span>
+                  </div>
+                </button>
+                {strategyAccordionOpen ? (
+                  <div className="paper-strategy-item__body">
+                    <div className="paper-strategy-section">
+                      <div className="paper-detail-section__header">
+                        <strong>Select Strategy</strong>
+                        <span className="panel__meta">Choose which strategy to inspect.</span>
+                      </div>
+                      <div className="paper-strategy-choice-list">
+                        {strategyGroups.map((strategy) => {
+                          const active = strategy.key === selectedStrategyKey;
+                          return (
+                            <button
+                              key={strategy.key}
+                              className={`paper-strategy-choice${active ? " paper-strategy-choice--active" : ""}`}
+                              type="button"
+                              onClick={() => {
+                                setSelectedStrategyKey(strategy.key);
+                                setSelectedSessionId((current) => {
+                                  if (
+                                    current &&
+                                    strategy.sessions.some(
+                                      (session) => session.manifest.session_id === current,
+                                    )
+                                  ) {
+                                    return current;
+                                  }
+                                  return strategy.sessions[0]?.manifest.session_id ?? null;
+                                });
+                              }}
+                            >
+                              <div className="paper-strategy-choice__copy">
+                                <strong>{strategy.label}</strong>
+                                <span className="paper-session-card__meta">
+                                  {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
+                                  {formatTimeLabel(strategy.updatedAtMs)}
+                                </span>
+                              </div>
+                              <div className="paper-strategy-choice__meta">
+                                <span className="paper-session-card__stats">
+                                  <span>{strategy.liveCount} live</span>
+                                  <span>{strategy.failedCount} failed</span>
+                                </span>
+                                <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
+                                  {strategy.health}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {selectedStrategy ? (
+                      <div className="paper-strategy-section">
+                        <div className="paper-detail-section__header">
+                          <strong>Runs for {selectedStrategy.label}</strong>
+                          <span className="panel__meta">
+                            {strategySessions.length} run{strategySessions.length === 1 ? "" : "s"}
                           </span>
                         </div>
-                      </div>
-                      <div className="paper-strategy-summary__meta">
-                        <span className="paper-session-card__stats">
-                          <span>{strategy.liveCount} live</span>
-                          <span>{strategy.failedCount} failed</span>
-                        </span>
-                        <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
-                          {strategy.health}
-                        </span>
-                      </div>
-                    </button>
-                    {expanded ? (
-                      <div className="paper-strategy-item__body">
                         <div className="paper-run-list">
-                          {strategy.sessions.map((session) => {
+                          {selectedStrategy.sessions.map((session) => {
                             const activeRun = session.manifest.session_id === selectedSessionId;
                             const sessionSummary = session.snapshot?.summary ?? null;
                             return (
@@ -393,8 +419,7 @@ export function PaperDashboard() {
                                 className={`paper-run-button${activeRun ? " paper-run-button--active" : ""}`}
                                 type="button"
                                 onClick={() => {
-                                  setExpandedStrategyKey(strategy.key);
-                                  setSelectedStrategyKey(strategy.key);
+                                  setSelectedStrategyKey(selectedStrategy.key);
                                   setSelectedSessionId(session.manifest.session_id);
                                 }}
                               >
@@ -416,9 +441,9 @@ export function PaperDashboard() {
                         </div>
                       </div>
                     ) : null}
-                  </section>
-                );
-              })}
+                  </div>
+                ) : null}
+              </section>
             </div>
           ) : (
             <div className="empty-state">No paper sessions have been submitted.</div>
