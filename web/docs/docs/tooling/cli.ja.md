@@ -230,8 +230,9 @@ serves a live paper dashboard at `http://localhost:8080/paper` so you can
 上部の折りたたみ accordion から strategy を選択し、その strategy に
 紐づく run を切り替えながら、equity、PnL、trade、drawdown、feed
 health、log を単一の detail panel でリアルタイムに確認できます。
-同梱の `paper-sessions.toml` は既定で `paper_trigger_happy.ps` を使い、
-`strategy.ps` は高度な複数 source の example strategy として残ります。
+同梱の `paper-sessions.toml` は `strategy.ps` と `triiger_happy.ps` の
+両方を起動するため、高度な複数 source の example strategy と
+trigger-happy smoke test が既定で同時に動きます。
 failed session でも、
 最初の snapshot がまだ書かれていない場合を含めて、manifest の failure
 message と log stream を確認できます。

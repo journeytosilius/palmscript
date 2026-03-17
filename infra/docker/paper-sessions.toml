@@ -11,9 +11,27 @@ once = false
 
 [[session]]
 enabled = true
-script = "paper_trigger_happy.ps"
+script = "strategy.ps"
 
-# Default bundled paper smoke-test target:
+# Advanced bundled example strategy:
+# - execution alias: exec
+# - symbols / segments: Binance USD-M + spot BTCUSDT
+# - strategy goal: run the canonical multi-source strategy in paper mode
+
+initial_capital = 10000.0
+maker_fee_bps = 2.0
+taker_fee_bps = 5.0
+slippage_bps = 1.0
+diagnostics = "summary"
+execution_sources = ["exec"]
+leverage = 1.0
+margin_mode = "isolated"
+
+[[session]]
+enabled = true
+script = "triiger_happy.ps"
+
+# High-churn bundled paper smoke-test target:
 # - execution alias: exec
 # - symbol / segment: Binance spot BTCUSDT
 # - strategy goal: frequent fills plus tight stop/target churn

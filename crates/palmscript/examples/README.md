@@ -28,7 +28,7 @@ Checked-in `.ps` strategies live under `crates/palmscript/examples/strategies/`.
 Representative files:
 
 - `crates/palmscript/examples/strategies/strategy.ps`: advanced multi-source Binance perp/spot strategy example with higher-interval trend filters, optimizer metadata, staged entries, and mark-triggered protective exits
-- `crates/palmscript/examples/strategies/paper_trigger_happy.ps`: high-churn Binance spot paper-trading example with market entries, short holding windows, and tight ATR-based stop/target orders to stress the paper execution path
+- `crates/palmscript/examples/strategies/triiger_happy.ps`: high-churn Binance spot paper-trading example with market entries, short holding windows, and tight ATR-based stop/target orders to stress the paper execution path
 - `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned EMA, RSI, MACD, entry sizing, ATR target, and post-target stop-ratchet inputs around staged `entry1` / `entry2` and `target1` / `target2` order flow, including inline `input ... optimize(...)` metadata for durable CLI optimization
 - `crates/palmscript/examples/strategies/portfolio_caps_backtest.ps`: multi-alias portfolio backtest example using `portfolio_group`, position-count caps, and gross/net exposure caps under repeated `--execution-source` CLI selection
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
@@ -69,7 +69,8 @@ execution scripts that omit them.
 The same checked-in strategies can also be queued into the local paper daemon with `run paper`:
 
 ```bash
-./palmscript run paper crates/palmscript/examples/strategies/paper_trigger_happy.ps --maker-fee-bps 2 --taker-fee-bps 5
+./palmscript run paper crates/palmscript/examples/strategies/strategy.ps --maker-fee-bps 2 --taker-fee-bps 5
+./palmscript run paper crates/palmscript/examples/strategies/triiger_happy.ps --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run paper crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --execution-source perp --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript execution serve --once
 ./palmscript run paper-export <session-id> --format json
