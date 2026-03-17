@@ -191,6 +191,15 @@ palmscript execution stop
 
 Portfolio paper mode uses the same repeated `--execution-source` convention as backtest mode. Repeating execution aliases keeps one shared cash/equity ledger across all selected aliases and enforces `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` declarations on new entries only.
 
+Operational logging now emits structured JSON lines on `stderr` for the CLI,
+IDE server, and LSP server. Set `PALMSCRIPT_LOG_LEVEL=debug` or `trace` when
+you need more detail. Set `BETTERSTACK_SOURCE_TOKEN` to mirror those same
+events to Better Stack, and override the endpoint or service name with
+`BETTERSTACK_LOGS_URL`, `BETTERSTACK_TIMEOUT_MS`, and `PALMSCRIPT_LOG_NAME`
+when needed. `palmscript run paper-logs <session-id>` remains the session-local
+event stream and now records clearer transition and runtime-window update
+messages for paper debugging.
+
 ## Containerized Paper Service
 
 The repository now ships a paper-trading container layout:

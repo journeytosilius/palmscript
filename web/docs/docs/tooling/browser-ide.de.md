@@ -31,6 +31,14 @@ Override with:
 PALMSCRIPT_IDE_BIND=0.0.0.0:8080 target/debug/palmscript-ide-server
 ```
 
+Der IDE-Server gibt jetzt strukturierte JSON-Logs auf `stderr` aus. Setze
+`PALMSCRIPT_LOG_LEVEL=debug` oder `trace`, wenn du mehr Details brauchst.
+Mit `BETTERSTACK_SOURCE_TOKEN` leitest du dieselben Ereignisse an Better Stack
+weiter; `BETTERSTACK_LOGS_URL`, `BETTERSTACK_TIMEOUT_MS` und
+`PALMSCRIPT_LOG_NAME` passen Ziel und Dienstnamen an. Die Ansicht `/paper`
+liest weiterhin Sitzungsereignisse aus dem Execution-State, und diese Logs
+enthalten jetzt klarere Zustandswechsel und Runtime-Window-Updates.
+
 ## Container image
 
 ```bash

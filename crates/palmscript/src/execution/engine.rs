@@ -5,6 +5,8 @@ use crate::runtime::VmLimits;
 
 use std::collections::BTreeMap;
 
+use palmscript_logger::{debug_fields, error_fields, info_fields, warn_fields, LogField};
+
 use super::feed_hub::{build_session_feed_plan, FeedHub, SessionFeedPlan};
 use super::market_data::{
     compute_warmup_from_ms, resolve_execution_sources, resolve_perp_contexts, PerpBootstrapOptions,
@@ -273,7 +275,7 @@ pub(crate) async fn process_paper_session(
                 ExecutionSessionStatus::Live,
                 live_health,
                 None,
-                "paper session updated",
+                "paper session is live",
             )?;
             let snapshot = render_snapshot_from_result(
                 &manifest,
@@ -284,16 +286,41 @@ pub(crate) async fn process_paper_session(
             );
             persist_session_result(&manifest.session_id, &result)?;
             persist_session_snapshot(&manifest.session_id, &snapshot)?;
+            let update_message = format!(
+                "paper session updated: runtime_to={} trades={} fills={} open_positions={} live_feeds={}/{}",
+                runtime_to_ms,
+                result.summary.trade_count,
+                result.fills.len(),
+                result.open_positions.len(),
+                manifest.feed_summary.live_ready_feeds,
+                manifest.feed_summary.total_feeds,
+            );
             append_log_event(
                 &manifest.session_id,
                 &PaperSessionLogEvent {
                     time_ms: now_ms,
                     status: manifest.status,
                     health: manifest.health,
-                    message: "paper session updated".to_string(),
+                    message: update_message,
                     latest_runtime_to_ms: manifest.latest_runtime_to_ms,
                 },
             )?;
+            debug_fields(
+                "paper.session.updated",
+                "Paper session processed a new runtime window",
+                vec![
+                    LogField::string("session_id", manifest.session_id.clone()),
+                    LogField::i64("runtime_to_ms", runtime_to_ms),
+                    LogField::u64("trade_count", result.summary.trade_count as u64),
+                    LogField::u64("fill_count", result.fills.len() as u64),
+                    LogField::u64("open_positions", result.open_positions.len() as u64),
+                    LogField::u64(
+                        "live_ready_feeds",
+                        manifest.feed_summary.live_ready_feeds as u64,
+                    ),
+                    LogField::u64("total_feeds", manifest.feed_summary.total_feeds as u64),
+                ],
+            );
             Ok(manifest)
         }
         Err(err) => {
@@ -302,6 +329,23 @@ pub(crate) async fn process_paper_session(
             manifest.updated_at_ms = now_ms;
             manifest.failure_message = Some(err.to_string());
             persist_session_manifest(&manifest)?;
+            error_fields(
+                "paper.session.failed",
+                "Paper session failed while processing runtime",
+                vec![
+                    LogField::string("session_id", manifest.session_id.clone()),
+                    LogField::string("error", err.to_string()),
+                    LogField::string(
+                        "script_path",
+                        manifest.script_path.clone().unwrap_or_default(),
+                    ),
+                    LogField::u64(
+                        "live_ready_feeds",
+                        manifest.feed_summary.live_ready_feeds as u64,
+                    ),
+                    LogField::u64("total_feeds", manifest.feed_summary.total_feeds as u64),
+                ],
+            );
             append_log_event(
                 &manifest.session_id,
                 &PaperSessionLogEvent {
@@ -351,6 +395,11 @@ fn mark_stopped(
             latest_runtime_to_ms: manifest.latest_runtime_to_ms,
         },
     )?;
+    warn_fields(
+        "paper.session.stopped",
+        "Paper session stopped",
+        vec![LogField::string("session_id", manifest.session_id.clone())],
+    );
     Ok(manifest.clone())
 }
 
@@ -360,22 +409,38 @@ fn update_manifest_status(
     health: ExecutionSessionHealth,
     failure_message: Option<String>,
     message: &str,
-) -> Result<(), ExecutionError> {
+) -> Result<bool, ExecutionError> {
+    let changed = manifest.status != status
+        || manifest.health != health
+        || manifest.failure_message != failure_message;
     manifest.status = status;
     manifest.health = health;
     manifest.failure_message = failure_message;
     manifest.updated_at_ms = super::now_ms();
     persist_session_manifest(manifest)?;
-    append_log_event(
-        &manifest.session_id,
-        &PaperSessionLogEvent {
-            time_ms: manifest.updated_at_ms,
-            status,
-            health,
-            message: message.to_string(),
-            latest_runtime_to_ms: manifest.latest_runtime_to_ms,
-        },
-    )
+    if changed {
+        append_log_event(
+            &manifest.session_id,
+            &PaperSessionLogEvent {
+                time_ms: manifest.updated_at_ms,
+                status,
+                health,
+                message: message.to_string(),
+                latest_runtime_to_ms: manifest.latest_runtime_to_ms,
+            },
+        )?;
+        info_fields(
+            "paper.session.transition",
+            "Paper session state changed",
+            vec![
+                LogField::string("session_id", manifest.session_id.clone()),
+                LogField::string("status", format!("{:?}", status)),
+                LogField::string("health", format!("{:?}", health)),
+                LogField::string("message", message.to_string()),
+            ],
+        );
+    }
+    Ok(changed)
 }
 
 #[cfg(test)]

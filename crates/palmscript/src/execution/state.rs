@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use palmscript_logger::{info_fields, warn_fields, LogField};
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Digest;
 
@@ -238,6 +239,18 @@ pub fn submit_paper_session(
             latest_runtime_to_ms: None,
         },
     )?;
+    let mut fields = vec![
+        LogField::string("session_id", session_id.clone()),
+        LogField::string("base_interval", base_interval.as_str()),
+        LogField::u64(
+            "execution_source_count",
+            manifest.config.execution_source_aliases.len() as u64,
+        ),
+    ];
+    if let Some(script_path) = &manifest.script_path {
+        fields.push(LogField::string("script_path", script_path.clone()));
+    }
+    info_fields("paper.session.submit", "Paper session submitted", fields);
     Ok(manifest)
 }
 
@@ -363,5 +376,14 @@ pub fn stop_paper_session(session_id: &str) -> Result<PaperSessionManifest, Exec
             latest_runtime_to_ms: manifest.latest_runtime_to_ms,
         },
     )?;
+    warn_fields(
+        "paper.session.stop_requested",
+        "Paper session stop requested",
+        vec![
+            LogField::string("session_id", session_id.to_string()),
+            LogField::string("status", format!("{:?}", manifest.status)),
+            LogField::bool("stop_requested", manifest.stop_requested),
+        ],
+    );
     Ok(manifest)
 }

@@ -146,6 +146,14 @@ as equity, PnL, open positions, trades, orders, drawdown, feed health, and
 session logs. Failed sessions now keep their failure message and log stream
 visible even when the session never produced a first snapshot.
 
+The CLI, IDE server, and LSP now also emit structured JSON logs on `stderr`.
+Set `PALMSCRIPT_LOG_LEVEL=debug` or `trace` when you need more detail, and set
+`BETTERSTACK_SOURCE_TOKEN` plus optional `BETTERSTACK_LOGS_URL`,
+`BETTERSTACK_TIMEOUT_MS`, and `PALMSCRIPT_LOG_NAME` when you want to mirror the
+same events to Better Stack. Paper session logs remain available through
+`paper-logs` and now include clearer transition and runtime-window update
+messages for debugging live paper runs.
+
 Build and run:
 
 ```bash

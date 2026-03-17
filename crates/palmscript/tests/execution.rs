@@ -3,9 +3,9 @@ use std::sync::Mutex;
 
 use mockito::{Matcher, Server};
 use palmscript::{
-    load_paper_session_export, serve_execution_daemon, stop_paper_session, submit_paper_session,
-    DiagnosticsDetailMode, ExchangeEndpoints, ExecutionDaemonConfig, ExecutionSessionStatus,
-    PaperSessionConfig, SubmitPaperSession, VmLimits,
+    load_paper_session_export, load_paper_session_logs, serve_execution_daemon, stop_paper_session,
+    submit_paper_session, DiagnosticsDetailMode, ExchangeEndpoints, ExecutionDaemonConfig,
+    ExecutionSessionStatus, PaperSessionConfig, SubmitPaperSession, VmLimits,
 };
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -251,8 +251,20 @@ fn paper_daemon_processes_a_submitted_session_against_mocked_exchange_bars() {
     assert!(!status.running);
 
     let export = load_paper_session_export(&manifest.session_id).expect("paper export should load");
+    let logs = load_paper_session_logs(&manifest.session_id).expect("paper logs should load");
     assert_eq!(export.manifest.status, ExecutionSessionStatus::Live);
     assert_eq!(status.subscription_count, 1);
+    assert_eq!(
+        logs.iter()
+            .filter(|event| event.message.starts_with("paper session updated:"))
+            .count(),
+        1
+    );
+    assert!(
+        logs.iter()
+            .any(|event| event.message.contains("runtime_to=1704067440000")),
+        "{logs:#?}"
+    );
     let result = export
         .latest_result
         .expect("paper session should persist a latest result");

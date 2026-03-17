@@ -1,11 +1,13 @@
 [workspace]
 members = [
+    "crates/palmscript-logger",
     "crates/palmscript",
     "apps/cli",
     "apps/lsp",
     "apps/ide-server",
 ]
 default-members = [
+    "crates/palmscript-logger",
     "crates/palmscript",
     "apps/cli",
     "apps/lsp",

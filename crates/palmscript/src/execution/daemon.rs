@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use palmscript_logger::{error_fields, info_fields, warn_fields, LogField};
 use serde::{Deserialize, Serialize};
 
 use super::engine::{process_paper_session, LoadedPaperSession};
@@ -68,6 +69,15 @@ async fn serve_execution_daemon_async(
     let daemon_path = daemon_status_path(&state_root);
     let stop_path = daemon_stop_path(&state_root);
     let started_at_ms = now_ms();
+    info_fields(
+        "execution.daemon.start",
+        "Execution daemon starting",
+        vec![
+            LogField::u64("poll_interval_ms", config.poll_interval_ms),
+            LogField::bool("once", config.once),
+            LogField::string("state_root", state_root.display().to_string()),
+        ],
+    );
     let mut feed_hub = FeedHub::new()?;
     let mut runners = BTreeMap::<String, LoadedPaperSession>::new();
     if stop_path.exists() {
@@ -100,14 +110,38 @@ async fn serve_execution_daemon_async(
         runners.retain(|session_id, _| active_sessions.iter().any(|active| active == session_id));
         for manifest in &active_manifests {
             if !runners.contains_key(&manifest.session_id) {
-                let runner = LoadedPaperSession::load(manifest, now_ms())
-                    .await
-                    .map_err(|err| {
-                        ExecutionError::Runtime(format!(
+                let runner = match LoadedPaperSession::load(manifest, now_ms()).await {
+                    Ok(runner) => runner,
+                    Err(err) => {
+                        error_fields(
+                            "execution.daemon.session_load_failed",
+                            "Execution daemon failed to load a paper session",
+                            vec![
+                                LogField::string("session_id", manifest.session_id.clone()),
+                                LogField::string("error", err.to_string()),
+                            ],
+                        );
+                        return Err(ExecutionError::Runtime(format!(
                             "paper session `{}` failed to load: {err}",
                             manifest.session_id
-                        ))
-                    })?;
+                        )));
+                    }
+                };
+                info_fields(
+                    "execution.daemon.session_loaded",
+                    "Execution daemon loaded a paper session",
+                    vec![
+                        LogField::string("session_id", manifest.session_id.clone()),
+                        LogField::string(
+                            "script_path",
+                            manifest.script_path.clone().unwrap_or_default(),
+                        ),
+                        LogField::u64(
+                            "execution_source_count",
+                            manifest.execution_sources.len() as u64,
+                        ),
+                    ],
+                );
                 runners.insert(manifest.session_id.clone(), runner);
             }
         }
@@ -116,12 +150,20 @@ async fn serve_execution_daemon_async(
             .values()
             .map(|runner| runner.feed_plan().clone())
             .collect::<Vec<_>>();
-        feed_hub.sync(&plans, now_ms()).await.map_err(|err| {
-            ExecutionError::Runtime(format!(
+        if let Err(err) = feed_hub.sync(&plans, now_ms()).await {
+            error_fields(
+                "execution.daemon.feed_sync_failed",
+                "Execution daemon feed hub sync failed",
+                vec![
+                    LogField::string("active_sessions", active_sessions.join(",")),
+                    LogField::string("error", err.to_string()),
+                ],
+            );
+            return Err(ExecutionError::Runtime(format!(
                 "feed hub sync failed for active sessions [{}]: {err}",
                 active_sessions.join(",")
-            ))
-        })?;
+            )));
+        }
 
         let stop_requested = stop_path.exists();
         let status = ExecutionDaemonStatus {
@@ -142,6 +184,14 @@ async fn serve_execution_daemon_async(
         };
         write_json_file(&daemon_path, &status)?;
         if stop_requested {
+            warn_fields(
+                "execution.daemon.stop_requested",
+                "Execution daemon stop requested",
+                vec![LogField::string(
+                    "state_root",
+                    state_root.display().to_string(),
+                )],
+            );
             break;
         }
 
@@ -159,6 +209,14 @@ async fn serve_execution_daemon_async(
             final_status.running = false;
             final_status.updated_at_ms = now_ms();
             write_json_file(&daemon_path, &final_status)?;
+            info_fields(
+                "execution.daemon.once_complete",
+                "Execution daemon completed one-shot run",
+                vec![LogField::u64(
+                    "active_session_count",
+                    active_sessions.len() as u64,
+                )],
+            );
             return Ok(final_status);
         }
         tokio::time::sleep(Duration::from_millis(config.poll_interval_ms.max(1))).await;
@@ -181,6 +239,14 @@ async fn serve_execution_daemon_async(
         state_root: state_root.display().to_string(),
     };
     write_json_file(&daemon_path, &final_status)?;
+    info_fields(
+        "execution.daemon.stopped",
+        "Execution daemon stopped",
+        vec![LogField::string(
+            "state_root",
+            state_root.display().to_string(),
+        )],
+    );
     Ok(final_status)
 }
 
