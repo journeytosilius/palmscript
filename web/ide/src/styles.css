@@ -370,41 +370,49 @@ input {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.paper-screen {
-  display: grid;
-  flex: 1;
-  gap: 1rem;
-  min-height: 0;
-}
-
-.paper-strategy-panel {
-  overflow: hidden;
-}
-
-.paper-strategy-list {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-}
-
 .paper-layout {
   display: grid;
+  flex: 1;
   gap: 1rem;
   grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
   min-height: 0;
 }
 
 .paper-sidebar {
+  display: grid;
+  gap: 1rem;
   overflow: hidden;
+}
+
+.paper-sidebar-sections {
+  display: grid;
+  gap: 1rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.paper-sidebar-section {
+  display: grid;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.paper-strategy-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.paper-strategy-list--sidebar,
+.paper-session-list {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.25rem;
 }
 
 .paper-session-list {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: 0.75rem;
-  overflow: auto;
-  padding-right: 0.25rem;
 }
 
 .paper-session-card {
@@ -478,6 +486,10 @@ input {
   align-items: center;
   gap: 0.5rem;
   justify-content: space-between;
+}
+
+.panel__titlebar--compact {
+  margin-bottom: 0;
 }
 
 .paper-session-card__meta {

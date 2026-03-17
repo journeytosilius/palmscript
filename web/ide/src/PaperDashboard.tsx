@@ -203,7 +203,10 @@ export function PaperDashboard() {
 
   const selectedSession =
     strategySessions.find((session) => session.manifest.session_id === selectedSessionId) ?? null;
-  const exportData = detail?.export ?? null;
+  const activeDetail =
+    detail?.export.manifest.session_id === selectedSessionId ? detail : null;
+  const activeLogs = logs?.session_id === selectedSessionId ? logs : null;
+  const exportData = activeDetail?.export ?? null;
   const manifest = exportData?.manifest ?? selectedSession?.manifest ?? null;
   const snapshot = exportData?.snapshot ?? selectedSession?.snapshot ?? null;
   const result = exportData?.latest_result ?? null;
@@ -259,99 +262,102 @@ export function PaperDashboard() {
         <div className="app__status">{status}</div>
       </header>
 
-      <main className="paper-screen">
-        <section className="panel paper-strategy-panel">
+      <main className="paper-layout">
+        <aside className="paper-sidebar panel">
           <div className="panel__titlebar">
             <h2 className="panel__title">Strategies</h2>
             <span className="panel__meta">
-              {strategyGroups.length
-                ? `${strategyGroups.length} configured`
-                : "No configured strategies"}
-            </span>
-          </div>
-          <div className="paper-strategy-list">
-            {strategyGroups.length ? (
-              strategyGroups.map((strategy) => {
-                const active = strategy.key === selectedStrategyKey;
-                return (
-                  <button
-                    key={strategy.key}
-                    className={`paper-strategy-card${active ? " paper-strategy-card--active" : ""}`}
-                    type="button"
-                    onClick={() => {
-                      setSelectedStrategyKey(strategy.key);
-                      setSelectedSessionId(strategy.sessions[0]?.manifest.session_id ?? null);
-                    }}
-                  >
-                    <div className="paper-session-card__header">
-                      <strong>{strategy.label}</strong>
-                      <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
-                        {strategy.health}
-                      </span>
-                    </div>
-                    <span className="paper-session-card__meta">
-                      {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
-                      {formatTimeLabel(strategy.updatedAtMs)}
-                    </span>
-                    <div className="paper-session-card__stats">
-                      <span>{strategy.liveCount} live</span>
-                      <span>{strategy.failedCount} failed</span>
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="empty-state">No paper sessions have been submitted.</div>
-            )}
-          </div>
-        </section>
-
-        <div className="paper-layout">
-        <aside className="paper-sidebar panel">
-          <div className="panel__titlebar">
-            <h2 className="panel__title">Runs</h2>
-            <span className="panel__meta">
               {overviewLoading
                 ? "Refreshing"
-                : selectedStrategy
-                  ? `${strategySessions.length} for ${selectedStrategy.label}`
-                  : "No strategy selected"}
+                : strategyGroups.length
+                  ? `${strategyGroups.length} configured`
+                  : "No configured strategies"}
             </span>
           </div>
-          <div className="paper-session-list">
-            {strategySessions.length ? (
-              strategySessions.map((session) => {
-                const active = session.manifest.session_id === selectedSessionId;
-                const sessionSummary = session.snapshot?.summary ?? null;
-                return (
-                  <button
-                    key={session.manifest.session_id}
-                    className={`paper-session-card${active ? " paper-session-card--active" : ""}`}
-                    type="button"
-                    onClick={() => setSelectedSessionId(session.manifest.session_id)}
-                  >
-                    <div className="paper-session-card__header">
-                      <strong>{runLabel(session)}</strong>
-                      <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
-                        {session.manifest.health}
-                      </span>
-                    </div>
-                    <span className="paper-session-card__meta">
-                      started {formatTimeLabel(session.manifest.start_time_ms)} ·{" "}
-                      {session.manifest.execution_sources
-                        .map((source) => `${source.alias}:${source.template}`)
-                        .join(" · ")}
-                    </span>
-                    <div className="paper-session-card__stats">
-                      <span>{sessionSummary ? formatPercent(sessionSummary.total_return * 100) : "NA"}</span>
-                      <span>{sessionSummary ? formatNumber(sessionSummary.ending_equity) : "No snapshot"}</span>
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="empty-state">Select a strategy to inspect its tracked runs.</div>
-            )}
+          <div className="paper-sidebar-sections">
+            <section className="paper-sidebar-section">
+              <div className="paper-strategy-list paper-strategy-list--sidebar">
+                {strategyGroups.length ? (
+                  strategyGroups.map((strategy) => {
+                    const active = strategy.key === selectedStrategyKey;
+                    return (
+                      <button
+                        key={strategy.key}
+                        className={`paper-strategy-card${active ? " paper-strategy-card--active" : ""}`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStrategyKey(strategy.key);
+                          setSelectedSessionId(strategy.sessions[0]?.manifest.session_id ?? null);
+                        }}
+                      >
+                        <div className="paper-session-card__header">
+                          <strong>{strategy.label}</strong>
+                          <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
+                            {strategy.health}
+                          </span>
+                        </div>
+                        <span className="paper-session-card__meta">
+                          {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
+                          {formatTimeLabel(strategy.updatedAtMs)}
+                        </span>
+                        <div className="paper-session-card__stats">
+                          <span>{strategy.liveCount} live</span>
+                          <span>{strategy.failedCount} failed</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="empty-state">No paper sessions have been submitted.</div>
+                )}
+              </div>
+            </section>
+
+            <section className="paper-sidebar-section">
+              <div className="panel__titlebar panel__titlebar--compact">
+                <h3 className="panel__title">Runs</h3>
+                <span className="panel__meta">
+                  {selectedStrategy
+                    ? `${strategySessions.length} for ${selectedStrategy.label}`
+                    : "No strategy selected"}
+                </span>
+              </div>
+              <div className="paper-session-list">
+                {strategySessions.length ? (
+                  strategySessions.map((session) => {
+                    const active = session.manifest.session_id === selectedSessionId;
+                    const sessionSummary = session.snapshot?.summary ?? null;
+                    return (
+                      <button
+                        key={session.manifest.session_id}
+                        className={`paper-session-card${active ? " paper-session-card--active" : ""}`}
+                        type="button"
+                        onClick={() => setSelectedSessionId(session.manifest.session_id)}
+                      >
+                        <div className="paper-session-card__header">
+                          <strong>{runLabel(session)}</strong>
+                          <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
+                            {session.manifest.health}
+                          </span>
+                        </div>
+                        <span className="paper-session-card__meta">
+                          started {formatTimeLabel(session.manifest.start_time_ms)} ·{" "}
+                          {session.manifest.execution_sources
+                            .map((source) => `${source.alias}:${source.template}`)
+                            .join(" · ")}
+                        </span>
+                        <div className="paper-session-card__stats">
+                          <span>{sessionSummary ? formatPercent(sessionSummary.total_return * 100) : "NA"}</span>
+                          <span>{sessionSummary ? formatNumber(sessionSummary.ending_equity) : "No snapshot"}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="empty-state">Select a strategy to inspect its tracked runs.</div>
+                )}
+              </div>
+            </section>
           </div>
         </aside>
 
@@ -754,11 +760,11 @@ export function PaperDashboard() {
                 <section className="panel">
                   <div className="panel__titlebar">
                     <h2 className="panel__title">Session Log</h2>
-                    <span className="panel__meta">{logs?.logs.length ?? 0} events</span>
+                    <span className="panel__meta">{activeLogs?.logs.length ?? 0} events</span>
                   </div>
                   <div className="list">
-                    {logs?.logs.length ? (
-                      [...logs.logs]
+                    {activeLogs?.logs.length ? (
+                      [...activeLogs.logs]
                         .slice(-40)
                         .reverse()
                         .map((event: PaperSessionLogEvent, index) => (
@@ -784,7 +790,6 @@ export function PaperDashboard() {
             </section>
           )}
         </section>
-        </div>
       </main>
     </div>
   );
@@ -853,6 +858,10 @@ function groupSessionsByStrategy(sessions: PaperDashboardSession[]): StrategyGro
       failedCount: sessionHealthValue(session) === "failed" ? 1 : 0,
       updatedAtMs: sessionUpdatedAt(session),
     });
+  }
+
+  for (const group of groups.values()) {
+    group.sessions.sort((left, right) => sessionUpdatedAt(right) - sessionUpdatedAt(left));
   }
 
   return [...groups.values()].sort((left, right) => right.updatedAtMs - left.updatedAtMs);
