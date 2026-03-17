@@ -21,15 +21,17 @@ let trend_down = below(fast, slow)
 let up_bar = spot.close > spot.close[1]
 let down_bar = spot.close < spot.close[1]
 let stretch = zscore(spot.close - slow, slow_len)
+let long_setup = (trend_up and up_bar) or crossover(pulse, 52) or (stretch < -0.4 and pulse > 45)
+let short_setup = (trend_down and down_bar) or crossunder(pulse, 48) or (stretch > 0.4 and pulse < 55)
 
 cooldown long = 0
 cooldown short = 0
 max_bars_in_trade long = max_hold_bars
 max_bars_in_trade short = max_hold_bars
 
-entry long = (trend_up and up_bar) or crossover(pulse, 52) or (stretch < -0.4 and pulse > 45)
+entry long = long_setup and !short_setup
 exit long = down_bar or crossunder(pulse, 52) or crossunder(fast, slow)
-entry short = (trend_down and down_bar) or crossunder(pulse, 48) or (stretch > 0.4 and pulse < 55)
+entry short = short_setup and !long_setup
 exit short = up_bar or crossover(pulse, 48) or crossover(fast, slow)
 
 order_template market_order = market(venue = exec)
@@ -79,6 +81,7 @@ export fast_slow_gap = fast - slow
 export pulse_state = pulse
 export trigger_bias = trend_up ? 1 : (trend_down ? -1 : 0)
 export stretch_state = stretch
+export signal_conflict = long_setup and short_setup
 
 plot(spot.close)
 plot(fast)

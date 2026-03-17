@@ -42,6 +42,32 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
         .collect()
 }
 
+fn oscillating_bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar> {
+    let pattern = [-1.8, 2.4, -2.2, 2.8, -2.6, 2.0];
+    let mut close = start_close;
+    (0..len)
+        .map(|index| {
+            close += pattern[index % pattern.len()];
+            let high = close + 1.6 + (index % 3) as f64 * 0.2;
+            let low = close - 1.6 - (index % 2) as f64 * 0.2;
+            Bar {
+                open: close - pattern[index % pattern.len()] * 0.35,
+                high,
+                low,
+                close,
+                volume: 1_000.0 + index as f64 * 5.0,
+                time: (start_ms + spacing_ms * index as i64) as f64,
+                funding_rate: None,
+                open_interest: None,
+                mark_price: None,
+                index_price: None,
+                premium_index: None,
+                basis: None,
+            }
+        })
+        .collect()
+}
+
 #[test]
 fn referenced_docs_examples_compile() {
     let examples = [
@@ -339,7 +365,7 @@ fn triiger_happy_example_runs_with_local_feeds() {
         feeds: vec![SourceFeed {
             source_id: 0,
             interval: palmscript::Interval::Min1,
-            bars: bars(JAN_1_2024_UTC_MS, MINUTE_MS, 240, 100.0),
+            bars: oscillating_bars(JAN_1_2024_UTC_MS, MINUTE_MS, 240, 100.0),
         }],
     };
 
