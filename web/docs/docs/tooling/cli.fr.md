@@ -231,6 +231,9 @@ choisir une strategie depuis un accordeon repliable en haut, basculer entre
 les runs suivis pour cette strategie et inspecter l'equity, le PnL, les
 trades, le drawdown, la sante des feeds et les logs dans un panneau unifie en
 temps reel.
+La `paper-sessions.toml` fournie utilise par defaut `paper_trigger_happy.ps`,
+tandis que `strategy.ps` reste la strategie d'exemple avancee a sources
+multiples.
 Les sessions en echec continuent d'afficher
 leur message d'erreur de manifeste et le flux de logs meme si aucun premier
 snapshot n'a ete produit.

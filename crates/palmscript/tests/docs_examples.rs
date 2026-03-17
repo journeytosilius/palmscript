@@ -46,6 +46,7 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
 fn referenced_docs_examples_compile() {
     let examples = [
         "examples/strategies/strategy.ps",
+        "examples/strategies/paper_trigger_happy.ps",
         "examples/strategies/adaptive_trend_backtest.ps",
         "examples/strategies/portfolio_caps_backtest.ps",
         "examples/strategies/sma_cross.ps",
@@ -330,8 +331,8 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
 }
 
 #[test]
-fn trigger_happy_strategy_example_runs_with_local_feeds() {
-    let path = "examples/strategies/strategy.ps";
+fn paper_trigger_happy_example_runs_with_local_feeds() {
+    let path = "examples/strategies/paper_trigger_happy.ps";
     let compiled = compile(&read_strategy(path)).expect("strategy should compile");
     let runtime = SourceRuntimeConfig {
         base_interval: palmscript::Interval::Min1,

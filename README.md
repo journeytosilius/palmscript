@@ -145,7 +145,9 @@ accordion with collapsible strategy sections and per-strategy run selection,
 and keeps the selected run in one unified detail panel with real-time equity,
 PnL, open positions, trades, orders, drawdown, feed health, and session logs.
 Failed sessions now keep their failure message and log stream visible even
-when the session never produced a first snapshot.
+when the session never produced a first snapshot. The bundled
+`paper-sessions.toml` now points at `paper_trigger_happy.ps` so the original
+`strategy.ps` can remain the advanced multi-source example.
 
 The CLI, IDE server, and LSP now also emit structured JSON logs on `stderr`.
 Set `PALMSCRIPT_LOG_LEVEL=debug` or `trace` when you need more detail, and set

@@ -230,6 +230,9 @@ serves a live paper dashboard at `http://localhost:8080/paper` so you can
 escolher uma estrategia em um acordeao recolhivel no topo, alternar entre as
 execucoes rastreadas dessa estrategia e inspecionar equity, PnL, trades,
 drawdown, saude dos feeds e logs em um painel unificado em tempo real.
+A `paper-sessions.toml` empacotada passa a usar `paper_trigger_happy.ps` por
+padrao, enquanto `strategy.ps` continua como a estrategia de exemplo avancada
+com multiplas fontes.
 Sessoes com falha continuam exibindo a
 mensagem de falha do manifesto e o fluxo de logs mesmo quando ainda nao existe
 um primeiro snapshot.
