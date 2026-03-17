@@ -204,9 +204,13 @@ impl JsonLineSink<io::Stderr> {
 
 impl<W: Write + Send> LogSink for JsonLineSink<W> {
     fn emit(&self, record: &LogRecord) {
+        let mut payload = match serde_json::to_vec(record) {
+            Ok(payload) => payload,
+            Err(_) => return,
+        };
+        payload.push(b'\n');
         let mut writer = self.writer.lock().expect("json line writer lock");
-        if serde_json::to_writer(&mut *writer, record).is_ok() {
-            let _ = writer.write_all(b"\n");
+        if writer.write_all(&payload).is_ok() {
             let _ = writer.flush();
         }
     }
@@ -538,6 +542,9 @@ fn env_non_empty(key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[test]
     fn record_uses_utc_timestamp() {
@@ -594,5 +601,44 @@ mod tests {
         assert_eq!(value["eventType"], "paper.session");
         assert_eq!(value["session_id"], "paper-1");
         assert_eq!(value["trade_count"], 2);
+    }
+
+    struct CountingWriter {
+        writes: Arc<AtomicUsize>,
+        bytes: Vec<u8>,
+    }
+
+    impl CountingWriter {
+        fn new(writes: Arc<AtomicUsize>) -> Self {
+            Self {
+                writes,
+                bytes: Vec::new(),
+            }
+        }
+    }
+
+    impl Write for CountingWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.writes.fetch_add(1, Ordering::SeqCst);
+            self.bytes.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn json_line_sink_emits_a_single_write_per_record() {
+        let writes = Arc::new(AtomicUsize::new(0));
+        let sink = JsonLineSink::new(CountingWriter::new(writes.clone()));
+        sink.emit(&LogRecord::new(
+            Level::Info,
+            "paper.session",
+            "updated",
+            vec![LogField::string("session_id", "paper-1")],
+        ));
+        assert_eq!(writes.load(Ordering::SeqCst), 1);
     }
 }
