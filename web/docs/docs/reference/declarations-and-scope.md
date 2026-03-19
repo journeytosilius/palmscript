@@ -215,9 +215,10 @@ Rules:
 - `max_net_exposure_pct = <N>` caps the signed open notional divided by current portfolio equity
 - `portfolio_group "name" = [alias1, alias2, ...]` declares a named alias group for diagnostics and future group-scoped controls
 - both declarative risk controls are compile-time only in v1 and require a non-negative whole-number scalar expression
-- portfolio controls are compile-time only in v1
-- count controls require a non-negative whole-number scalar expression
-- exposure controls require a non-negative finite numeric scalar expression
+- portfolio controls are evaluated at runtime once per bar and can use literal, time-aware, or regime-aware numeric expressions
+- count controls require numeric, `series<float>`, or `na`; compile-time constant count caps must still be non-negative whole numbers
+- exposure controls require numeric, `series<float>`, or `na`; compile-time constant exposure caps must still be finite non-negative fractions
+- if a portfolio control evaluates to `na`, a negative value, a non-finite value, or a fractional count cap on a bar, PalmScript blocks new entries for that control on that bar
 - portfolio groups require unique group names, at least one alias, and aliases that were declared by `source`
 - portfolio controls do not resize orders or force exits; they only block new entries that would exceed the configured caps
 - `order entry ...` and `order exit ...` attach an execution template to a matching signal role

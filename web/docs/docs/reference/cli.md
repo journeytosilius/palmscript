@@ -236,7 +236,7 @@ Default safety behavior:
 - `--spot-virtual-rebalance` lets multi-venue spot backtests and optimize runs transfer quote between those venue ledgers automatically before long entries
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 - `--max-volume-fill-pct <0..1>`: optional hard cap on any simulated fill as a fraction of execution-bar volume; fills above the cap are cancelled instead of partially filled
-- portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
+- portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps, and those cap expressions can now be regime/time-aware runtime numerics
 - the final JSON/text result also carries validation-constraint summaries, feasible vs infeasible candidate counts, best-infeasible-candidate fallback data, constraint-failure breakdowns, optional direct-validation survivor replays, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, deterministic overfitting-risk summaries, `starting_ledgers`, `ending_ledgers`, `ledger_events`, and improvement hints
 
 ## `palmscript run paper`

@@ -209,8 +209,9 @@ The grammar does not by itself make a program valid. The implementation addition
 - `entry1..3 long|short`, `target1..3 long|short`, and `protect_after_target1..3 long|short` are valid staged declarations in v1
 - `entry long` and `target long|short` remain compatibility aliases for stage 1
 - `cooldown long|short` and `max_bars_in_trade long|short` require a compile-time non-negative whole-number scalar expression
-- `max_positions`, `max_long_positions`, and `max_short_positions` require a compile-time non-negative whole-number scalar expression
-- `max_gross_exposure_pct` and `max_net_exposure_pct` require a compile-time non-negative finite numeric scalar expression
+- `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, and `max_net_exposure_pct` accept numeric or `series<float>` expressions and are evaluated once per bar at runtime
+- compile-time constant count caps must still be non-negative whole numbers, and compile-time constant exposure caps must still be finite non-negative fractions
+- when a runtime portfolio control evaluates to `na`, a negative value, a non-finite value, or a fractional count cap, new entries are blocked for that control on that bar
 - `portfolio_group` aliases must refer to declared `source` bindings and group names must be unique
 - matching `source` and `execution` aliases may mirror each other when the template and symbol are the same; other aliases must remain unique
 - order constructors accept either the legacy positional form or the named-argument form, but not both at once

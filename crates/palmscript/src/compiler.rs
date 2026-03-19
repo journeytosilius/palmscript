@@ -2574,88 +2574,44 @@ impl<'a> Analyzer<'a> {
         }
 
         let info = self.analyze_expr(expr);
-        let Some(ty) = info.concrete() else {
+        if !info.ty.is_numeric_like() {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 format!(
-                    "{} requires a compile-time numeric scalar expression",
-                    portfolio_control_name(compiled_kind)
-                ),
-                expr.span,
-            ));
-            return;
-        };
-        if ty != Type::F64 {
-            self.diagnostics.push(Diagnostic::new(
-                DiagnosticKind::Type,
-                format!(
-                    "{} requires a compile-time numeric scalar expression",
+                    "{} requires numeric, series<float>, or na",
                     portfolio_control_name(compiled_kind)
                 ),
                 expr.span,
             ));
             return;
         }
-        let Some(value) = eval_immutable_expr(expr, &self.analysis.immutable_values) else {
-            self.diagnostics.push(Diagnostic::new(
-                DiagnosticKind::Type,
-                format!(
-                    "{} requires a compile-time numeric scalar expression",
-                    portfolio_control_name(compiled_kind)
-                ),
-                expr.span,
-            ));
-            return;
-        };
-        let Value::F64(value) = value else {
-            self.diagnostics.push(Diagnostic::new(
-                DiagnosticKind::Type,
-                format!(
-                    "{} requires a compile-time numeric scalar expression",
-                    portfolio_control_name(compiled_kind)
-                ),
-                expr.span,
-            ));
-            return;
-        };
-        if !value.is_finite() || value < 0.0 {
-            let message = match compiled_kind {
-                CompiledPortfolioControlKind::MaxPositions
-                | CompiledPortfolioControlKind::MaxLongPositions
-                | CompiledPortfolioControlKind::MaxShortPositions => format!(
-                    "{} requires a non-negative whole number",
-                    portfolio_control_name(compiled_kind)
-                ),
-                CompiledPortfolioControlKind::MaxGrossExposurePct
-                | CompiledPortfolioControlKind::MaxNetExposurePct => format!(
-                    "{} requires a finite non-negative exposure fraction",
-                    portfolio_control_name(compiled_kind)
-                ),
+
+        if let Some(value) = eval_immutable_expr(expr, &self.analysis.immutable_values) {
+            let Some(message) = validate_portfolio_control_value(compiled_kind, value) else {
+                let hidden_name = format!(
+                    "__portfolio_control.{}",
+                    portfolio_control_hidden_suffix(compiled_kind)
+                );
+                let slot = self.define_symbol(hidden_name, info, true, None);
+                self.analysis.portfolio_controls.push(PortfolioControlDecl {
+                    kind: compiled_kind,
+                    slot,
+                });
+                return;
             };
             self.diagnostics
                 .push(Diagnostic::new(DiagnosticKind::Type, message, expr.span));
             return;
         }
-        if matches!(
-            compiled_kind,
-            CompiledPortfolioControlKind::MaxPositions
-                | CompiledPortfolioControlKind::MaxLongPositions
-                | CompiledPortfolioControlKind::MaxShortPositions
-        ) && value.fract() != 0.0
-        {
-            self.diagnostics.push(Diagnostic::new(
-                DiagnosticKind::Type,
-                format!(
-                    "{} requires a non-negative whole number",
-                    portfolio_control_name(compiled_kind)
-                ),
-                expr.span,
-            ));
-            return;
-        }
+
+        let hidden_name = format!(
+            "__portfolio_control.{}",
+            portfolio_control_hidden_suffix(compiled_kind)
+        );
+        let slot = self.define_symbol(hidden_name, info, true, None);
         self.analysis.portfolio_controls.push(PortfolioControlDecl {
             kind: compiled_kind,
-            value,
+            slot,
         });
     }
 
@@ -6172,6 +6128,65 @@ fn portfolio_control_name(kind: CompiledPortfolioControlKind) -> &'static str {
     }
 }
 
+fn portfolio_control_hidden_suffix(kind: CompiledPortfolioControlKind) -> &'static str {
+    match kind {
+        CompiledPortfolioControlKind::MaxPositions => "max_positions",
+        CompiledPortfolioControlKind::MaxLongPositions => "max_long_positions",
+        CompiledPortfolioControlKind::MaxShortPositions => "max_short_positions",
+        CompiledPortfolioControlKind::MaxGrossExposurePct => "max_gross_exposure_pct",
+        CompiledPortfolioControlKind::MaxNetExposurePct => "max_net_exposure_pct",
+    }
+}
+
+fn validate_portfolio_control_value(
+    kind: CompiledPortfolioControlKind,
+    value: Value,
+) -> Option<String> {
+    let value = match value {
+        Value::F64(value) => value,
+        Value::NA => {
+            return Some(format!(
+                "{} requires a finite numeric value when the expression is compile-time constant",
+                portfolio_control_name(kind)
+            ));
+        }
+        _ => {
+            return Some(format!(
+                "{} requires numeric, series<float>, or na",
+                portfolio_control_name(kind)
+            ));
+        }
+    };
+    if !value.is_finite() || value < 0.0 {
+        return Some(match kind {
+            CompiledPortfolioControlKind::MaxPositions
+            | CompiledPortfolioControlKind::MaxLongPositions
+            | CompiledPortfolioControlKind::MaxShortPositions => format!(
+                "{} requires a non-negative whole number",
+                portfolio_control_name(kind)
+            ),
+            CompiledPortfolioControlKind::MaxGrossExposurePct
+            | CompiledPortfolioControlKind::MaxNetExposurePct => format!(
+                "{} requires a finite non-negative exposure fraction",
+                portfolio_control_name(kind)
+            ),
+        });
+    }
+    if matches!(
+        kind,
+        CompiledPortfolioControlKind::MaxPositions
+            | CompiledPortfolioControlKind::MaxLongPositions
+            | CompiledPortfolioControlKind::MaxShortPositions
+    ) && value.fract() != 0.0
+    {
+        return Some(format!(
+            "{} requires a non-negative whole number",
+            portfolio_control_name(kind)
+        ));
+    }
+    None
+}
+
 fn side_name(side: PositionSide) -> &'static str {
     match side {
         PositionSide::Long => "long",
@@ -7145,8 +7160,29 @@ impl<'a> Compiler<'a> {
                     | OrderSizeExpr::InvalidRiskPctArity => {}
                 }
             }
+            StmtKind::PortfolioControl { kind, expr } => {
+                let compiled_kind = compiled_portfolio_control_kind(*kind);
+                let Some(slot) = self
+                    .analysis
+                    .portfolio_controls
+                    .iter()
+                    .find(|decl| decl.kind == compiled_kind)
+                    .map(|decl| decl.slot)
+                else {
+                    self.push_internal_compile_error(
+                        "missing compiled portfolio control slot",
+                        stmt.span,
+                    );
+                    return;
+                };
+                self.emit_expr(expr, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(slot)
+                        .with_span(stmt.span),
+                );
+            }
             StmtKind::RiskControl { .. }
-            | StmtKind::PortfolioControl { .. }
             | StmtKind::PortfolioGroup { .. }
             | StmtKind::Module { .. } => {}
             StmtKind::If {

@@ -169,6 +169,32 @@ plot(left.close)",
 }
 
 #[test]
+fn parses_runtime_portfolio_control_expressions() {
+    compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution left = binance.spot(\"BTCUSDT\")
+execution right = gate.spot(\"BTC_USDT\")
+regime risk_off = left.time >= 1704067320000
+max_positions = risk_off ? 1 : 2
+max_gross_exposure_pct = risk_off ? 0.5 : 1.0
+entry long = left.close > left.close[1]
+entry short = right.close > right.close[1]
+order entry long = market(venue = left)
+order entry short = market(venue = right)
+size entry long = 0.4
+size entry short = 0.4
+exit long = false
+exit short = false
+order exit long = market(venue = left)
+order exit short = market(venue = right)
+plot(left.close)",
+    )
+    .expect("runtime portfolio control expressions should compile");
+}
+
+#[test]
 fn parses_entry_module_declarations() {
     compile(
         "interval 1m

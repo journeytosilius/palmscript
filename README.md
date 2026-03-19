@@ -116,7 +116,7 @@ Start with these checked-in strategies:
 - [cross_source_spread.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/cross_source_spread.ps): cross-source market research with explicit source aliases and spread math
 - [indicator_showcase.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/indicator_showcase.ps): dense indicator tour covering `supertrend`, `anchored_vwap`, `donchian`, `percentile`, `zscore`, and `ulcer_index`
 - [venue_orders_backtest.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/venue_orders_backtest.ps): backtest with explicit `execution`, named-argument orders, and attached exit flow
-- [portfolio_caps_backtest.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/portfolio_caps_backtest.ps): multi-alias portfolio backtest with caps and shared-equity routing
+- [portfolio_caps_backtest.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/portfolio_caps_backtest.ps): multi-alias portfolio backtest with caps, shared-equity routing, and regime-aware exposure shaping
 - [strategy.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/strategy.ps): advanced perp/spot multi-source strategy with optimizer metadata, staged entries, and mark-triggered exits
 - [triiger_happy.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/triiger_happy.ps): intentionally aggressive paper-trading smoke test for fill and lifecycle churn
 

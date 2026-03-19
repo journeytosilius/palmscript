@@ -321,7 +321,7 @@ max_bars_in_trade long = 48
 Rules:
 
 - both declarations are top-level only
-- both declarations currently require a compile-time non-negative whole-number scalar expression
+- portfolio caps can now use literal or runtime numeric expressions, including regime/time-aware shaping
 - `cooldown` is side-specific and applies after a full close on that side
 - `max_bars_in_trade` is side-specific and exits at the next execution-bar open when the limit is reached
 - the forced exit is reported as a signal-style exit so `last_exit.*` and `position_event.*` stay deterministic
@@ -340,10 +340,11 @@ max_net_exposure_pct = 0.8
 Additional rules:
 
 - portfolio controls are top-level only
-- count controls require a compile-time non-negative whole-number scalar expression
-- exposure controls require a compile-time non-negative finite numeric scalar expression
+- count controls require numeric, `series<float>`, or `na`; compile-time constant count caps must still be non-negative whole numbers
+- exposure controls require numeric, `series<float>`, or `na`; compile-time constant exposure caps must still be finite non-negative fractions
 - `portfolio_group` aliases must refer to declared `source` aliases
 - portfolio controls only matter when multiple `--execution-source` aliases activate portfolio mode
+- invalid runtime portfolio caps (`na`, negative, non-finite, or fractional count values) block new entries on that bar
 - blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
 
 ## Rust API

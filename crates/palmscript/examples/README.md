@@ -42,7 +42,7 @@ Start here when you want to see the language in action:
 Additional representative files:
 
 - `crates/palmscript/examples/strategies/experimental/xrp_usdm_mean_reversion.ps`: experimental 5m Binance USD-M XRPUSDT mean-reversion strategy with both long and short legs, 1h regime gating, and smaller short sizing
-- `crates/palmscript/examples/strategies/experimental/ada_usdm_regime_scalper.ps`: experimental 3m Binance USD-M ADAUSDT regime-switching long/short scalper with explicit `regime` declarations for range, trend, and risk-off context, a 04:00-08:00 UTC session filter, and higher-expectancy defaults that heavily favor trend pullback continuations, de-risk range fades, and pay a larger trend runner
+- `crates/palmscript/examples/strategies/experimental/ada_usdm_regime_scalper.ps`: experimental 3m Binance USD-M ADAUSDT regime-switching long/short scalper with explicit `regime` declarations for range, trend, and risk-off context, a 04:00-16:00 UTC capped-fill session filter, stricter trend-quality gating, and smaller participation-aware default sizing so capped backtests stay active without forcing oversized fills
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
@@ -98,6 +98,11 @@ The same checked-in strategies can also be queued into the local paper daemon wi
 Paper snapshots now include the latest top-of-book bid/ask, derived mid price, and any available last/mark price snapshots for each execution alias. That makes it easier for agents to inspect live paper-session valuation and quote health without leaving the CLI.
 
 Paper mode is local-only and fake-money-only in v1, but it reuses the same compiled VM, backtest order semantics, portfolio caps, cooldowns, and `max_bars_in_trade` controls as ordinary backtests.
+
+Portfolio caps can now be literal values or runtime numeric expressions such as
+`max_positions = risk_off ? 1 : 2` and `max_gross_exposure_pct = london ? 0.8 : 0.4`.
+When one of those controls evaluates to `na`, a negative value, or a fractional
+count cap on a bar, PalmScript blocks new entries instead of ignoring the cap.
 
 Common commands:
 

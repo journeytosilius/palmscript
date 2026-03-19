@@ -5192,14 +5192,39 @@ fn decision_reason_for_portfolio_control(kind: ProgramPortfolioControlKind) -> D
     }
 }
 
+enum PortfolioControlValue {
+    Missing,
+    Valid(f64),
+    Invalid,
+}
+
 fn portfolio_control_value(
     controls: &[PortfolioControlDecl],
     kind: ProgramPortfolioControlKind,
-) -> Option<f64> {
-    controls
-        .iter()
-        .find(|decl| decl.kind == kind)
-        .map(|decl| decl.value)
+    stepper: &RuntimeStepper,
+) -> PortfolioControlValue {
+    let Some(decl) = controls.iter().find(|decl| decl.kind == kind) else {
+        return PortfolioControlValue::Missing;
+    };
+    let Some(value) = stepper.local_value(decl.slot) else {
+        return PortfolioControlValue::Invalid;
+    };
+    let Value::F64(value) = value else {
+        return PortfolioControlValue::Invalid;
+    };
+    if !value.is_finite() || *value < 0.0 {
+        return PortfolioControlValue::Invalid;
+    }
+    if matches!(
+        kind,
+        ProgramPortfolioControlKind::MaxPositions
+            | ProgramPortfolioControlKind::MaxLongPositions
+            | ProgramPortfolioControlKind::MaxShortPositions
+    ) && value.fract() != 0.0
+    {
+        return PortfolioControlValue::Invalid;
+    }
+    PortfolioControlValue::Valid(*value)
 }
 
 fn open_position_metrics<'a>(
@@ -5334,8 +5359,19 @@ fn portfolio_entry_block_reason(
         ProgramPortfolioControlKind::MaxGrossExposurePct,
         ProgramPortfolioControlKind::MaxNetExposurePct,
     ] {
-        let Some(limit) = portfolio_control_value(&prepared.portfolio_controls, kind) else {
-            continue;
+        let limit = match portfolio_control_value(
+            &prepared.portfolio_controls,
+            kind,
+            &states.current_state.stepper,
+        ) {
+            PortfolioControlValue::Missing => continue,
+            PortfolioControlValue::Valid(limit) => limit,
+            PortfolioControlValue::Invalid => {
+                return Some((
+                    decision_reason_for_portfolio_control(kind),
+                    mapped_portfolio_control_kind(kind),
+                ));
+            }
         };
         let exceeded = match kind {
             ProgramPortfolioControlKind::MaxPositions => projected_position_count as f64 > limit,

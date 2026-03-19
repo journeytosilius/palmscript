@@ -1728,6 +1728,104 @@ plot(left.close)",
 }
 
 #[test]
+fn portfolio_controls_can_follow_regime_state_at_runtime() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let t1 = t0 + support::MINUTE_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+regime risk_off = left.time == {t1}
+max_positions = risk_off ? 1 : 2
+entry long = left.close > left.close[1]
+entry short = right.close > right.close[1]
+order entry long = market(venue = left)
+order entry short = market(venue = right)
+size entry long = 0.4
+size entry short = 0.4
+exit long = false
+exit short = false
+order exit long = market(venue = left)
+order exit short = market(venue = right)
+plot(left.close)"
+    ))
+    .expect("script should compile");
+    let runtime = multi_source_runtime(
+        vec![
+            bar(t0, 10.0, 10.0),
+            bar(t1, 11.0, 11.0),
+            bar(t1 + support::MINUTE_MS, 12.0, 12.0),
+        ],
+        vec![
+            bar(t0, 20.0, 20.0),
+            bar(t1, 21.0, 21.0),
+            bar(t1 + support::MINUTE_MS, 22.0, 22.0),
+        ],
+    );
+    let mut backtest = trace_config("left");
+    backtest.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("portfolio backtest should succeed");
+
+    assert_eq!(result.open_positions.len(), 1);
+    assert_eq!(result.summary.peak_open_position_count, 1);
+    assert_eq!(result.diagnostics.blocked_portfolio_entries.len(), 1);
+    assert_eq!(
+        result.diagnostics.blocked_portfolio_entries[0].kind,
+        palmscript::backtest::PortfolioControlKind::MaxPositions
+    );
+}
+
+#[test]
+fn portfolio_exposure_caps_can_follow_regime_state_at_runtime() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let t1 = t0 + support::MINUTE_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+regime risk_off = left.time == {t1}
+max_gross_exposure_pct = risk_off ? 0.3 : 1.0
+entry long = left.close > left.close[1]
+entry short = right.close > right.close[1]
+order entry long = market(venue = left)
+order entry short = market(venue = right)
+size entry long = 0.4
+size entry short = 0.4
+exit long = false
+exit short = false
+order exit long = market(venue = left)
+order exit short = market(venue = right)
+plot(left.close)"
+    ))
+    .expect("script should compile");
+    let runtime = multi_source_runtime(
+        vec![
+            bar(t0, 10.0, 10.0),
+            bar(t1, 11.0, 11.0),
+            bar(t1 + support::MINUTE_MS, 12.0, 12.0),
+        ],
+        vec![
+            bar(t0, 20.0, 20.0),
+            bar(t1, 21.0, 21.0),
+            bar(t1 + support::MINUTE_MS, 22.0, 22.0),
+        ],
+    );
+    let mut backtest = trace_config("left");
+    backtest.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("portfolio backtest should succeed");
+
+    assert_eq!(result.open_positions.len(), 1);
+    assert_eq!(result.summary.peak_open_position_count, 1);
+    assert_eq!(result.diagnostics.blocked_portfolio_entries.len(), 1);
+    assert_eq!(
+        result.diagnostics.blocked_portfolio_entries[0].kind,
+        palmscript::backtest::PortfolioControlKind::MaxGrossExposurePct
+    );
+}
+
+#[test]
 fn full_trace_records_cooldown_and_forced_exit_reasons() {
     let compiled = compile(
         "interval 1m

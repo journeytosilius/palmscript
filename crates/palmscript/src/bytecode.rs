@@ -435,7 +435,7 @@ pub enum PortfolioControlKind {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PortfolioControlDecl {
     pub kind: PortfolioControlKind,
-    pub value: f64,
+    pub slot: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

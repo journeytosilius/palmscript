@@ -338,13 +338,22 @@ max_gross_exposure_pct = 0.8
 max_net_exposure_pct = 0.8
 ```
 
+Those caps can also follow market state directly:
+
+```palmscript
+regime risk_off = weekday_utc(left.time) >= 5
+max_positions = risk_off ? 1 : 2
+max_gross_exposure_pct = risk_off ? 0.5 : 0.9
+```
+
 Additional rules:
 
 - portfolio controls are top-level only
-- count controls require a compile-time non-negative whole-number scalar expression
-- exposure controls require a compile-time non-negative finite numeric scalar expression
+- count controls require numeric, `series<float>`, or `na`; compile-time constant count caps must still be non-negative whole numbers
+- exposure controls require numeric, `series<float>`, or `na`; compile-time constant exposure caps must still be finite non-negative fractions
 - `portfolio_group` aliases must refer to declared `source` aliases
 - portfolio controls only matter when multiple `--execution-source` aliases activate portfolio mode
+- when a portfolio control evaluates to `na`, a negative value, a non-finite value, or a fractional count cap, PalmScript blocks new entries for that control on that bar
 - blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
 
 ## Rust API

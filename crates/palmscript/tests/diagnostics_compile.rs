@@ -335,13 +335,13 @@ fn declarative_risk_controls_reject_duplicate_side_declarations() {
 }
 
 #[test]
-fn portfolio_controls_require_compile_time_numeric_scalars() {
-    let diagnostics = compile_diagnostics(&with_interval("max_positions = close\nplot(close)"));
+fn portfolio_controls_require_numeric_runtime_expressions() {
+    let diagnostics = compile_diagnostics(&with_interval("max_positions = true\nplot(close)"));
     assert!(diagnostics.iter().any(|diag| {
         diag.0 == DiagnosticKind::Type
             && diag
                 .1
-                .contains("`max_positions` requires a compile-time numeric scalar expression")
+                .contains("`max_positions` requires numeric, series<float>, or na")
     }));
 }
 
