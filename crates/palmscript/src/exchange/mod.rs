@@ -2,6 +2,7 @@
 
 pub mod binance;
 pub mod bybit;
+mod cache;
 mod common;
 pub mod gate;
 
@@ -14,6 +15,10 @@ use thiserror::Error;
 
 use crate::backtest::PerpBacktestContext;
 use crate::compiler::CompiledProgram;
+use crate::exchange::cache::{
+    HistoricalBarCacheKey, HistoricalBarFamily, HistoricalCache, HistoricalRiskAccessMode,
+    HistoricalRiskCacheKey,
+};
 use crate::interval::{
     DeclaredMarketSource, Interval, MarketField, SourceIntervalRef, SourceTemplate,
 };
@@ -177,12 +182,30 @@ pub enum ExchangeFetchError {
 
 pub(crate) type SourceFieldRequirements = BTreeMap<SourceIntervalRef, BTreeSet<MarketField>>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HistoricalRequestWindow {
+    from_ms: i64,
+    to_ms: i64,
+}
+
 pub fn fetch_source_runtime_config(
     compiled: &CompiledProgram,
     from_ms: i64,
     to_ms: i64,
     endpoints: &ExchangeEndpoints,
 ) -> Result<SourceRuntimeConfig, ExchangeFetchError> {
+    let cache = HistoricalCache::discover();
+    fetch_source_runtime_config_with_cache(compiled, from_ms, to_ms, endpoints, cache.as_ref())
+}
+
+fn fetch_source_runtime_config_with_cache(
+    compiled: &CompiledProgram,
+    from_ms: i64,
+    to_ms: i64,
+    endpoints: &ExchangeEndpoints,
+    cache: Option<&HistoricalCache>,
+) -> Result<SourceRuntimeConfig, ExchangeFetchError> {
+    let window = HistoricalRequestWindow { from_ms, to_ms };
     if from_ms >= to_ms {
         return Err(ExchangeFetchError::InvalidTimeWindow { from_ms, to_ms });
     }
@@ -222,13 +245,13 @@ pub fn fetch_source_runtime_config(
                 interval: requirement.interval.as_str(),
             });
         }
-        let bars = fetch_source_feed(
+        let bars = fetch_source_feed_with_cache(
             &client,
             source,
             requirement.interval,
-            from_ms,
-            to_ms,
+            window,
             endpoints,
+            cache,
             &fields,
         )?;
         feeds.push(SourceFeed {
@@ -299,6 +322,26 @@ pub fn fetch_perp_backtest_context(
     to_ms: i64,
     endpoints: &ExchangeEndpoints,
 ) -> Result<Option<PerpBacktestContext>, ExchangeFetchError> {
+    let cache = HistoricalCache::discover();
+    fetch_perp_backtest_context_with_cache(
+        source,
+        interval,
+        from_ms,
+        to_ms,
+        endpoints,
+        cache.as_ref(),
+    )
+}
+
+fn fetch_perp_backtest_context_with_cache(
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+    endpoints: &ExchangeEndpoints,
+    cache: Option<&HistoricalCache>,
+) -> Result<Option<PerpBacktestContext>, ExchangeFetchError> {
+    let window = HistoricalRequestWindow { from_ms, to_ms };
     let client =
         Client::builder()
             .build()
@@ -310,51 +353,108 @@ pub fn fetch_perp_backtest_context(
             })?;
     match source.template {
         SourceTemplate::BinanceUsdm => {
-            let mark_bars = binance::usdm::fetch_mark_price_bars(
-                &client,
+            let mark_bars = cached_perp_mark_bars(
+                cache,
                 source,
                 interval,
-                from_ms,
-                to_ms,
+                window,
+                HistoricalBarFamily::PerpMarkPrice,
                 &endpoints.binance_usdm_base_url,
+                |gap_from_ms, gap_to_ms| {
+                    binance::usdm::fetch_mark_price_bars(
+                        &client,
+                        source,
+                        interval,
+                        gap_from_ms,
+                        gap_to_ms,
+                        &endpoints.binance_usdm_base_url,
+                    )
+                },
             )?;
-            let risk_snapshot = binance::usdm::fetch_risk_snapshot(&client, source, endpoints)?;
+            let risk_snapshot = cached_risk_snapshot(
+                cache,
+                source,
+                HistoricalRiskAccessMode::binance_usdm(),
+                &endpoints.binance_usdm_base_url,
+                || {
+                    binance::usdm::fetch_risk_snapshot(&client, source, endpoints)
+                        .map(VenueRiskSnapshot::BinanceUsdm)
+                },
+            )?;
             Ok(Some(PerpBacktestContext {
                 mark_price_basis: MarkPriceBasis::BinanceMarkPriceKlines,
                 mark_bars,
-                risk_snapshot: VenueRiskSnapshot::BinanceUsdm(risk_snapshot),
+                risk_snapshot,
             }))
         }
         SourceTemplate::BybitUsdtPerps => {
-            let mark_bars = bybit::usdt_perps::fetch_mark_price_bars(
-                &client,
+            let mark_bars = cached_perp_mark_bars(
+                cache,
                 source,
                 interval,
-                from_ms,
-                to_ms,
+                window,
+                HistoricalBarFamily::PerpMarkPrice,
                 &endpoints.bybit_base_url,
+                |gap_from_ms, gap_to_ms| {
+                    bybit::usdt_perps::fetch_mark_price_bars(
+                        &client,
+                        source,
+                        interval,
+                        gap_from_ms,
+                        gap_to_ms,
+                        &endpoints.bybit_base_url,
+                    )
+                },
             )?;
-            let risk_snapshot = bybit::usdt_perps::fetch_risk_snapshot(&client, source, endpoints)?;
+            let risk_snapshot = cached_risk_snapshot(
+                cache,
+                source,
+                HistoricalRiskAccessMode::PublicOnly,
+                &endpoints.bybit_base_url,
+                || {
+                    bybit::usdt_perps::fetch_risk_snapshot(&client, source, endpoints)
+                        .map(VenueRiskSnapshot::BybitUsdtPerps)
+                },
+            )?;
             Ok(Some(PerpBacktestContext {
                 mark_price_basis: MarkPriceBasis::BybitMarkPriceKlines,
                 mark_bars,
-                risk_snapshot: VenueRiskSnapshot::BybitUsdtPerps(risk_snapshot),
+                risk_snapshot,
             }))
         }
         SourceTemplate::GateUsdtPerps => {
-            let mark_bars = gate::usdt_perps::fetch_mark_price_bars(
-                &client,
+            let mark_bars = cached_perp_mark_bars(
+                cache,
                 source,
                 interval,
-                from_ms,
-                to_ms,
+                window,
+                HistoricalBarFamily::PerpMarkPrice,
                 &endpoints.gate_base_url,
+                |gap_from_ms, gap_to_ms| {
+                    gate::usdt_perps::fetch_mark_price_bars(
+                        &client,
+                        source,
+                        interval,
+                        gap_from_ms,
+                        gap_to_ms,
+                        &endpoints.gate_base_url,
+                    )
+                },
             )?;
-            let risk_snapshot = gate::usdt_perps::fetch_risk_snapshot(&client, source, endpoints)?;
+            let risk_snapshot = cached_risk_snapshot(
+                cache,
+                source,
+                HistoricalRiskAccessMode::PublicOnly,
+                &endpoints.gate_base_url,
+                || {
+                    gate::usdt_perps::fetch_risk_snapshot(&client, source, endpoints)
+                        .map(VenueRiskSnapshot::GateUsdtPerps)
+                },
+            )?;
             Ok(Some(PerpBacktestContext {
                 mark_price_basis: MarkPriceBasis::GateMarkPriceCandlesticks,
                 mark_bars,
-                risk_snapshot: VenueRiskSnapshot::GateUsdtPerps(risk_snapshot),
+                risk_snapshot,
             }))
         }
         SourceTemplate::BinanceSpot | SourceTemplate::BybitSpot | SourceTemplate::GateSpot => {
@@ -363,76 +463,126 @@ pub fn fetch_perp_backtest_context(
     }
 }
 
-pub(crate) fn fetch_source_feed(
+fn fetch_source_feed_with_cache(
     client: &Client,
     source: &DeclaredMarketSource,
     interval: Interval,
-    from_ms: i64,
-    to_ms: i64,
+    window: HistoricalRequestWindow,
     endpoints: &ExchangeEndpoints,
+    cache: Option<&HistoricalCache>,
     fields: &BTreeSet<MarketField>,
 ) -> Result<Vec<Bar>, ExchangeFetchError> {
     let mut merged = BTreeMap::<i64, Bar>::new();
 
     if fields.iter().any(|field| field.is_ohlcv()) {
-        let bars = fetch_source_bars(client, source, interval, from_ms, to_ms, endpoints)?;
+        let bars = cached_source_bars(
+            cache,
+            source,
+            interval,
+            window,
+            HistoricalBarFamily::Ohlcv,
+            endpoint_base_for_template(source.template, endpoints),
+            |gap_from_ms, gap_to_ms| {
+                fetch_source_bars(client, source, interval, gap_from_ms, gap_to_ms, endpoints)
+            },
+        )?;
         merge_bars(&mut merged, bars);
     }
 
     if matches!(source.template, SourceTemplate::BinanceUsdm) {
         for field in fields {
             let bars = match field {
-                MarketField::FundingRate => {
-                    optional_source_auxiliary_bars(binance::usdm::fetch_funding_rate_bars(
-                        client,
-                        source,
-                        interval,
-                        from_ms,
-                        to_ms,
-                        &endpoints.binance_usdm_base_url,
-                    ))?
-                }
-                MarketField::MarkPrice => optional_source_auxiliary_bars(
-                    binance::usdm::fetch_mark_price_bars(
-                        client,
-                        source,
-                        interval,
-                        from_ms,
-                        to_ms,
-                        &endpoints.binance_usdm_base_url,
-                    )
-                    .map(|bars| map_scalar_close_field(bars, MarketField::MarkPrice)),
-                )?,
-                MarketField::IndexPrice => {
-                    optional_source_auxiliary_bars(binance::usdm::fetch_index_price_bars(
-                        client,
-                        source,
-                        interval,
-                        from_ms,
-                        to_ms,
-                        &endpoints.binance_usdm_base_url,
-                    ))?
-                }
-                MarketField::PremiumIndex => {
-                    optional_source_auxiliary_bars(binance::usdm::fetch_premium_index_bars(
-                        client,
-                        source,
-                        interval,
-                        from_ms,
-                        to_ms,
-                        &endpoints.binance_usdm_base_url,
-                    ))?
-                }
-                MarketField::Basis => {
-                    optional_source_auxiliary_bars(binance::usdm::fetch_basis_bars(
-                        client,
-                        source,
-                        interval,
-                        from_ms,
-                        to_ms,
-                        &endpoints.binance_usdm_base_url,
-                    ))?
-                }
+                MarketField::FundingRate => optional_source_auxiliary_bars(cached_source_bars(
+                    cache,
+                    source,
+                    interval,
+                    window,
+                    HistoricalBarFamily::FundingRate,
+                    endpoints.binance_usdm_base_url.clone(),
+                    |gap_from_ms, gap_to_ms| {
+                        binance::usdm::fetch_funding_rate_bars(
+                            client,
+                            source,
+                            interval,
+                            gap_from_ms,
+                            gap_to_ms,
+                            &endpoints.binance_usdm_base_url,
+                        )
+                    },
+                ))?,
+                MarketField::MarkPrice => optional_source_auxiliary_bars(cached_source_bars(
+                    cache,
+                    source,
+                    interval,
+                    window,
+                    HistoricalBarFamily::SourceMarkPrice,
+                    endpoints.binance_usdm_base_url.clone(),
+                    |gap_from_ms, gap_to_ms| {
+                        binance::usdm::fetch_mark_price_bars(
+                            client,
+                            source,
+                            interval,
+                            gap_from_ms,
+                            gap_to_ms,
+                            &endpoints.binance_usdm_base_url,
+                        )
+                        .map(|bars| map_scalar_close_field(bars, MarketField::MarkPrice))
+                    },
+                ))?,
+                MarketField::IndexPrice => optional_source_auxiliary_bars(cached_source_bars(
+                    cache,
+                    source,
+                    interval,
+                    window,
+                    HistoricalBarFamily::IndexPrice,
+                    endpoints.binance_usdm_base_url.clone(),
+                    |gap_from_ms, gap_to_ms| {
+                        binance::usdm::fetch_index_price_bars(
+                            client,
+                            source,
+                            interval,
+                            gap_from_ms,
+                            gap_to_ms,
+                            &endpoints.binance_usdm_base_url,
+                        )
+                    },
+                ))?,
+                MarketField::PremiumIndex => optional_source_auxiliary_bars(cached_source_bars(
+                    cache,
+                    source,
+                    interval,
+                    window,
+                    HistoricalBarFamily::PremiumIndex,
+                    endpoints.binance_usdm_base_url.clone(),
+                    |gap_from_ms, gap_to_ms| {
+                        binance::usdm::fetch_premium_index_bars(
+                            client,
+                            source,
+                            interval,
+                            gap_from_ms,
+                            gap_to_ms,
+                            &endpoints.binance_usdm_base_url,
+                        )
+                    },
+                ))?,
+                MarketField::Basis => optional_source_auxiliary_bars(cached_source_bars(
+                    cache,
+                    source,
+                    interval,
+                    window,
+                    HistoricalBarFamily::Basis,
+                    endpoints.binance_usdm_base_url.clone(),
+                    |gap_from_ms, gap_to_ms| {
+                        binance::usdm::fetch_basis_bars(
+                            client,
+                            source,
+                            interval,
+                            gap_from_ms,
+                            gap_to_ms,
+                            &endpoints.binance_usdm_base_url,
+                        )
+                    },
+                ))?,
                 MarketField::Open
                 | MarketField::High
                 | MarketField::Low
@@ -447,6 +597,117 @@ pub(crate) fn fetch_source_feed(
     }
 
     Ok(merged.into_values().collect())
+}
+
+pub(crate) fn fetch_source_feed(
+    client: &Client,
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+    endpoints: &ExchangeEndpoints,
+    fields: &BTreeSet<MarketField>,
+) -> Result<Vec<Bar>, ExchangeFetchError> {
+    let window = HistoricalRequestWindow { from_ms, to_ms };
+    fetch_source_feed_with_cache(client, source, interval, window, endpoints, None, fields)
+}
+
+fn cached_source_bars<F>(
+    cache: Option<&HistoricalCache>,
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    window: HistoricalRequestWindow,
+    family: HistoricalBarFamily,
+    base_url: String,
+    fetch: F,
+) -> Result<Vec<Bar>, ExchangeFetchError>
+where
+    F: FnMut(i64, i64) -> Result<Vec<Bar>, ExchangeFetchError>,
+{
+    let Some(cache) = cache else {
+        let mut fetch = fetch;
+        return fetch(window.from_ms, window.to_ms);
+    };
+    cache.bars(
+        HistoricalBarCacheKey {
+            template: source.template,
+            symbol: source.symbol.clone(),
+            interval,
+            family,
+            base_url: normalize_cache_base_url(base_url),
+        },
+        window.from_ms,
+        window.to_ms,
+        fetch,
+        |window_from_ms, window_to_ms| {
+            common::no_data(source, interval, window_from_ms, window_to_ms)
+        },
+    )
+}
+
+fn cached_perp_mark_bars<F>(
+    cache: Option<&HistoricalCache>,
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    window: HistoricalRequestWindow,
+    family: HistoricalBarFamily,
+    base_url: &str,
+    fetch: F,
+) -> Result<Vec<Bar>, ExchangeFetchError>
+where
+    F: FnMut(i64, i64) -> Result<Vec<Bar>, ExchangeFetchError>,
+{
+    cached_source_bars(
+        cache,
+        source,
+        interval,
+        window,
+        family,
+        base_url.to_string(),
+        fetch,
+    )
+}
+
+fn cached_risk_snapshot<F>(
+    cache: Option<&HistoricalCache>,
+    source: &DeclaredMarketSource,
+    access_mode: HistoricalRiskAccessMode,
+    base_url: &str,
+    fetch: F,
+) -> Result<VenueRiskSnapshot, ExchangeFetchError>
+where
+    F: FnOnce() -> Result<VenueRiskSnapshot, ExchangeFetchError>,
+{
+    let key = HistoricalRiskCacheKey {
+        template: source.template,
+        symbol: source.symbol.clone(),
+        access_mode,
+        base_url: normalize_cache_base_url(base_url.to_string()),
+    };
+    if let Some(cache) = cache {
+        if let Some(snapshot) = cache.load_risk_snapshot(&key) {
+            return Ok(snapshot);
+        }
+        let snapshot = fetch()?;
+        cache.store_risk_snapshot(key, &snapshot);
+        return Ok(snapshot);
+    }
+    fetch()
+}
+
+fn endpoint_base_for_template(template: SourceTemplate, endpoints: &ExchangeEndpoints) -> String {
+    match template {
+        SourceTemplate::BinanceSpot => endpoints.binance_spot_base_url.clone(),
+        SourceTemplate::BinanceUsdm => endpoints.binance_usdm_base_url.clone(),
+        SourceTemplate::BybitSpot | SourceTemplate::BybitUsdtPerps => {
+            endpoints.bybit_base_url.clone()
+        }
+        SourceTemplate::GateSpot | SourceTemplate::GateUsdtPerps => endpoints.gate_base_url.clone(),
+    }
+}
+
+fn normalize_cache_base_url(base_url: String) -> String {
+    base_url.trim_end_matches('/').to_string()
 }
 
 fn optional_source_auxiliary_bars(
@@ -519,7 +780,7 @@ pub(crate) fn fetch_source_bars(
     }
 }
 
-fn merge_bars(merged: &mut BTreeMap<i64, Bar>, bars: Vec<Bar>) {
+pub(super) fn merge_bars(merged: &mut BTreeMap<i64, Bar>, bars: Vec<Bar>) {
     for bar in bars {
         let open_time = bar.time as i64;
         let entry = merged
@@ -605,8 +866,10 @@ fn empty_bar(open_time_ms: i64) -> Bar {
 #[cfg(test)]
 mod tests {
     use super::{
-        fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints,
-        ExchangeFetchError, MarkPriceBasis, VenueRiskSnapshot,
+        cache::HistoricalCache, fetch_perp_backtest_context,
+        fetch_perp_backtest_context_with_cache, fetch_source_runtime_config,
+        fetch_source_runtime_config_with_cache, ExchangeEndpoints, ExchangeFetchError,
+        MarkPriceBasis, VenueRiskSnapshot,
     };
     use crate::compile;
     use crate::exchange::binance::UsdmRiskSource;
@@ -617,6 +880,7 @@ mod tests {
     use serde_json::json;
     use std::env;
     use std::sync::{Mutex, OnceLock};
+    use tempfile::tempdir;
 
     fn sample_source(template: SourceTemplate, symbol: &str) -> DeclaredMarketSource {
         DeclaredMarketSource {
@@ -1002,6 +1266,82 @@ mod tests {
     }
 
     #[test]
+    fn fetch_source_runtime_config_reuses_cached_overlapping_segments() {
+        let mut server = Server::new();
+        let _initial = server
+            .mock("GET", "/api/v3/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+                Matcher::UrlEncoded("startTime".into(), "1704067200000".into()),
+                Matcher::UrlEncoded("endTime".into(), "1704067319999".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "1.0", "2.0", "0.5", "1.5", "10.0"],
+                    [1704067260000_i64, "2.0", "3.0", "1.5", "2.5", "11.0"]
+                ])
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+        let _gap_fill = server
+            .mock("GET", "/api/v3/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+                Matcher::UrlEncoded("startTime".into(), "1704067320000".into()),
+                Matcher::UrlEncoded("endTime".into(), "1704067379999".into()),
+            ]))
+            .with_status(200)
+            .with_body(json!([[1704067320000_i64, "3.0", "4.0", "2.5", "3.5", "12.0"]]).to_string())
+            .expect(1)
+            .create();
+
+        let compiled =
+            compile("interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nplot(bn.close)")
+                .expect("compile");
+        let endpoints = ExchangeEndpoints {
+            binance_spot_base_url: server.url(),
+            ..ExchangeEndpoints::default()
+        };
+        let cache_dir = tempdir().expect("tempdir");
+        let cache = HistoricalCache::new(cache_dir.path().join("historical"));
+
+        let initial = fetch_source_runtime_config_with_cache(
+            &compiled,
+            1704067200000,
+            1704067320000,
+            &endpoints,
+            Some(&cache),
+        )
+        .expect("initial config");
+        assert_eq!(initial.feeds[0].bars.len(), 2);
+
+        let expanded = fetch_source_runtime_config_with_cache(
+            &compiled,
+            1704067200000,
+            1704067380000,
+            &endpoints,
+            Some(&cache),
+        )
+        .expect("expanded config");
+        assert_eq!(expanded.feeds[0].bars.len(), 3);
+
+        let cached = fetch_source_runtime_config_with_cache(
+            &compiled,
+            1704067200000,
+            1704067380000,
+            &endpoints,
+            Some(&cache),
+        )
+        .expect("cached config");
+        assert_eq!(cached.feeds[0].bars.len(), 3);
+        assert_eq!(cached.feeds[0].bars[2].time, 1704067320000.0);
+    }
+
+    #[test]
     fn gate_http_errors_include_request_url_and_body() {
         let mut server = Server::new();
         let _gate = server
@@ -1364,6 +1704,123 @@ mod tests {
             }
             other => panic!("unexpected snapshot: {other:?}"),
         }
+    }
+
+    #[test]
+    fn fetch_perp_backtest_context_reuses_cached_mark_bars_and_risk_snapshot() {
+        let mut server = Server::new();
+        let _initial_marks = server
+            .mock("GET", "/v5/market/mark-price-kline")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "linear".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1".into()),
+                Matcher::UrlEncoded("start".into(), "1704067200000".into()),
+                Matcher::UrlEncoded("end".into(), "1704067319999".into()),
+            ]))
+            .with_status(200)
+            .with_body(bybit_envelope(&[
+                json!([1704067260000_i64, "100.5", "102.0", "100.0", "101.5"]),
+                json!([1704067200000_i64, "100.0", "101.0", "99.0", "100.5"]),
+            ]))
+            .expect(1)
+            .create();
+        let _gap_marks = server
+            .mock("GET", "/v5/market/mark-price-kline")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "linear".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1".into()),
+                Matcher::UrlEncoded("start".into(), "1704067320000".into()),
+                Matcher::UrlEncoded("end".into(), "1704067379999".into()),
+            ]))
+            .with_status(200)
+            .with_body(bybit_envelope(&[json!([
+                1704067320000_i64,
+                "101.5",
+                "103.0",
+                "101.0",
+                "102.5"
+            ])]))
+            .expect(1)
+            .create();
+        let _risk = server
+            .mock("GET", "/v5/market/risk-limit")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "linear".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "retCode": 0,
+                    "retMsg": "OK",
+                    "result": {
+                        "list": [{
+                            "symbol": "BTCUSDT",
+                            "riskLimitValue": "100000",
+                            "maintenanceMargin": "0.5",
+                            "initialMargin": "1.0",
+                            "maxLeverage": "100",
+                            "mmDeduction": "0"
+                        }],
+                        "nextPageCursor": ""
+                    },
+                    "time": 1704067200123_i64
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create();
+
+        let source = sample_source(SourceTemplate::BybitUsdtPerps, "BTCUSDT");
+        let endpoints = ExchangeEndpoints {
+            bybit_base_url: server.url(),
+            ..ExchangeEndpoints::default()
+        };
+        let cache_dir = tempdir().expect("tempdir");
+        let cache = HistoricalCache::new(cache_dir.path().join("historical"));
+
+        let initial = fetch_perp_backtest_context_with_cache(
+            &source,
+            Interval::Min1,
+            1704067200000,
+            1704067320000,
+            &endpoints,
+            Some(&cache),
+        )
+        .expect("initial context")
+        .expect("perp context");
+        assert_eq!(initial.mark_bars.len(), 2);
+
+        let expanded = fetch_perp_backtest_context_with_cache(
+            &source,
+            Interval::Min1,
+            1704067200000,
+            1704067380000,
+            &endpoints,
+            Some(&cache),
+        )
+        .expect("expanded context")
+        .expect("perp context");
+        assert_eq!(expanded.mark_bars.len(), 3);
+        assert!(matches!(
+            expanded.risk_snapshot,
+            VenueRiskSnapshot::BybitUsdtPerps(_)
+        ));
+
+        let cached = fetch_perp_backtest_context_with_cache(
+            &source,
+            Interval::Min1,
+            1704067200000,
+            1704067380000,
+            &endpoints,
+            Some(&cache),
+        )
+        .expect("cached context")
+        .expect("perp context");
+        assert_eq!(cached.mark_bars.len(), 3);
+        assert_eq!(cached.mark_bars[2].time, 1704067320000.0);
     }
 
     #[test]

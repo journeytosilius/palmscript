@@ -46,6 +46,8 @@ Use `run market` when:
 
 When a script uses multiple sources or supplemental intervals, PalmScript fetches the required feeds automatically from the declarations in the script.
 
+Exchange-backed historical downloads are cached on disk automatically. PalmScript reuses overlapping windows across `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize` instead of refetching the same bars every run. Override the cache root with `PALMSCRIPT_HISTORICAL_CACHE_DIR`; otherwise PalmScript uses `$XDG_CACHE_HOME/palmscript/historical` or `$HOME/.cache/palmscript/historical`.
+
 ## Inspect Compiled Output
 
 ```bash

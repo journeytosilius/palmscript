@@ -75,6 +75,8 @@ Every executable inline order and every `order_template` must declare `venue = <
 
 Fee modeling now requires explicit global maker/taker inputs for execution-oriented runs. Pass `--maker-fee-bps` and `--taker-fee-bps` on every backtest, walk-forward, walk-forward-sweep, optimize, or paper invocation, and repeat `--fee-schedule <alias:maker:taker>` when one selected execution alias should use a different fee tier.
 
+Historical exchange downloads for backtest-oriented CLI runs are cached on disk automatically. PalmScript reuses overlapping windows across backtest, walk-forward, walk-forward-sweep, and optimize runs instead of refetching the same bars every invocation. Override the cache root with `PALMSCRIPT_HISTORICAL_CACHE_DIR`; otherwise PalmScript uses `$XDG_CACHE_HOME/palmscript/historical` or `$HOME/.cache/palmscript/historical`.
+
 Execution-routed order example:
 
 ```palmscript

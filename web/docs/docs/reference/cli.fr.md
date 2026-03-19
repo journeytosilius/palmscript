@@ -86,6 +86,11 @@ Requirements:
 - the script must declare at least one `source`
 - `--from` must be strictly less than `--to`
 
+Historical cache:
+
+- exchange-backed historical downloads are cached on disk and overlapping windows are reused across `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
+- set `PALMSCRIPT_HISTORICAL_CACHE_DIR` to override the cache root; otherwise PalmScript uses `$XDG_CACHE_HOME/palmscript/historical` or `$HOME/.cache/palmscript/historical`
+
 ## `palmscript run backtest`
 
 ```bash
