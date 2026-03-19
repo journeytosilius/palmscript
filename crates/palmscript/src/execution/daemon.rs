@@ -9,9 +9,13 @@ use serde::{Deserialize, Serialize};
 use super::engine::{process_paper_session, LoadedPaperSession};
 use super::feed_hub::FeedHub;
 use super::state::{
-    default_execution_state_root, list_paper_sessions, read_json_file, write_json_file,
+    append_log_event, default_execution_state_root, list_paper_sessions, persist_session_manifest,
+    read_json_file, write_json_file,
 };
-use super::{now_ms, ExecutionError, ExecutionSessionStatus};
+use super::{
+    now_ms, ExecutionError, ExecutionSessionHealth, ExecutionSessionStatus, PaperSessionLogEvent,
+    PaperSessionManifest,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionDaemonConfig {
@@ -89,7 +93,7 @@ async fn serve_execution_daemon_async(
 
     loop {
         let manifests = list_paper_sessions()?;
-        let active_manifests = manifests
+        let mut active_manifests = manifests
             .iter()
             .filter(|manifest| {
                 matches!(
@@ -102,29 +106,20 @@ async fn serve_execution_daemon_async(
             })
             .cloned()
             .collect::<Vec<_>>();
-        let active_sessions = active_manifests
-            .iter()
-            .map(|manifest| manifest.session_id.clone())
-            .collect::<Vec<_>>();
+        let mut retained_manifests = Vec::with_capacity(active_manifests.len());
 
-        runners.retain(|session_id, _| active_sessions.iter().any(|active| active == session_id));
-        for manifest in &active_manifests {
+        runners.retain(|session_id, _| {
+            active_manifests
+                .iter()
+                .any(|active| active.session_id == *session_id)
+        });
+        for manifest in active_manifests.drain(..) {
             if !runners.contains_key(&manifest.session_id) {
-                let runner = match LoadedPaperSession::load(manifest, now_ms()).await {
+                let runner = match LoadedPaperSession::load(&manifest, now_ms()).await {
                     Ok(runner) => runner,
                     Err(err) => {
-                        error_fields(
-                            "execution.daemon.session_load_failed",
-                            "Execution daemon failed to load a paper session",
-                            vec![
-                                LogField::string("session_id", manifest.session_id.clone()),
-                                LogField::string("error", err.to_string()),
-                            ],
-                        );
-                        return Err(ExecutionError::Runtime(format!(
-                            "paper session `{}` failed to load: {err}",
-                            manifest.session_id
-                        )));
+                        mark_session_load_failed(&manifest, &err)?;
+                        continue;
                     }
                 };
                 info_fields(
@@ -144,7 +139,13 @@ async fn serve_execution_daemon_async(
                 );
                 runners.insert(manifest.session_id.clone(), runner);
             }
+            retained_manifests.push(manifest);
         }
+        let active_manifests = retained_manifests;
+        let active_sessions = active_manifests
+            .iter()
+            .map(|manifest| manifest.session_id.clone())
+            .collect::<Vec<_>>();
 
         let plans = runners
             .values()
@@ -279,4 +280,36 @@ fn daemon_status_path(root: &std::path::Path) -> PathBuf {
 
 fn daemon_stop_path(root: &std::path::Path) -> PathBuf {
     root.join("daemon.stop")
+}
+
+fn mark_session_load_failed(
+    manifest: &PaperSessionManifest,
+    err: &ExecutionError,
+) -> Result<(), ExecutionError> {
+    let mut failed_manifest = manifest.clone();
+    let timestamp = now_ms();
+    failed_manifest.status = ExecutionSessionStatus::Failed;
+    failed_manifest.health = ExecutionSessionHealth::Failed;
+    failed_manifest.updated_at_ms = timestamp;
+    failed_manifest.failure_message = Some(err.to_string());
+    persist_session_manifest(&failed_manifest)?;
+    append_log_event(
+        &failed_manifest.session_id,
+        &PaperSessionLogEvent {
+            time_ms: timestamp,
+            status: failed_manifest.status,
+            health: failed_manifest.health,
+            message: err.to_string(),
+            latest_runtime_to_ms: failed_manifest.latest_runtime_to_ms,
+        },
+    )?;
+    error_fields(
+        "execution.daemon.session_load_failed",
+        "Execution daemon failed to load a paper session",
+        vec![
+            LogField::string("session_id", failed_manifest.session_id),
+            LogField::string("error", err.to_string()),
+        ],
+    );
+    Ok(())
 }

@@ -197,7 +197,9 @@ session run side by side. The paper daemon keeps the last closed candle armed
 when an exchange temporarily returns no fresh bar for the current live append
 window, then resumes once the next closed candle appears. Perp sessions now
 also wait for aligned mark-price candles instead of failing immediately when
-the venue lags the execution feed by one runtime window.
+the venue lags the execution feed by one runtime window. If one persisted paper
+session becomes invalid or stale, the daemon now marks only that session failed
+and keeps the remaining queued/live sessions running.
 
 The CLI, IDE server, and LSP now also emit structured JSON logs on `stderr`.
 Set `PALMSCRIPT_LOG_LEVEL=debug` or `trace` when you need more detail, and set

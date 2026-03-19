@@ -352,6 +352,7 @@ Notes:
 
 - one local execution service can host many paper sessions
 - active paper sessions share one in-process armed feed cache per venue/symbol/canonical interval instead of duplicating upstream history bootstrap and quote refreshes
+- if one persisted paper session can no longer be loaded, the daemon marks only that session failed and continues processing the remaining queued/live sessions
 - the daemon status output now includes `subscription_count`, `armed_feed_count`, `connecting_feed_count`, `degraded_feed_count`, and `failed_feed_count`
 
 Arguments and flags:

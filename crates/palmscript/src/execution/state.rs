@@ -175,6 +175,18 @@ pub fn submit_paper_session(
             message: "paper sessions require at least one execution source alias".to_string(),
         });
     }
+    for alias in &request.config.execution_source_aliases {
+        if !compiled
+            .program
+            .declared_executions
+            .iter()
+            .any(|source| source.alias == *alias)
+        {
+            return Err(ExecutionError::InvalidConfig {
+                message: format!("unknown execution source `{alias}`"),
+            });
+        }
+    }
     let created_at_ms = now_ms();
     let session_hash = hex::encode(sha2::Sha256::digest(request.source.as_bytes()));
     let session_id = format!(
