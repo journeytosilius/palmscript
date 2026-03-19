@@ -21,6 +21,7 @@ PalmScript currently exposes these builtin categories:
 - indicators: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), and [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helpers: `above`, `below`, `between`, `outside`
 - crossing helpers: `cross`, `crossover`, `crossunder`
+- time/session helpers: `hour_utc`, `weekday_utc`, `session_utc`
 - venue-selection helpers: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
@@ -81,6 +82,44 @@ execution gt = gate.spot("BTC_USDT")
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+```
+
+## Time And Session Helpers
+
+### `hour_utc(time_value)` and `weekday_utc(time_value)`
+
+Rules:
+
+- both helpers accept a numeric timestamp or `series<float>` timestamp input such as `spot.time`
+- `hour_utc(...)` returns the UTC hour of day in the range `0..23`
+- `weekday_utc(...)` returns the UTC weekday with `Monday=0` through `Sunday=6`
+- if the input is `na`, the result is `na`
+- if the input is a series, the result type is `series<float>`
+- otherwise the result type is `float`
+
+### `session_utc(time_value, start_hour, end_hour)`
+
+Rules:
+
+- the first argument is a numeric timestamp or `series<float>` timestamp input such as `spot.time`
+- the second and third arguments are numeric UTC hour literals or immutable numeric inputs in the range `0..24`
+- the session window is half-open: `[start_hour, end_hour)`
+- if `start_hour < end_hour`, the helper matches that intraday window directly
+- if `start_hour > end_hour`, the helper wraps overnight, for example `22 -> 2`
+- if `start_hour == end_hour`, the helper matches the full UTC day
+- if the timestamp input is `na`, the result is `na`
+- if the timestamp input is a series, the result type is `series<bool>`
+- otherwise the result type is `bool`
+
+Example:
+
+```palmscript
+source spot = binance.spot("BTCUSDT")
+
+export hour = hour_utc(spot.time)
+export weekday = weekday_utc(spot.time)
+export london_morning = session_utc(spot.time, 8, 12)
+export asia_wrap = session_utc(spot.time, 22, 2)
 ```
 
 ## Tuple-Valued Builtins

@@ -33,6 +33,7 @@ The language keeps market-data inputs and execution venues explicit:
 - `source` declares market data feeds
 - `execution` declares order-routing venues
 - `order ...` declares how entries and exits are placed
+- `hour_utc(<alias>.time)`, `weekday_utc(<alias>.time)`, and `session_utc(<alias>.time, start_hour, end_hour)` provide deterministic UTC time/session gating without hand-rolled timestamp math
 
 Documentation and tooling:
 

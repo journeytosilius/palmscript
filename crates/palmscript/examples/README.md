@@ -60,6 +60,12 @@ For runnable public examples and workflow guidance, use the linked docs pages ab
 
 When you inspect these strategies from the CLI, `run backtest`, `run walk-forward`, and `run optimize` now support `--diagnostics summary|full-trace`. Use `summary` for the normal compact diagnostics payload and `full-trace` when you want one typed per-bar decision trace record per execution bar.
 
+Use `hour_utc(<alias>.time)`, `weekday_utc(<alias>.time)`, and
+`session_utc(<alias>.time, start_hour, end_hour)` when you want deterministic
+UTC session filters without manual millisecond arithmetic. `session_utc` treats
+its window as half-open `[start_hour, end_hour)` and supports overnight wraps
+such as `session_utc(spot.time, 22, 2)`.
+
 Execution-oriented commands now require at least one declared `execution`
 target in the script. The checked-in backtest and paper examples already
 declare those execution aliases explicitly. If a script declares exactly one

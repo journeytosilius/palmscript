@@ -30,6 +30,7 @@ PalmScript exponiert derzeit diese Builtin-Kategorien:
   und [Mathematik, Preis und Statistik](indicators-math-price-statistics.md)
 - relationale Helper: `above`, `below`, `between`, `outside`
 - Kreuzungs-Helper: `cross`, `crossover`, `crossunder`
+- Zeit-/Session-Helper: `hour_utc`, `weekday_utc`, `session_utc`
 - Venue-Selection-Helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - Null-Helper: `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
@@ -97,6 +98,44 @@ execution gt = gate.spot("BTC_USDT")
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+```
+
+## Zeit- Und Session-Helper
+
+### `hour_utc(time_value)` und `weekday_utc(time_value)`
+
+Regeln:
+
+- beide Helper akzeptieren einen numerischen Timestamp oder einen `series<float>`-Timestamp wie `spot.time`
+- `hour_utc(...)` liefert die UTC-Stunde im Bereich `0..23`
+- `weekday_utc(...)` liefert den UTC-Wochentag mit `Montag=0` bis `Sonntag=6`
+- wenn die Eingabe `na` ist, ist das Ergebnis `na`
+- wenn die Eingabe eine Serie ist, ist der Ergebnistyp `series<float>`
+- andernfalls ist der Ergebnistyp `float`
+
+### `session_utc(time_value, start_hour, end_hour)`
+
+Regeln:
+
+- das erste Argument ist ein numerischer Timestamp oder ein `series<float>`-Timestamp wie `spot.time`
+- das zweite und dritte Argument sind numerische UTC-Stundenliterale oder unveraenderliche numerische Inputs im Bereich `0..24`
+- das Session-Fenster ist halboffen: `[start_hour, end_hour)`
+- wenn `start_hour < end_hour`, prueft der Helper dieses Intraday-Fenster direkt
+- wenn `start_hour > end_hour`, wickelt der Helper ueber Nacht um, zum Beispiel `22 -> 2`
+- wenn `start_hour == end_hour`, deckt der Helper den gesamten UTC-Tag ab
+- wenn der Timestamp `na` ist, ist das Ergebnis `na`
+- wenn der Timestamp eine Serie ist, ist der Ergebnistyp `series<bool>`
+- andernfalls ist der Ergebnistyp `bool`
+
+Beispiel:
+
+```palmscript
+source spot = binance.spot("BTCUSDT")
+
+export hour = hour_utc(spot.time)
+export weekday = weekday_utc(spot.time)
+export london_morning = session_utc(spot.time, 8, 12)
+export asia_wrap = session_utc(spot.time, 22, 2)
 ```
 
 ## Tupelwertige Builtins

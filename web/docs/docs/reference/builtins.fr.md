@@ -28,6 +28,7 @@ PalmScript expose actuellement ces categories de builtin :
   et [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - helpers relationnels : `above`, `below`, `between`, `outside`
 - helpers de croisement : `cross`, `crossover`, `crossunder`
+- helpers de temps/session : `hour_utc`, `weekday_utc`, `session_utc`
 - helpers de selection de venue : `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - helpers de null : `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
@@ -95,6 +96,44 @@ execution gt = gate.spot("BTC_USDT")
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+```
+
+## Helpers De Temps Et De Session
+
+### `hour_utc(time_value)` et `weekday_utc(time_value)`
+
+Regles :
+
+- les deux helpers acceptent un timestamp numerique ou un timestamp `series<float>` comme `spot.time`
+- `hour_utc(...)` renvoie l'heure UTC dans la plage `0..23`
+- `weekday_utc(...)` renvoie le jour de semaine UTC avec `Lundi=0` jusqu'a `Dimanche=6`
+- si l'entree est `na`, le resultat est `na`
+- si l'entree est une serie, le type de resultat est `series<float>`
+- sinon, le type de resultat est `float`
+
+### `session_utc(time_value, start_hour, end_hour)`
+
+Regles :
+
+- le premier argument est un timestamp numerique ou un timestamp `series<float>` comme `spot.time`
+- le deuxieme et le troisieme argument sont des heures UTC numeriques litterales ou des inputs numeriques immuables dans la plage `0..24`
+- la fenetre de session est semi-ouverte : `[start_hour, end_hour)`
+- si `start_hour < end_hour`, le helper correspond directement a cette fenetre intrajournaliere
+- si `start_hour > end_hour`, le helper traverse la nuit, par exemple `22 -> 2`
+- si `start_hour == end_hour`, le helper couvre toute la journee UTC
+- si le timestamp est `na`, le resultat est `na`
+- si le timestamp est une serie, le type de resultat est `series<bool>`
+- sinon, le type de resultat est `bool`
+
+Exemple :
+
+```palmscript
+source spot = binance.spot("BTCUSDT")
+
+export hour = hour_utc(spot.time)
+export weekday = weekday_utc(spot.time)
+export london_morning = session_utc(spot.time, 8, 12)
+export asia_wrap = session_utc(spot.time, 22, 2)
 ```
 
 ## Builtins A Valeur Tuple

@@ -5729,6 +5729,63 @@ fn analyze_helper_builtin(
                     .fold(0, |mask, info| mask | info.update_mask),
             }
         }
+        BuiltinKind::TimeTransform => {
+            let time_info = arg_info[0];
+            if !time_info.ty.is_numeric_like() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires a numeric or series numeric timestamp input"),
+                    args[0].span,
+                ));
+            }
+            numeric_result(arg_info)
+        }
+        BuiltinKind::TimeSession => {
+            if !arg_info[0].ty.is_numeric_like() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "{callee} requires a numeric or series numeric timestamp input as the first argument"
+                    ),
+                    args[0].span,
+                ));
+            }
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).enumerate().skip(1) {
+                if !matches!(
+                    info.ty,
+                    InferredType::Concrete(Type::F64) | InferredType::Na
+                ) {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        if index == 1 {
+                            format!(
+                                "{callee} requires a numeric UTC start hour as the second argument"
+                            )
+                        } else {
+                            format!(
+                                "{callee} requires a numeric UTC end hour as the third argument"
+                            )
+                        },
+                        arg.span,
+                    ));
+                }
+            }
+            validate_session_hour_literal(
+                callee,
+                "start hour",
+                &args[1],
+                immutable_values,
+                diagnostics,
+            );
+            validate_session_hour_literal(
+                callee,
+                "end hour",
+                &args[2],
+                immutable_values,
+                diagnostics,
+            );
+            bool_result(arg_info)
+        }
         BuiltinKind::Plot | BuiltinKind::MarketSeries => unreachable!(),
     }
 }
@@ -5818,6 +5875,8 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::AnchoredPriceVolume
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
+        BuiltinKind::TimeTransform => numeric_result(arg_info),
+        BuiltinKind::TimeSession => bool_result(arg_info),
         BuiltinKind::VenueAliasSelector => ExprInfo::scalar(Type::ExecutionAlias),
         BuiltinKind::VenueRank => ExprInfo::scalar(Type::F64),
         BuiltinKind::VenueSpread => ExprInfo::scalar(Type::F64),
@@ -6351,6 +6410,25 @@ fn validate_non_negative_literal(
     }
 }
 
+fn validate_session_hour_literal(
+    callee: &str,
+    noun: &str,
+    expr: &Expr,
+    immutable_values: &HashMap<String, Value>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(value) = literal_time_component(expr, immutable_values) else {
+        return;
+    };
+    if !(0.0..=24.0).contains(&value) || value.fract() != 0.0 {
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Type,
+            format!("{callee} {noun} must be an integer literal in the range 0..24"),
+            expr.span,
+        ));
+    }
+}
+
 fn expected_arity_message(callee: &str, arity: BuiltinArity) -> String {
     match arity {
         BuiltinArity::NonCallable => format!("{callee} is not callable"),
@@ -6396,6 +6474,17 @@ fn literal_window(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Opt
             Some(Value::F64(value)) if *value >= 0.0 && value.fract() == 0.0 => {
                 Some(*value as usize)
             }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn literal_time_component(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Option<f64> {
+    match &expr.kind {
+        ExprKind::Number(value) => Some(*value),
+        ExprKind::Ident(name) => match immutable_values.get(name) {
+            Some(Value::F64(value)) => Some(*value),
             _ => None,
         },
         _ => None,
@@ -7550,7 +7639,10 @@ impl<'a> Compiler<'a> {
             | BuiltinId::HtSine
             | BuiltinId::HtTrendline
             | BuiltinId::HtTrendmode
-            | BuiltinId::Mama => {
+            | BuiltinId::Mama
+            | BuiltinId::HourUtc
+            | BuiltinId::WeekdayUtc
+            | BuiltinId::SessionUtc => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -8778,7 +8870,11 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
-            BuiltinKind::VenueAliasSelector | BuiltinKind::VenueRank | BuiltinKind::VenueSpread => {
+            BuiltinKind::VenueAliasSelector
+            | BuiltinKind::VenueRank
+            | BuiltinKind::VenueSpread
+            | BuiltinKind::TimeTransform
+            | BuiltinKind::TimeSession => {
                 for arg in args {
                     self.emit_expr(arg, expr_info, user_calls);
                 }

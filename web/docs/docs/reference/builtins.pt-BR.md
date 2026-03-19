@@ -27,6 +27,7 @@ PalmScript atualmente expoe estas categorias de builtin:
   e [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - helpers relacionais: `above`, `below`, `between`, `outside`
 - helpers de cruzamento: `cross`, `crossover`, `crossunder`
+- helpers de tempo/sessao: `hour_utc`, `weekday_utc`, `session_utc`
 - helpers de selecao de venue: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - helpers de null: `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
@@ -94,6 +95,44 @@ execution gt = gate.spot("BTC_USDT")
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+```
+
+## Helpers De Tempo E Sessao
+
+### `hour_utc(time_value)` e `weekday_utc(time_value)`
+
+Regras:
+
+- ambos os helpers aceitam um timestamp numerico ou um timestamp `series<float>` como `spot.time`
+- `hour_utc(...)` retorna a hora UTC no intervalo `0..23`
+- `weekday_utc(...)` retorna o dia da semana UTC com `Segunda=0` ate `Domingo=6`
+- se a entrada for `na`, o resultado sera `na`
+- se a entrada for uma serie, o tipo de resultado sera `series<float>`
+- caso contrario, o tipo de resultado sera `float`
+
+### `session_utc(time_value, start_hour, end_hour)`
+
+Regras:
+
+- o primeiro argumento e um timestamp numerico ou um timestamp `series<float>` como `spot.time`
+- o segundo e o terceiro argumento sao horas UTC numericas literais ou inputs numericos imutaveis no intervalo `0..24`
+- a janela de sessao e semiaberta: `[start_hour, end_hour)`
+- se `start_hour < end_hour`, o helper corresponde diretamente a essa janela intraday
+- se `start_hour > end_hour`, o helper faz wrap overnight, por exemplo `22 -> 2`
+- se `start_hour == end_hour`, o helper cobre todo o dia UTC
+- se o timestamp for `na`, o resultado sera `na`
+- se o timestamp for uma serie, o tipo de resultado sera `series<bool>`
+- caso contrario, o tipo de resultado sera `bool`
+
+Exemplo:
+
+```palmscript
+source spot = binance.spot("BTCUSDT")
+
+export hour = hour_utc(spot.time)
+export weekday = weekday_utc(spot.time)
+export london_morning = session_utc(spot.time, 8, 12)
+export asia_wrap = session_utc(spot.time, 22, 2)
 ```
 
 ## Builtins Tuple-Valued

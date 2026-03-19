@@ -24,6 +24,7 @@ use crate::indicators::{
     RegressionOutput, RisingState, RsiState, SarConfig, SarState, SmaState, StochFastState,
     StochRsiState, StochState, SupertrendState, TrixState, UnaryMathTransform, ValueWhenState,
 };
+use crate::interval::{hour_utc, session_utc, weekday_utc};
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
 use crate::talib::MaType;
@@ -592,6 +593,11 @@ impl<'a> VmEngine<'a> {
             BuiltinId::SpreadBps => self.call_spread_bps(arity, args, pc),
             BuiltinId::RankAsc => self.call_venue_rank(false, arity, args, pc),
             BuiltinId::RankDesc => self.call_venue_rank(true, arity, args, pc),
+            BuiltinId::HourUtc => self.call_time_transform(BuiltinId::HourUtc, arity, args, pc),
+            BuiltinId::WeekdayUtc => {
+                self.call_time_transform(BuiltinId::WeekdayUtc, arity, args, pc)
+            }
+            BuiltinId::SessionUtc => self.call_session_utc(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -608,6 +614,60 @@ impl<'a> VmEngine<'a> {
         };
         let value = self.load_local(slot)?;
         expect_numeric_like(&value, pc)
+    }
+
+    fn call_time_transform(
+        &self,
+        builtin: BuiltinId,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 1,
+                found: arity,
+            });
+        }
+        let Some(time_ms) = self.materialize_time_ms(args[0].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        Ok(Value::F64(match builtin {
+            BuiltinId::HourUtc => hour_utc(time_ms) as f64,
+            BuiltinId::WeekdayUtc => weekday_utc(time_ms) as f64,
+            _ => unreachable!(),
+        }))
+    }
+
+    fn call_session_utc(
+        &self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "session_utc",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let Some(time_ms) = self.materialize_time_ms(args[0].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(start_hour) = expect_session_hour(args[1].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(end_hour) = expect_session_hour(args[2].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        Ok(Value::Bool(session_utc(time_ms, start_hour, end_hour)))
+    }
+
+    fn materialize_time_ms(&self, value: Value, pc: usize) -> Result<Option<i64>, RuntimeError> {
+        let materialized = self.materialize_value(value, pc)?;
+        Ok(expect_numeric_like(&materialized, pc)?.map(|value| value as i64))
     }
 
     fn call_venue_selector(
@@ -3535,6 +3595,16 @@ fn expect_f64(value: Value, pc: usize) -> Result<f64, RuntimeError> {
             found: other.type_name(),
         }),
     }
+}
+
+fn expect_session_hour(value: Value, pc: usize) -> Result<Option<u8>, RuntimeError> {
+    let Some(value) = expect_numeric_like(&value, pc)? else {
+        return Ok(None);
+    };
+    if !value.is_finite() || value.fract() != 0.0 || !(0.0..=24.0).contains(&value) {
+        return Ok(None);
+    }
+    Ok(Some(value as u8))
 }
 
 fn expect_execution_alias(value: Value, pc: usize) -> Result<Option<u16>, RuntimeError> {

@@ -84,6 +84,8 @@ pub enum BuiltinKind {
     ParabolicSarExt,
     RollingHighLowCloseBands,
     AdaptiveCycleTuple,
+    TimeTransform,
+    TimeSession,
     VenueAliasSelector,
     VenueRank,
     VenueSpread,
@@ -238,10 +240,13 @@ pub enum BuiltinId {
     SpreadBps = 143,
     RankAsc = 144,
     RankDesc = 145,
+    HourUtc = 146,
+    WeekdayUtc = 147,
+    SessionUtc = 148,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 146] = [
+    pub const RESERVED: [Self; 149] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -388,9 +393,12 @@ impl BuiltinId {
         Self::SpreadBps,
         Self::RankAsc,
         Self::RankDesc,
+        Self::HourUtc,
+        Self::WeekdayUtc,
+        Self::SessionUtc,
     ];
 
-    pub const CALLABLE: [Self; 133] = [
+    pub const CALLABLE: [Self; 136] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -524,6 +532,9 @@ impl BuiltinId {
         Self::SpreadBps,
         Self::RankAsc,
         Self::RankDesc,
+        Self::HourUtc,
+        Self::WeekdayUtc,
+        Self::SessionUtc,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -674,6 +685,9 @@ impl BuiltinId {
             "spread_bps" => Some(Self::SpreadBps),
             "rank_asc" => Some(Self::RankAsc),
             "rank_desc" => Some(Self::RankDesc),
+            "hour_utc" => Some(Self::HourUtc),
+            "weekday_utc" => Some(Self::WeekdayUtc),
+            "session_utc" => Some(Self::SessionUtc),
             _ => None,
         }
     }
@@ -826,6 +840,9 @@ impl BuiltinId {
             143 => Some(Self::SpreadBps),
             144 => Some(Self::RankAsc),
             145 => Some(Self::RankDesc),
+            146 => Some(Self::HourUtc),
+            147 => Some(Self::WeekdayUtc),
+            148 => Some(Self::SessionUtc),
             _ => None,
         }
     }
@@ -978,6 +995,9 @@ impl BuiltinId {
             Self::SpreadBps => "spread_bps",
             Self::RankAsc => "rank_asc",
             Self::RankDesc => "rank_desc",
+            Self::HourUtc => "hour_utc",
+            Self::WeekdayUtc => "weekday_utc",
+            Self::SessionUtc => "session_utc",
         }
     }
 
@@ -1090,6 +1110,8 @@ impl BuiltinId {
             }
             Self::HtPhasor | Self::HtSine => BuiltinKind::RollingSingleInputTuple,
             Self::Mama => BuiltinKind::AdaptiveCycleTuple,
+            Self::HourUtc | Self::WeekdayUtc => BuiltinKind::TimeTransform,
+            Self::SessionUtc => BuiltinKind::TimeSession,
             Self::Cheapest | Self::Richest => BuiltinKind::VenueAliasSelector,
             Self::RankAsc | Self::RankDesc => BuiltinKind::VenueRank,
             Self::SpreadBps => BuiltinKind::VenueSpread,
@@ -1237,6 +1259,8 @@ impl BuiltinId {
             Self::Cheapest | Self::Richest => BuiltinArity::AtLeast(2),
             Self::RankAsc | Self::RankDesc => BuiltinArity::AtLeast(3),
             Self::SpreadBps => BuiltinArity::Exact(2),
+            Self::HourUtc | Self::WeekdayUtc => BuiltinArity::Exact(1),
+            Self::SessionUtc => BuiltinArity::Exact(3),
         }
     }
 
@@ -1333,6 +1357,9 @@ impl BuiltinId {
             Self::SpreadBps => "spread_bps(buy_exec, sell_exec)",
             Self::RankAsc => "rank_asc(target_exec, exec0, exec1[, execN...])",
             Self::RankDesc => "rank_desc(target_exec, exec0, exec1[, execN...])",
+            Self::HourUtc => "hour_utc(time_value)",
+            Self::WeekdayUtc => "weekday_utc(time_value)",
+            Self::SessionUtc => "session_utc(time_value, start_hour, end_hour)",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1545,6 +1572,9 @@ impl BuiltinId {
             Self::SpreadBps => "Return the current cross-venue spread in basis points from buy execution close to sell execution close.",
             Self::RankAsc => "Return the 1-based ascending price rank of a declared execution alias within the provided venue set.",
             Self::RankDesc => "Return the 1-based descending price rank of a declared execution alias within the provided venue set.",
+            Self::HourUtc => "Return the UTC hour-of-day (0..23) for the provided timestamp input.",
+            Self::WeekdayUtc => "Return the UTC weekday (Monday=0 .. Sunday=6) for the provided timestamp input.",
+            Self::SessionUtc => "True when the provided UTC timestamp falls inside the half-open session window [start_hour, end_hour), with overnight wrap support.",
         }
     }
 }

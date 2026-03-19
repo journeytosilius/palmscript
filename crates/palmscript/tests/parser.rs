@@ -214,6 +214,19 @@ plot(spot.close)",
 }
 
 #[test]
+fn parses_utc_time_and_session_builtins() {
+    compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+export hour = hour_utc(spot.time)
+export weekday = weekday_utc(spot.time)
+export london_open = session_utc(spot.time, 8, 12)
+plot(spot.close)",
+    )
+    .expect("utc time/session builtins should compile");
+}
+
+#[test]
 fn parses_arb_signals_and_market_pair_orders() {
     compile(
         "interval 1m
@@ -296,6 +309,30 @@ execution gt = gate.spot(\"BTC_USDT\")
 plot(rank_desc(spot.close, bn, gt))",
     );
     assert!(message.contains("rank_desc requires an execution-alias target as the first argument"));
+}
+
+#[test]
+fn rejects_invalid_session_hour_literal() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+plot(session_utc(spot.time, 25, 8) ? 1 : 0)",
+    );
+    assert!(
+        message.contains("session_utc start hour must be an integer literal in the range 0..24")
+    );
+}
+
+#[test]
+fn rejects_series_session_bounds() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+plot(session_utc(spot.time, close, 8) ? 1 : 0)",
+    );
+    assert!(
+        message.contains("session_utc requires a numeric UTC start hour as the second argument")
+    );
 }
 
 #[test]

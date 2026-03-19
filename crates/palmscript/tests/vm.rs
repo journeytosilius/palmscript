@@ -914,6 +914,66 @@ fn extrema_and_direction_helpers_respect_window_and_na() {
 }
 
 #[test]
+fn utc_time_helpers_extract_hour_and_weekday() {
+    let hourly = bars_with_spacing(
+        support::JAN_1_2024_UTC_MS,
+        support::HOUR_MS,
+        &[1.0, 2.0, 3.0],
+    );
+    assert_eq!(
+        plot_values("plot(hour_utc(time))", &hourly),
+        vec![Some(0.0), Some(1.0), Some(2.0)]
+    );
+
+    let daily = bars_with_spacing(
+        support::JAN_1_2024_UTC_MS,
+        support::DAY_MS,
+        &[1.0, 2.0, 3.0],
+    );
+    assert_eq!(
+        plot_values("plot(weekday_utc(time))", &daily),
+        vec![Some(0.0), Some(1.0), Some(2.0)]
+    );
+}
+
+#[test]
+fn session_utc_handles_regular_and_overnight_windows() {
+    let morning = bars_with_spacing(
+        support::JAN_1_2024_UTC_MS + 3 * support::HOUR_MS,
+        support::HOUR_MS,
+        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    );
+    assert_eq!(
+        plot_values("plot(session_utc(time, 4, 8) ? 1 : 0)", &morning),
+        vec![
+            Some(0.0),
+            Some(1.0),
+            Some(1.0),
+            Some(1.0),
+            Some(1.0),
+            Some(0.0)
+        ]
+    );
+
+    let overnight = bars_with_spacing(
+        support::JAN_1_2024_UTC_MS + 21 * support::HOUR_MS,
+        support::HOUR_MS,
+        &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    );
+    assert_eq!(
+        plot_values("plot(session_utc(time, 22, 2) ? 1 : 0)", &overnight),
+        vec![
+            Some(0.0),
+            Some(1.0),
+            Some(1.0),
+            Some(1.0),
+            Some(1.0),
+            Some(0.0)
+        ]
+    );
+}
+
+#[test]
 fn event_memory_helpers_track_matches() {
     let activated = plot_values(
         "plot(activated(close > close[1]) ? 1 : 0)",

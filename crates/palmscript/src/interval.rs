@@ -492,6 +492,28 @@ fn weekday_monday_based(days_since_epoch: i64) -> i64 {
     (days_since_epoch + 3).rem_euclid(7)
 }
 
+pub(crate) fn weekday_utc(time_ms: i64) -> u8 {
+    let (days_since_epoch, _) = split_days(time_ms);
+    weekday_monday_based(days_since_epoch) as u8
+}
+
+pub(crate) fn hour_utc(time_ms: i64) -> u8 {
+    let (_, remainder) = split_days(time_ms);
+    remainder.div_euclid(3_600_000) as u8
+}
+
+pub(crate) fn session_utc(time_ms: i64, start_hour: u8, end_hour: u8) -> bool {
+    if start_hour == end_hour {
+        return true;
+    }
+    let hour = hour_utc(time_ms);
+    if start_hour < end_hour {
+        hour >= start_hour && hour < end_hour
+    } else {
+        hour >= start_hour || hour < end_hour
+    }
+}
+
 fn civil_from_days(days_since_epoch: i64) -> (i32, u8, u8) {
     let z = days_since_epoch + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
@@ -519,7 +541,11 @@ fn days_from_civil(year: i32, month: u8, day: u8) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{Interval, MarketField, SourceTemplate};
+    use super::{hour_utc, session_utc, weekday_utc, Interval, MarketField, SourceTemplate};
+
+    const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
+    const HOUR_MS: i64 = 3_600_000;
+    const DAY_MS: i64 = 24 * HOUR_MS;
 
     #[test]
     fn parses_all_supported_intervals() {
@@ -639,5 +665,23 @@ mod tests {
             Interval::Month1.bucket_open_time(1_706_832_000_000),
             Some(1_706_745_600_000)
         );
+    }
+
+    #[test]
+    fn utc_time_helpers_extract_expected_components() {
+        assert_eq!(weekday_utc(JAN_1_2024_UTC_MS), 0);
+        assert_eq!(weekday_utc(JAN_1_2024_UTC_MS + DAY_MS), 1);
+        assert_eq!(hour_utc(JAN_1_2024_UTC_MS), 0);
+        assert_eq!(hour_utc(JAN_1_2024_UTC_MS + 23 * HOUR_MS), 23);
+    }
+
+    #[test]
+    fn utc_session_helper_supports_wrapped_windows() {
+        assert!(session_utc(JAN_1_2024_UTC_MS + 4 * HOUR_MS, 4, 8));
+        assert!(!session_utc(JAN_1_2024_UTC_MS + 8 * HOUR_MS, 4, 8));
+        assert!(session_utc(JAN_1_2024_UTC_MS + 23 * HOUR_MS, 22, 2));
+        assert!(session_utc(JAN_1_2024_UTC_MS + DAY_MS, 22, 2));
+        assert!(!session_utc(JAN_1_2024_UTC_MS + 21 * HOUR_MS, 22, 2));
+        assert!(session_utc(JAN_1_2024_UTC_MS, 0, 0));
     }
 }

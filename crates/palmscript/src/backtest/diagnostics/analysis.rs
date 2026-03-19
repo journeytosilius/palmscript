@@ -11,6 +11,7 @@ use crate::backtest::{
     TradeExitClassification, TransferDiagnosticsSummary, TransferRouteDiagnosticSummary,
     WeekdayDiagnosticSummary,
 };
+use crate::interval::{hour_utc, weekday_utc};
 use crate::position::PositionSide;
 
 const TIME_BUCKET_HOURS_UTC: u8 = 4;
@@ -820,13 +821,4 @@ fn holding_time_bucket(bars_held: usize) -> HoldingTimeBucket {
         16..=31 => HoldingTimeBucket::Bars16To31,
         _ => HoldingTimeBucket::Bars32Plus,
     }
-}
-
-fn weekday_utc(time_ms: i64) -> u8 {
-    let days = time_ms.div_euclid(86_400_000);
-    ((days + 3).rem_euclid(7)) as u8
-}
-
-fn hour_utc(time_ms: i64) -> u8 {
-    time_ms.rem_euclid(86_400_000).div_euclid(3_600_000) as u8
 }

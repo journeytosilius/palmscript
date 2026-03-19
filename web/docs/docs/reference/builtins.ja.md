@@ -21,6 +21,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - インジケーター: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helper: `above`, `below`, `between`, `outside`
 - crossing helper: `cross`, `crossover`, `crossunder`
+- time/session helper: `hour_utc`, `weekday_utc`, `session_utc`
 - venue-selection helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - null helper: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series / window helper: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
@@ -81,6 +82,44 @@ execution gt = gate.spot("BTC_USDT")
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+```
+
+## Time / Session Helpers
+
+### `hour_utc(time_value)` と `weekday_utc(time_value)`
+
+ルール:
+
+- どちらも `spot.time` のような数値 timestamp または `series<float>` timestamp を受け取ります
+- `hour_utc(...)` は UTC の hour-of-day を `0..23` で返します
+- `weekday_utc(...)` は UTC weekday を `Monday=0` から `Sunday=6` で返します
+- 入力が `na` の場合、結果は `na` です
+- 入力が series の場合、結果型は `series<float>` です
+- それ以外では、結果型は `float` です
+
+### `session_utc(time_value, start_hour, end_hour)`
+
+ルール:
+
+- 第 1 引数は `spot.time` のような数値 timestamp または `series<float>` timestamp です
+- 第 2 引数と第 3 引数は `0..24` の範囲にある数値 UTC hour literal、または不変な数値 input です
+- session window は半開区間 `[start_hour, end_hour)` です
+- `start_hour < end_hour` の場合、その intraday window をそのまま判定します
+- `start_hour > end_hour` の場合、例えば `22 -> 2` のように overnight wrap を行います
+- `start_hour == end_hour` の場合、UTC の一日全体に一致します
+- timestamp 入力が `na` の場合、結果は `na` です
+- timestamp 入力が series の場合、結果型は `series<bool>` です
+- それ以外では、結果型は `bool` です
+
+例:
+
+```palmscript
+source spot = binance.spot("BTCUSDT")
+
+export hour = hour_utc(spot.time)
+export weekday = weekday_utc(spot.time)
+export london_morning = session_utc(spot.time, 8, 12)
+export asia_wrap = session_utc(spot.time, 22, 2)
 ```
 
 ## タプル値 Builtins
