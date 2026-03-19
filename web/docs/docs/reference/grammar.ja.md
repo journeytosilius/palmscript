@@ -161,7 +161,7 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 - シリーズインデックスには非負整数リテラルまたはトップレベル不変数値束縛が必要
 - タプル値 builtin は、使用前にタプル分解で束縛しなければならない
 - `ma_type.<variant>`、`tif.<variant>`、`trigger_ref.<variant>`、`position_side.<variant>`、`exit_kind.<variant>` は型付き enum 名前空間
-- `position.*` は `protect` と `target` 宣言内でのみ有効
+- `position.*` は `exit`、`protect` と `target` 宣言内でのみ有効
 - `position_event.*` はバックテスト駆動の `series<bool>` 名前空間
 - `last_exit.*`、`last_long_exit.*`、`last_short_exit.*` はバックテスト駆動の最新クローズトレード名前空間
 - `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` はバックテスト駆動の execution-ledger 名前空間

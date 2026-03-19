@@ -207,8 +207,8 @@ Regras:
   estagio na v1
 - saidas anexadas em estagios sao sequenciais: apenas o proximo target e o
   protect atual ficam ativos ao mesmo tempo
-- `position.*` esta disponivel apenas dentro de declaracoes `protect` e
-  `target`
+- `position.*` esta disponivel apenas dentro de declaracoes `exit`, `protect`
+  e `target`
 - `position_event.*` esta disponivel em qualquer lugar onde `series<bool>` seja
   valido e serve para ancorar logica a fills reais de backtest
 - os campos atuais de `position_event` sao:

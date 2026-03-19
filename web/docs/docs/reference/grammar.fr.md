@@ -175,8 +175,8 @@ L'implementation exige aussi :
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`,
   `position_side.<variant>` et `exit_kind.<variant>` sont des espaces de noms
   enum types
-- `position.*` n'est valide qu'a l'interieur des declarations `protect` et
-  `target`
+- `position.*` n'est valide qu'a l'interieur des declarations `exit`, `protect`
+  et `target`
 - `position_event.*` est un espace de noms `series<bool>` pilote par le
   backtest
 - `last_exit.*`, `last_long_exit.*` et `last_short_exit.*` sont des espaces de

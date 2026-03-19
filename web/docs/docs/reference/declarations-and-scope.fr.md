@@ -215,7 +215,7 @@ Regles :
   echelonnee dans la v1
 - les sorties attachees echelonnees sont sequentielles : seule la prochaine
   etape de target et la protect courante sont actives en meme temps
-- `position.*` n'est disponible que dans les declarations `protect` et
+- `position.*` n'est disponible que dans les declarations `exit`, `protect` et
   `target`
 - `position_event.*` est disponible partout ou un `series<bool>` est valide et
   sert a ancrer la logique sur les vrais remplissages du backtest

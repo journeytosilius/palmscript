@@ -209,7 +209,7 @@ Regeln:
 - `risk_pct(...)` ist in v1 nur bei gestuften Entry-Size-Deklarationen gueltig
 - gestufte angehaengte Exits sind sequenziell: immer nur die naechste
   Target-Stufe und die aktuelle Protect-Stufe sind aktiv
-- `position.*` ist nur innerhalb von `protect`- und `target`-Deklarationen
+- `position.*` ist nur innerhalb von `exit`-, `protect`- und `target`-Deklarationen
   verfuegbar
 - `position_event.*` ist ueberall verfuegbar, wo ein `series<bool>` gueltig
   ist, und dient dazu, Logik an echte Backtest-Fills zu binden

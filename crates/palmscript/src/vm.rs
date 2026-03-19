@@ -598,6 +598,10 @@ impl<'a> VmEngine<'a> {
                 self.call_time_transform(BuiltinId::WeekdayUtc, arity, args, pc)
             }
             BuiltinId::SessionUtc => self.call_session_utc(arity, args, pc),
+            BuiltinId::TrailStopLong
+            | BuiltinId::TrailStopShort
+            | BuiltinId::BreakEvenLong
+            | BuiltinId::BreakEvenShort => self.call_exit_price_helper(builtin, arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -663,6 +667,45 @@ impl<'a> VmEngine<'a> {
             return Ok(Value::NA);
         };
         Ok(Value::Bool(session_utc(time_ms, start_hour, end_hour)))
+    }
+
+    fn call_exit_price_helper(
+        &self,
+        builtin: BuiltinId,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 2,
+                found: arity,
+            });
+        }
+        let base = self.materialize_value(args[0].clone(), pc)?;
+        let offset = self.materialize_value(args[1].clone(), pc)?;
+        let Some(base) = expect_numeric_like(&base, pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(offset) = expect_numeric_like(&offset, pc)? else {
+            return Ok(Value::NA);
+        };
+        if !base.is_finite() || !offset.is_finite() || offset < 0.0 {
+            return Ok(Value::NA);
+        }
+        let value = match builtin {
+            BuiltinId::TrailStopLong => base - offset,
+            BuiltinId::TrailStopShort => base + offset,
+            BuiltinId::BreakEvenLong => base + offset,
+            BuiltinId::BreakEvenShort => base - offset,
+            _ => unreachable!(),
+        };
+        Ok(if value.is_finite() {
+            Value::F64(value)
+        } else {
+            Value::NA
+        })
     }
 
     fn materialize_time_ms(&self, value: Value, pc: usize) -> Result<Option<i64>, RuntimeError> {

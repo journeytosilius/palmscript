@@ -86,6 +86,7 @@ pub enum BuiltinKind {
     AdaptiveCycleTuple,
     TimeTransform,
     TimeSession,
+    ExitPriceHelper,
     VenueAliasSelector,
     VenueRank,
     VenueSpread,
@@ -243,10 +244,14 @@ pub enum BuiltinId {
     HourUtc = 146,
     WeekdayUtc = 147,
     SessionUtc = 148,
+    TrailStopLong = 149,
+    TrailStopShort = 150,
+    BreakEvenLong = 151,
+    BreakEvenShort = 152,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 149] = [
+    pub const RESERVED: [Self; 153] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -396,9 +401,13 @@ impl BuiltinId {
         Self::HourUtc,
         Self::WeekdayUtc,
         Self::SessionUtc,
+        Self::TrailStopLong,
+        Self::TrailStopShort,
+        Self::BreakEvenLong,
+        Self::BreakEvenShort,
     ];
 
-    pub const CALLABLE: [Self; 136] = [
+    pub const CALLABLE: [Self; 140] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -535,6 +544,10 @@ impl BuiltinId {
         Self::HourUtc,
         Self::WeekdayUtc,
         Self::SessionUtc,
+        Self::TrailStopLong,
+        Self::TrailStopShort,
+        Self::BreakEvenLong,
+        Self::BreakEvenShort,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -688,6 +701,10 @@ impl BuiltinId {
             "hour_utc" => Some(Self::HourUtc),
             "weekday_utc" => Some(Self::WeekdayUtc),
             "session_utc" => Some(Self::SessionUtc),
+            "trail_stop_long" => Some(Self::TrailStopLong),
+            "trail_stop_short" => Some(Self::TrailStopShort),
+            "break_even_long" => Some(Self::BreakEvenLong),
+            "break_even_short" => Some(Self::BreakEvenShort),
             _ => None,
         }
     }
@@ -843,6 +860,10 @@ impl BuiltinId {
             146 => Some(Self::HourUtc),
             147 => Some(Self::WeekdayUtc),
             148 => Some(Self::SessionUtc),
+            149 => Some(Self::TrailStopLong),
+            150 => Some(Self::TrailStopShort),
+            151 => Some(Self::BreakEvenLong),
+            152 => Some(Self::BreakEvenShort),
             _ => None,
         }
     }
@@ -998,6 +1019,10 @@ impl BuiltinId {
             Self::HourUtc => "hour_utc",
             Self::WeekdayUtc => "weekday_utc",
             Self::SessionUtc => "session_utc",
+            Self::TrailStopLong => "trail_stop_long",
+            Self::TrailStopShort => "trail_stop_short",
+            Self::BreakEvenLong => "break_even_long",
+            Self::BreakEvenShort => "break_even_short",
         }
     }
 
@@ -1112,6 +1137,10 @@ impl BuiltinId {
             Self::Mama => BuiltinKind::AdaptiveCycleTuple,
             Self::HourUtc | Self::WeekdayUtc => BuiltinKind::TimeTransform,
             Self::SessionUtc => BuiltinKind::TimeSession,
+            Self::TrailStopLong
+            | Self::TrailStopShort
+            | Self::BreakEvenLong
+            | Self::BreakEvenShort => BuiltinKind::ExitPriceHelper,
             Self::Cheapest | Self::Richest => BuiltinKind::VenueAliasSelector,
             Self::RankAsc | Self::RankDesc => BuiltinKind::VenueRank,
             Self::SpreadBps => BuiltinKind::VenueSpread,
@@ -1261,6 +1290,10 @@ impl BuiltinId {
             Self::SpreadBps => BuiltinArity::Exact(2),
             Self::HourUtc | Self::WeekdayUtc => BuiltinArity::Exact(1),
             Self::SessionUtc => BuiltinArity::Exact(3),
+            Self::TrailStopLong
+            | Self::TrailStopShort
+            | Self::BreakEvenLong
+            | Self::BreakEvenShort => BuiltinArity::Exact(2),
         }
     }
 
@@ -1360,6 +1393,10 @@ impl BuiltinId {
             Self::HourUtc => "hour_utc(time_value)",
             Self::WeekdayUtc => "weekday_utc(time_value)",
             Self::SessionUtc => "session_utc(time_value, start_hour, end_hour)",
+            Self::TrailStopLong => "trail_stop_long(anchor_price, stop_offset)",
+            Self::TrailStopShort => "trail_stop_short(anchor_price, stop_offset)",
+            Self::BreakEvenLong => "break_even_long(entry_price, stop_offset)",
+            Self::BreakEvenShort => "break_even_short(entry_price, stop_offset)",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1575,6 +1612,10 @@ impl BuiltinId {
             Self::HourUtc => "Return the UTC hour-of-day (0..23) for the provided timestamp input.",
             Self::WeekdayUtc => "Return the UTC weekday (Monday=0 .. Sunday=6) for the provided timestamp input.",
             Self::SessionUtc => "True when the provided UTC timestamp falls inside the half-open session window [start_hour, end_hour), with overnight wrap support.",
+            Self::TrailStopLong => "Return `anchor_price - stop_offset` for long stop placement, or `na` when the inputs are unavailable or invalid.",
+            Self::TrailStopShort => "Return `anchor_price + stop_offset` for short stop placement, or `na` when the inputs are unavailable or invalid.",
+            Self::BreakEvenLong => "Return `entry_price + stop_offset` for long break-even style stop placement, or `na` when the inputs are unavailable or invalid.",
+            Self::BreakEvenShort => "Return `entry_price - stop_offset` for short break-even style stop placement, or `na` when the inputs are unavailable or invalid.",
         }
     }
 }

@@ -175,7 +175,7 @@ ademas exige:
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`,
   `position_side.<variant>` y `exit_kind.<variant>` son namespaces de enums
   tipados
-- `position.*` es valido solo dentro de declaraciones `protect` y `target`
+- `position.*` es valido solo dentro de declaraciones `exit`, `protect` y `target`
 - `position_event.*` es un namespace `series<bool>` impulsado por backtests
 - `last_exit.*`, `last_long_exit.*` y `last_short_exit.*` son namespaces del
   ultimo trade cerrado impulsados por backtests

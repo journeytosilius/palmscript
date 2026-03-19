@@ -211,8 +211,8 @@ Reglas:
   escalonada en v1
 - las salidas adjuntas escalonadas son secuenciales: solo la siguiente etapa de
   target y la etapa protect actual estan activas al mismo tiempo
-- `position.*` solo esta disponible dentro de declaraciones `protect` y
-  `target`
+- `position.*` solo esta disponible dentro de declaraciones `exit`, `protect`
+  y `target`
 - `position_event.*` esta disponible en cualquier lugar donde un `series<bool>`
   sea valido y esta pensado para anclar logica a fills reales del backtest
 - los campos actuales de `position_event` son:

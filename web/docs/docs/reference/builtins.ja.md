@@ -22,6 +22,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - relational helper: `above`, `below`, `between`, `outside`
 - crossing helper: `cross`, `crossover`, `crossunder`
 - time/session helper: `hour_utc`, `weekday_utc`, `session_utc`
+- exit-price helper: `trail_stop_long`, `trail_stop_short`, `break_even_long`, `break_even_short`
 - venue-selection helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - null helper: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series / window helper: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
@@ -120,6 +121,47 @@ export hour = hour_utc(spot.time)
 export weekday = weekday_utc(spot.time)
 export london_morning = session_utc(spot.time, 8, 12)
 export asia_wrap = session_utc(spot.time, 22, 2)
+```
+
+## Exit-Price Helpers
+
+### `trail_stop_long(anchor_price, stop_offset)` と `trail_stop_short(anchor_price, stop_offset)`
+
+ルール:
+
+- どちらも数値または `series<float>` 入力を受け取ります
+- `trail_stop_long(...)` は `anchor_price - stop_offset` として評価されます
+- `trail_stop_short(...)` は `anchor_price + stop_offset` として評価されます
+- いずれかの入力が `na` の場合、結果は `na` です
+- `stop_offset` が負、またはいずれかの数値入力が非有限なら結果は `na` です
+- いずれかの入力が series の場合、結果型は `series<float>` です
+- それ以外では、結果型は `float` です
+
+### `break_even_long(entry_price, stop_offset)` と `break_even_short(entry_price, stop_offset)`
+
+ルール:
+
+- どちらも数値または `series<float>` 入力を受け取ります
+- `break_even_long(...)` は `entry_price + stop_offset` として評価されます
+- `break_even_short(...)` は `entry_price - stop_offset` として評価されます
+- いずれかの入力が `na` の場合、結果は `na` です
+- `stop_offset` が負、またはいずれかの数値入力が非有限なら結果は `na` です
+- いずれかの入力が series の場合、結果型は `series<float>` です
+- それ以外では、結果型は `float` です
+
+例:
+
+```palmscript
+protect long = stop_market(
+    trigger_price = trail_stop_long(highest_since(position_event.long_entry_fill, spot.high), 3 * atr(spot.high, spot.low, spot.close, 14)),
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
+protect_after_target1 long = stop_market(
+    trigger_price = break_even_long(position.entry_price, 0),
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
 ```
 
 ## タプル値 Builtins

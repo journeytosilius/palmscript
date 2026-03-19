@@ -261,8 +261,8 @@ Reglas:
   se activan secuencialmente
 - si ambos se vuelven ejecutables en la misma barra de ejecucion, `protect`
   gana de forma determinista
-- `position.*` esta disponible solo dentro de declaraciones `protect` y
-  `target`
+- `position.*` esta disponible solo dentro de declaraciones `exit`, `protect`
+  y `target`
 - `position_event.*` es un namespace de series impulsado por backtests que
   expone eventos de fill reales como `position_event.long_entry_fill`
 - `position_event.*` tambien expone eventos de fill especificos por tipo de

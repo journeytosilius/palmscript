@@ -66,6 +66,12 @@ UTC session filters without manual millisecond arithmetic. `session_utc` treats
 its window as half-open `[start_hour, end_hour)` and supports overnight wraps
 such as `session_utc(spot.time, 22, 2)`.
 
+Use `position.*` inside discretionary `exit` declarations when you want
+time-based or state-aware closes such as `exit long = position.bars_held >= 48`.
+Use `trail_stop_long`, `trail_stop_short`, `break_even_long`, and
+`break_even_short` to keep common trailing-stop and break-even attached-exit
+price math readable.
+
 Execution-oriented commands now require at least one declared `execution`
 target in the script. The checked-in backtest and paper examples already
 declare those execution aliases explicitly. If a script declares exactly one

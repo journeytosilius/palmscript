@@ -34,6 +34,8 @@ The language keeps market-data inputs and execution venues explicit:
 - `execution` declares order-routing venues
 - `order ...` declares how entries and exits are placed
 - `hour_utc(<alias>.time)`, `weekday_utc(<alias>.time)`, and `session_utc(<alias>.time, start_hour, end_hour)` provide deterministic UTC time/session gating without hand-rolled timestamp math
+- `exit` declarations can now read `position.*` for time-based or state-aware closes such as `exit long = position.bars_held >= 48`
+- `trail_stop_long`, `trail_stop_short`, `break_even_long`, and `break_even_short` keep common trailing-stop and break-even price math readable inside `protect` / `target` declarations
 
 Documentation and tooling:
 

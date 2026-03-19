@@ -259,7 +259,7 @@ Regeln:
   sequenziell aktiv
 - wenn beide auf derselben Ausfuehrungsbar fillbar werden, gewinnt `protect`
   deterministisch
-- `position.*` ist nur innerhalb von `protect`- und `target`-Deklarationen
+- `position.*` ist nur innerhalb von `exit`-, `protect`- und `target`-Deklarationen
   verfuegbar
 - `position_event.*` ist ein backtestgetriebener Serien-Namespace, der reale
   Fill-Ereignisse wie `position_event.long_entry_fill` exponiert

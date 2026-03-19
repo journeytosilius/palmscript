@@ -273,7 +273,7 @@ Rules:
 - a `size targetN ...` declaration turns the matching target stage into a partial take-profit when the fraction is below `1`
 - staged targets are one-shot within a position cycle and activate sequentially
 - if both become fillable on the same execution bar, `protect` wins deterministically
-- `position.*` is available only inside `protect` and `target` declarations
+- `position.*` is available only inside `exit`, `protect`, and `target` declarations
 - `position_event.*` is a backtest-driven series namespace that exposes actual fill events such as `position_event.long_entry_fill`
 - `position_event.*` also exposes exit-kind-specific fill events such as `position_event.long_target_fill`, `position_event.long_protect_fill`, and `position_event.long_liquidation_fill`
 - staged fill events are also available, including `position_event.long_entry1_fill`, `position_event.long_entry2_fill`, `position_event.long_entry3_fill`, `position_event.long_target1_fill`, `position_event.long_target2_fill`, and `position_event.long_target3_fill` with matching short-side fields

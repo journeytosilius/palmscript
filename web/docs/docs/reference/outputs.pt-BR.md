@@ -259,8 +259,8 @@ Regras:
   sequencia
 - se ambos puderem preencher na mesma barra de execucao, `protect` vence de
   forma deterministica
-- `position.*` esta disponivel apenas dentro de declaracoes `protect` e
-  `target`
+- `position.*` esta disponivel apenas dentro de declaracoes `exit`, `protect`
+  e `target`
 - `position_event.*` e um namespace de serie dirigido por backtest que expoe
   eventos de fill reais como `position_event.long_entry_fill`
 - `position_event.*` tambem expoe eventos de fill especificos por tipo de

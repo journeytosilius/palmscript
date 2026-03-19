@@ -215,7 +215,7 @@ size target long = 0.5
 - `size targetN ...` は、その比率が `1` 未満なら対応 target stage を partial take-profit にする
 - staged target は一つの position cycle で一回だけ実行され、順に有効化される
 - 同一 execution bar で両方が fill 可能になった場合、`protect` が決定的に優先される
-- `position.*` は `protect` と `target` 宣言内でのみ利用できる
+- `position.*` は `exit`、`protect` と `target` 宣言内でのみ利用できる
 - `position_event.*` は、`position_event.long_entry_fill` のような実 fill event を公開するバックテスト駆動の series namespace
 - `position_event.*` は、`position_event.long_target_fill`, `position_event.long_protect_fill`, `position_event.long_liquidation_fill` のような exit-kind 固有の fill event も公開する
 - staged fill event も利用できる。`position_event.long_entry1_fill`, `position_event.long_entry2_fill`, `position_event.long_entry3_fill`, `position_event.long_target1_fill`, `position_event.long_target2_fill`, `position_event.long_target3_fill` と、それに対応する short side が含まれる

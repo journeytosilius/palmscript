@@ -1954,6 +1954,63 @@ plot(spot.close)",
 }
 
 #[test]
+fn discretionary_exits_can_use_position_namespace() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = position.bars_held >= 1
+entry short = false
+exit short = false
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit short = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    13.0,
+                    13.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+                    14.0,
+                    14.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(result.fills.len(), 2);
+    assert_eq!(result.fills[0].bar_index, 2);
+    assert_eq!(result.fills[1].bar_index, 4);
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        TradeExitClassification::Signal
+    );
+    assert_eq!(result.diagnostics.trade_diagnostics[0].bars_held, 2);
+}
+
+#[test]
 fn diagnostics_capture_trade_context_and_excursions() {
     let compiled = compile(
         "interval 1m

@@ -333,7 +333,7 @@ struct Analyzer<'a> {
     functions_by_id: HashMap<NodeId, &'a FunctionDecl>,
     order_templates: HashMap<String, CollectedOrderTemplate>,
     active_specializations: HashSet<FunctionSpecializationKey>,
-    active_attached_role: Option<CompiledSignalRole>,
+    active_position_role: Option<CompiledSignalRole>,
 }
 
 impl<'a> Analyzer<'a> {
@@ -346,7 +346,7 @@ impl<'a> Analyzer<'a> {
             functions_by_id: HashMap::new(),
             order_templates: HashMap::new(),
             active_specializations: HashSet::new(),
-            active_attached_role: None,
+            active_position_role: None,
         };
 
         analyzer.validate_strategy_intervals(ast);
@@ -1242,7 +1242,7 @@ impl<'a> Analyzer<'a> {
             ExprKind::PositionField { field_span, .. } => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
-                    "`position.*` is only available inside `protect` and `target` declarations",
+                    "`position.*` is only available inside `exit`, `protect`, and `target` declarations",
                     *field_span,
                 ));
             }
@@ -1552,6 +1552,11 @@ impl<'a> Analyzer<'a> {
     fn analyze_signal_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, expr: &Expr) {
         let compiled_role = compiled_signal_role(role);
         let canonical = compiled_role.canonical_name();
+        let previous = if compiled_role.allows_position_fields() {
+            self.active_position_role.replace(compiled_role)
+        } else {
+            None
+        };
         self.analyze_output_stmt(
             stmt,
             canonical,
@@ -1560,6 +1565,9 @@ impl<'a> Analyzer<'a> {
             Some(compiled_role),
             false,
         );
+        if compiled_role.allows_position_fields() {
+            self.active_position_role = previous;
+        }
     }
 
     fn analyze_arb_signal_stmt(&mut self, stmt: &Stmt, kind: AstArbSignalKind, expr: &Expr) {
@@ -2705,10 +2713,10 @@ impl<'a> Analyzer<'a> {
         kind: OrderFieldKind,
         expr: &Expr,
     ) -> Option<(u16, u16)> {
-        let info = if role.is_attached_exit() {
-            let previous = self.active_attached_role.replace(role);
+        let info = if role.allows_position_fields() {
+            let previous = self.active_position_role.replace(role);
             let info = self.analyze_expr(expr);
-            self.active_attached_role = previous;
+            self.active_position_role = previous;
             info
         } else {
             self.analyze_expr(expr)
@@ -2892,10 +2900,10 @@ impl<'a> Analyzer<'a> {
                 }
             },
             ExprKind::PositionField { field, field_span } => {
-                if self.active_attached_role.is_none() {
+                if self.active_position_role.is_none() {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
-                        "`position.*` is only available inside `protect` and `target` declarations",
+                        "`position.*` is only available inside `exit`, `protect`, and `target` declarations",
                         *field_span,
                     ));
                 }
@@ -3376,7 +3384,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
             ExprKind::PositionField { field_span, .. } => {
                 self.parent.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
-                    "`position.*` is only available inside `protect` and `target` declarations",
+                    "`position.*` is only available inside `exit`, `protect`, and `target` declarations",
                     *field_span,
                 ));
                 ExprInfo::scalar(Type::F64)
@@ -4568,7 +4576,8 @@ fn analyze_helper_builtin(
         }
         BuiltinKind::UnaryMathTransform
         | BuiltinKind::NumericBinary
-        | BuiltinKind::PriceTransform => {
+        | BuiltinKind::PriceTransform
+        | BuiltinKind::ExitPriceHelper => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
                 if !info.ty.is_numeric_like() {
                     diagnostics.push(Diagnostic::new(
@@ -5804,7 +5813,8 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         },
         BuiltinKind::UnaryMathTransform
         | BuiltinKind::NumericBinary
-        | BuiltinKind::PriceTransform => numeric_result(arg_info),
+        | BuiltinKind::PriceTransform
+        | BuiltinKind::ExitPriceHelper => numeric_result(arg_info),
         BuiltinKind::CurrentOhlc => ExprInfo::series(0),
         BuiltinKind::BarsSince
         | BuiltinKind::Cumulative
@@ -5969,6 +5979,7 @@ fn builtin_allowed_in_const(builtin: BuiltinId) -> bool {
         builtin.kind(),
         BuiltinKind::UnaryMathTransform
             | BuiltinKind::NumericBinary
+            | BuiltinKind::ExitPriceHelper
             | BuiltinKind::Relation2
             | BuiltinKind::Relation3
             | BuiltinKind::NullCheck
@@ -7678,7 +7689,11 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Mama
             | BuiltinId::HourUtc
             | BuiltinId::WeekdayUtc
-            | BuiltinId::SessionUtc => {
+            | BuiltinId::SessionUtc
+            | BuiltinId::TrailStopLong
+            | BuiltinId::TrailStopShort
+            | BuiltinId::BreakEvenLong
+            | BuiltinId::BreakEvenShort => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -8910,7 +8925,8 @@ impl<'a> Compiler<'a> {
             | BuiltinKind::VenueRank
             | BuiltinKind::VenueSpread
             | BuiltinKind::TimeTransform
-            | BuiltinKind::TimeSession => {
+            | BuiltinKind::TimeSession
+            | BuiltinKind::ExitPriceHelper => {
                 for arg in args {
                     self.emit_expr(arg, expr_info, user_calls);
                 }

@@ -236,7 +236,7 @@ Rules:
 - `size module ...` requires a matching module declaration that resolves to a staged entry role
 - `risk_pct(...)` is only valid on staged entry size declarations in v1
 - staged attached exits are sequential: only the next target stage and the current protect stage are active at once
-- `position.*` is only available inside `protect` and `target` declarations
+- `position.*` is only available inside `exit`, `protect`, and `target` declarations
 - `position_event.*` is available anywhere a `series<bool>` is valid and is intended to anchor logic to actual backtest fills
 - current `position_event` fields are:
   `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, `short_exit_fill`,

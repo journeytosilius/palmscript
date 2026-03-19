@@ -527,7 +527,7 @@ fn rejects_position_namespace_outside_attached_exits() {
         &source,
         &[expected(
             DiagnosticKind::Type,
-            "`position.*` is only available inside `protect` and `target` declarations",
+            "`position.*` is only available inside `exit`, `protect`, and `target` declarations",
         )],
     );
 }

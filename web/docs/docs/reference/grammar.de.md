@@ -174,7 +174,7 @@ fordert zusaetzlich:
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`,
   `position_side.<variant>` und `exit_kind.<variant>` sind typisierte
   Enum-Namespaces
-- `position.*` ist nur innerhalb von `protect`- und `target`-Deklarationen
+- `position.*` ist nur innerhalb von `exit`-, `protect`- und `target`-Deklarationen
   gueltig
 - `position_event.*` ist ein backtestgetriebener `series<bool>`-Namespace
 - `last_exit.*`, `last_long_exit.*` und `last_short_exit.*` sind

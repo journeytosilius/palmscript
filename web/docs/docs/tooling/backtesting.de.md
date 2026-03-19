@@ -684,7 +684,7 @@ Attached position-aware exits:
 - `protect long = stop_market(trigger_price = position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)`
 - `target long = take_profit_market(trigger_price = position.entry_price + 4, trigger_ref = trigger_ref.last, venue = exec)`
 - `size target1 long = 0.5`
-- `position.*` is valid only inside `protect` and `target`
+- `position.*` is valid only inside `exit`, `protect`, and `target`
 
 PalmScript no longer synthesizes implicit orders for trading
 scripts. Declare `order entry ...` and `order exit ...` explicitly for every
@@ -699,7 +699,9 @@ Actual-fill anchor helpers:
   `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
   `short_reversal_exit_fill`, `long_liquidation_fill`, and `short_liquidation_fill`
 - anchored helpers such as `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, and `valuewhen_since` can use those events directly
-- example: `protect long = stop_market(trigger_price = highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)`
+- example: `protect long = stop_market(trigger_price = trail_stop_long(highest_since(position_event.long_entry_fill, spot.high), 3 * atr(spot.high, spot.low, spot.close, 14)), trigger_ref = trigger_ref.last, venue = exec)`
+- break-even ratchets can use `break_even_long(position.entry_price, 0)` or `break_even_short(position.entry_price, 0)`
+- discretionary exits can also read live position state, for example `exit long = position.bars_held >= 48`
 - outside backtests, `position_event.*` stays deterministic by evaluating to `false` on every step
 
 Latest closed-trade state:

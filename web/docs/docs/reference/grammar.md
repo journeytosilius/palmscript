@@ -186,7 +186,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - tuple-valued builtins must be bound with tuple destructuring before use
 - `input ... optimize(...)` metadata is only valid on numeric `input` declarations and must pass the range/choice validation rules described in [Declarations and Scope](declarations-and-scope.md)
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` are typed enum namespaces
-- `position.*` is valid only inside `protect` and `target` declarations
+- `position.*` is valid only inside `exit`, `protect`, and `target` declarations
 - `position_event.*` is a backtest-driven `series<bool>` namespace
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are backtest-driven latest-closed-trade namespaces
 - `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` is a backtest-driven execution-ledger namespace

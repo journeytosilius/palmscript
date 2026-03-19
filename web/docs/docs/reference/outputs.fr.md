@@ -265,7 +265,7 @@ Regles :
   s'activent sequentiellement
 - si les deux deviennent remplissables sur la meme barre d'execution, `protect`
   l'emporte de maniere deterministe
-- `position.*` n'est disponible que dans les declarations `protect` et
+- `position.*` n'est disponible que dans les declarations `exit`, `protect` et
   `target`
 - `position_event.*` est un espace de noms de series pilote par le backtest qui
   expose les vrais evenements de remplissage comme `position_event.long_entry_fill`

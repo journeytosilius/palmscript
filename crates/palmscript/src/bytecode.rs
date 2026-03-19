@@ -168,6 +168,10 @@ impl SignalRole {
         )
     }
 
+    pub const fn allows_position_fields(self) -> bool {
+        matches!(self, Self::LongExit | Self::ShortExit) || self.is_attached_exit()
+    }
+
     pub const fn is_entry(self) -> bool {
         matches!(
             self,

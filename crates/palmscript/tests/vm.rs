@@ -1169,6 +1169,46 @@ plot(0)",
 }
 
 #[test]
+fn exit_price_helpers_transform_numeric_inputs() {
+    let compiled = palmscript::compile(&with_interval(
+        "export long_trail = trail_stop_long(close, 2)
+export short_trail = trail_stop_short(close, 2)
+export be_long = break_even_long(close, 0.5)
+export be_short = break_even_short(close, 0.5)
+export invalid = trail_stop_long(close, -1)
+plot(close)",
+    ))
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 12.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    assert_eq!(
+        outputs.exports[0].points[2].value,
+        palmscript::OutputValue::F64(10.0)
+    );
+    assert_eq!(
+        outputs.exports[1].points[2].value,
+        palmscript::OutputValue::F64(14.0)
+    );
+    assert_eq!(
+        outputs.exports[2].points[2].value,
+        palmscript::OutputValue::F64(12.5)
+    );
+    assert_eq!(
+        outputs.exports[3].points[2].value,
+        palmscript::OutputValue::F64(11.5)
+    );
+    assert_eq!(
+        outputs.exports[4].points[2].value,
+        palmscript::OutputValue::NA
+    );
+}
+
+#[test]
 fn last_exit_namespace_is_na_outside_backtests() {
     let compiled = palmscript::compile(&with_interval(
         "export target_fill = position_event.long_target_fill

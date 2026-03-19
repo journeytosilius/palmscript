@@ -577,6 +577,21 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_discretionary_exit_declarations_with_position_fields() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+execution src = binance.spot(\"BTCUSDT\")
+entry long = src.close > src.close[1]
+exit long = position.bars_held >= 2
+order entry long = market(venue = src)
+order exit long = market(venue = src)
+plot(src.close)",
+    )
+    .expect("discretionary exits should compile with position fields");
+}
+
+#[test]
 fn parses_partial_target_size_declarations() {
     compile(
         "interval 1m

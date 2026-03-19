@@ -29,6 +29,7 @@ PalmScript expone actualmente estas categorias builtin:
 - helpers relacionales: `above`, `below`, `between`, `outside`
 - helpers de cruce: `cross`, `crossover`, `crossunder`
 - helpers de tiempo/sesion: `hour_utc`, `weekday_utc`, `session_utc`
+- helpers de precio de salida: `trail_stop_long`, `trail_stop_short`, `break_even_long`, `break_even_short`
 - helpers de seleccion de venue: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - helpers de nulos: `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
@@ -134,6 +135,47 @@ export hour = hour_utc(spot.time)
 export weekday = weekday_utc(spot.time)
 export london_morning = session_utc(spot.time, 8, 12)
 export asia_wrap = session_utc(spot.time, 22, 2)
+```
+
+## Helpers De Precio De Salida
+
+### `trail_stop_long(anchor_price, stop_offset)` y `trail_stop_short(anchor_price, stop_offset)`
+
+Reglas:
+
+- ambos helpers aceptan entradas numericas o `series<float>`
+- `trail_stop_long(...)` evalua como `anchor_price - stop_offset`
+- `trail_stop_short(...)` evalua como `anchor_price + stop_offset`
+- si cualquier entrada es `na`, el resultado es `na`
+- si `stop_offset` es negativo o alguna entrada numerica no es finita, el resultado es `na`
+- si alguna entrada es una serie, el tipo de resultado es `series<float>`
+- en caso contrario, el tipo de resultado es `float`
+
+### `break_even_long(entry_price, stop_offset)` y `break_even_short(entry_price, stop_offset)`
+
+Reglas:
+
+- ambos helpers aceptan entradas numericas o `series<float>`
+- `break_even_long(...)` evalua como `entry_price + stop_offset`
+- `break_even_short(...)` evalua como `entry_price - stop_offset`
+- si cualquier entrada es `na`, el resultado es `na`
+- si `stop_offset` es negativo o alguna entrada numerica no es finita, el resultado es `na`
+- si alguna entrada es una serie, el tipo de resultado es `series<float>`
+- en caso contrario, el tipo de resultado es `float`
+
+Ejemplo:
+
+```palmscript
+protect long = stop_market(
+    trigger_price = trail_stop_long(highest_since(position_event.long_entry_fill, spot.high), 3 * atr(spot.high, spot.low, spot.close, 14)),
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
+protect_after_target1 long = stop_market(
+    trigger_price = break_even_long(position.entry_price, 0),
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
 ```
 
 ## Builtins Que Devuelven Tuplas

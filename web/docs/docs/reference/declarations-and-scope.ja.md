@@ -182,7 +182,7 @@ size target1 long = 0.5
 - `size module ...` には、段階付き entry ロールへ解決される対応 `module` 宣言が必要
 - v1 では `risk_pct(...)` は段階付き entry size 宣言でのみ有効
 - 段階付き attached exit は順次的であり、一度に有効なのは次の target 段階と現在の protect 段階だけ
-- `position.*` は `protect` と `target` 宣言内でのみ利用できる
+- `position.*` は `exit`、`protect` と `target` 宣言内でのみ利用できる
 - `position_event.*` は `series<bool>` が有効な場所ならどこでも利用でき、実際のバックテスト fill にロジックを固定するために使われる
 - 現在の `position_event` フィールドは:
   `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, `short_exit_fill`,

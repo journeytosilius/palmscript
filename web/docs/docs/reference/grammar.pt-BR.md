@@ -172,7 +172,7 @@ exige:
 - builtins tuple-valued devem ser associados via desestruturacao antes do uso
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`,
   `position_side.<variant>` e `exit_kind.<variant>` sao namespaces enum tipados
-- `position.*` e valido apenas dentro de declaracoes `protect` e `target`
+- `position.*` e valido apenas dentro de declaracoes `exit`, `protect` e `target`
 - `position_event.*` e um namespace `series<bool>` dirigido por backtest
 - `last_exit.*`, `last_long_exit.*` e `last_short_exit.*` sao namespaces do
   ultimo trade fechado dirigidos por backtest
