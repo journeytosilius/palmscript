@@ -236,10 +236,9 @@ entre les runs suivis pour cette strategie et inspecter l'equity, le PnL, les
 trades, le drawdown, la sante des feeds et les logs dans un panneau unifie en
 temps reel.
 La `paper-sessions.toml` fournie demarre `strategy.ps`,
-`triiger_happy.ps` et `experimental/xrp_usdm_mean_reversion.ps`, afin que la
-strategie d'exemple avancee a sources multiples, le smoke test
-trigger-happy et la session paper de mean reversion XRP USD-M s'executent
-ensemble par defaut.
+et `experimental/xrp_usdm_mean_reversion.ps`, afin que la strategie d'exemple
+avancee a sources multiples et la session paper de mean reversion XRP USD-M
+s'executent ensemble par defaut.
 Les sessions en echec continuent d'afficher
 leur message d'erreur de manifeste et le flux de logs meme si aucun premier
 snapshot n'a ete produit.

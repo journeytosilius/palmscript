@@ -201,10 +201,10 @@ one unified detail panel with real-time equity, PnL, open positions, trades,
 orders, drawdown, feed health, and session logs.
 Failed sessions now keep their failure message and log stream visible even
 when the session never produced a first snapshot. The bundled
-`paper-sessions.toml` now starts `strategy.ps`, `triiger_happy.ps`, and
+`paper-sessions.toml` now starts `strategy.ps` and
 `experimental/xrp_usdm_mean_reversion.ps` so the canonical multi-source
-strategy, the trigger-happy smoke test, and the XRP USD-M mean-reversion paper
-session run side by side. The paper daemon keeps the last closed candle armed
+strategy and the XRP USD-M mean-reversion paper session run side by side. The
+paper daemon keeps the last closed candle armed
 when an exchange temporarily returns no fresh bar for the current live append
 window, then resumes once the next closed candle appears. Perp sessions now
 also wait for aligned mark-price candles instead of failing immediately when
